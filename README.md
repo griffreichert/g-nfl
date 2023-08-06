@@ -22,3 +22,4 @@ Establish data model
 [Github nfl data](https://github.com/search?l=Python&q=nfl+data&type=Repositories)
 [Scaping betting sites with Python and Selenium](https://medium.com/swlh/web-scraping-basics-scraping-a-betting-site-in-10-minutes-8e0529509848)
 [Cool medium article with each step of creating a dfs model](https://taylormonticelli.medium.com/create-a-robust-predictive-fantasy-football-dfs-model-in-python-main-b7ebd295586e)
+

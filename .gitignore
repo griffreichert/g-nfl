@@ -1,5 +1,6 @@
 .vscode/
 data/
+*.png
 # ---- DEFAULT ----
 
 # Byte-compiled / optimized / DLL files
