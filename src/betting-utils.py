@@ -20,7 +20,8 @@ def implied_probability(odds: int, round_n=4) -> float:
         return round(odds / (odds - 100), round_n)
     else:
         return round(1 - (odds / (odds + 100)), round_n)
-    
+
+
 def odds(implied_prob: float, as_str=False):
     """Given an implied probability calculate the american odds
 

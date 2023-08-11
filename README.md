@@ -23,3 +23,8 @@ Establish data model
 [Scaping betting sites with Python and Selenium](https://medium.com/swlh/web-scraping-basics-scraping-a-betting-site-in-10-minutes-8e0529509848)
 [Cool medium article with each step of creating a dfs model](https://taylormonticelli.medium.com/create-a-robust-predictive-fantasy-football-dfs-model-in-python-main-b7ebd295586e)
 
+
+## Resources I found Helpful
+- Plotting data with team logos
+  - [Youtube tej seth](https://www.youtube.com/watch?v=auyOjPoURRg&ab_channel=MFANS)
+  - [Youtube Tim Bryan](https://www.youtube.com/watch?v=q6PDM_vq4us&ab_channel=TimBryan)
