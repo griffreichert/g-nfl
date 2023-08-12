@@ -1,7 +1,9 @@
 .vscode/
 data/
 *.png
+*.tif
 .DS_Store
+bin/
 # ---- DEFAULT ----
 
 # Byte-compiled / optimized / DLL files

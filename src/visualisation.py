@@ -22,14 +22,14 @@ def fetch_logos():
         os.makedirs(LOGO_PATH, exist_ok=True)
         logos = nfl.import_team_desc()[['team_abbr', 'team_logo_espn']]
 
-        # get the logos for each team and store them to png files in the logo path directory "<team>.png"
+        # get the logos for each team and store them to tif files in the logo path directory "<team>.tif"
         for _, team, logo in logos.itertuples():
-            urllib.request.urlretrieve(logo, LOGO_PATH / f"{team}.png")
+            urllib.request.urlretrieve(logo, LOGO_PATH / f"{team}.tif")
         print('successfully retrieved logos')
 
 
 def get_team_logo(team) -> OffsetImage:
-    return OffsetImage(plt.imread(str(LOGO_PATH / f'{team}.png'), format="png"), zoom=.08)
+    return OffsetImage(plt.imread(str(LOGO_PATH / f'{team}.tif'), format="tif"), zoom=.08)
 
 
 def plot_team_scatter(data: pd.DataFrame, x: str, y: str, title=None, ax_labels=None, mean_reference=True, zero_reference=True):
