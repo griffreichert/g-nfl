@@ -40,3 +40,16 @@ def odds(implied_prob: float, as_str=False):
     else:
         res_odds = int((100 - 100 * implied_prob) / implied_prob)
         return f'+{res_odds}' if as_str else res_odds
+
+def decimal_odds(implied_prob: float) -> float:
+    return 1/ implied_prob
+
+def decimal_implied_probability(decimal_odds: float) -> float:
+    return 1 / decimal_odds
+
+def decimal_odds_to_american(decimal_odds: float) -> int:
+    if decimal_odds >= 2.0:
+        american_odds = (decimal_odds - 1) * 100
+    else:
+        american_odds = -100 / (decimal_odds - 1)
+    return round(american_odds)
