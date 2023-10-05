@@ -12,3 +12,8 @@ Scrape Schedule data
 Scrape Pff Data
 Scrape / Api for weekly spreads
 Establish data model
+
+
+
+zip data command
+
