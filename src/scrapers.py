@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from io import BytesIO
 from src import utils
-from src.config import INPREDICABLE_PATH
+from src.config import INPREDICABLE_PATH, UNABATED_PATH, ESPN_PATH
 
 
 def clean_inpredictible_df(df: pd.DataFrame):
@@ -37,13 +37,14 @@ def scrape_inpredictable(week: int, season: int) -> None:
 
     # dont overwrite an existing file
     file_path = f"{INPREDICABLE_PATH}/inpredictable-{season}-wk{week}.csv"
-    assert not os.path.isfile(file_path), print(
-        f"{utils.ANSI.RED}Error{utils.ANSI.RESET} - {file_path} exists!"
-    )
-
-    # write the file to the correct path
-    df.to_csv(f"{INPREDICABLE_PATH}/inpredictable-{season}-wk{week}.csv")
-    print(f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - Inpredictable Week {week}")
+    if os.path.isfile(file_path):
+        print(f"{file_path} exists!")
+    else:
+        # write the file to the correct path
+        df.to_csv(file_path)
+        print(
+            f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - Inpredictable Week {week}"
+        )
 
 
 def scrape_unabated(week: int, season: int) -> None:
@@ -55,3 +56,47 @@ def scrape_unabated(week: int, season: int) -> None:
     df = pd.read_csv(byte_stream, delimiter=",", encoding="utf-8")
     df = utils.clean_df_columns(df)
     assert df.shape[0] == 32
+    # dont overwrite an existing file
+    file_path = f"{UNABATED_PATH}/unabated-{season}-wk{week}.csv"
+    if os.path.isfile(file_path):
+        print(f"{file_path} exists!")
+    else:
+        # write the file to the correct path
+        df.to_csv(file_path)
+        print(f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - Unabated Week {week}")
+
+
+def scrape_espn(week: int, season: int) -> None:
+    df_list = pd.read_html("https://www.espn.com/nfl/fpi")
+    df = df_list[1]
+    df.columns = df.columns.droplevel(level=0)
+    # join teams to ranks
+    team_list = [df_list[0].columns[0]] + list(team[0] for team in df_list[0].values)
+    df["team_name"] = team_list
+    # clean and reorder columns
+    df = utils.clean_df_columns(df)
+    df = df[
+        [
+            "team_name",
+            "wlt",
+            "fpi",
+            "rk",
+            "trend",
+            "off",
+            "def",
+            "st",
+            "sos",
+            "rem_sos",
+            "avgwp",
+        ]
+    ]
+    assert df.shape[0] == 32
+
+    # dont overwrite an existing file
+    file_path = f"{ESPN_PATH}/espn-{season}-wk{week}.csv"
+    if os.path.isfile(file_path):
+        print(f"{file_path} exists!")
+    else:
+        # write the file to the correct path
+        df.to_csv(file_path)
+        print(f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - ESPN Week {week}")

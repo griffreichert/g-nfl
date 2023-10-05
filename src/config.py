@@ -13,3 +13,5 @@ NFELO_PATH = DATA_PATH / "nfelo"
 SUMER_PATH = DATA_PATH / "sumer"
 
 UNABATED_PATH = DATA_PATH / "unabated"
+
+ESPN_PATH = DATA_PATH / "espn"
