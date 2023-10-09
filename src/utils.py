@@ -58,6 +58,7 @@ def clean_df_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cover_result(row, result_col="result", spread_col="spread_line"):
+    # will return a 1 if the away team covered
     if row[result_col] == row[spread_col]:
         return 0.5
     elif row[result_col] < row[spread_col]:
@@ -84,32 +85,34 @@ def standardize_teams(team):
         "WFT": "WAS",
     }
     team = team_map.get(team, team)
-    assert team in nfl_teams, team
+    assert team in nfl_teams, print(team, "not in dict")
     return team
 
 
 def pick_result(row, spread_col="spread_line"):
     res = 0
-    away_flag = row["pick"] == row["away_team"]
+    # determine if pick was home or away team
+    row["away_pick"]
 
     # determine spread bets
-    if row["pick_type"] in ["bb", "reg", "mnf"]:
-        if away_flag:
+    if row["spread_pick"]:
+        if row["away_pick"]:
             res = row["away_cover"]
         else:
             res = row["home_cover"]
         # double best bets
-        if row["pick_type"] == "bb":
+        if row["best_bet"]:
             res *= 2
     # sudden death
-    if row["pick_type"] == "sd":
-        if away_flag:
+    if row["survivor_pick"]:
+        if row["away_pick"]:
             if row["result"] < 0:
                 res = 1
-        elif row["result"] > 0:
-            res = 1
-    if row["pick_type"] == "ud":
-        if away_flag:
+        else:
+            if row["result"] > 0:
+                res = 1
+    if row["underdog_pick"]:
+        if row["away_pick"]:
             if row["result"] < 0:
                 res = abs(row[spread_col])
         else:

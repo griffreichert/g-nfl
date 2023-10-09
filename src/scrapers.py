@@ -1,9 +1,19 @@
 import os
+import re
 import pandas as pd
 import requests
 from io import BytesIO
 from src import utils
-from src.config import INPREDICABLE_PATH, UNABATED_PATH, ESPN_PATH
+from src.config import (
+    INPREDICABLE_PATH,
+    UNABATED_PATH,
+    ESPN_PATH,
+    NFELO_PATH,
+    SUMER_ELO_PATH,
+    SUMER_OFFENSE_PATH,
+    SUMER_DEFENSE_PATH,
+    SUMER_PLAYER_PATH,
+)
 
 
 def clean_inpredictible_df(df: pd.DataFrame):
@@ -100,3 +110,34 @@ def scrape_espn(week: int, season: int) -> None:
         # write the file to the correct path
         df.to_csv(file_path)
         print(f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - ESPN Week {week}")
+
+
+def scrape_nfelo(week: int, season: int) -> None:
+    df = pd.read_html("https://www.nfeloapp.com/nfl-power-ratings/")[0]
+    df.columns = df.columns.droplevel(0)
+    df = utils.clean_df_columns(df)
+    df = df.rename(columns={df.columns[0]: "team"})
+    df["team"] = df["team"].apply(lambda x: re.search(r"([A-Z]+)$", x).group(1))
+
+    tendencies = pd.read_html(
+        "https://www.nfeloapp.com/nfl-power-ratings/nfl-team-tendencies/"
+    )[0]
+    tendencies.columns = tendencies.columns.droplevel(0)
+    tendencies = utils.clean_df_columns(tendencies)
+    tendencies = tendencies.rename(columns={tendencies.columns[0]: "team"})
+    tendencies["team"] = tendencies["team"].apply(
+        lambda x: re.search(r"([A-Z]+)$", x).group(1)
+    )
+    tendencies = tendencies.drop(columns=["season"])
+    df = pd.merge(df, tendencies, on="team")
+
+    assert df.shape[0] == 32
+
+    # dont overwrite an existing file
+    file_path = f"{NFELO_PATH}/nfelo-{season}-wk{week}.csv"
+    if os.path.isfile(file_path):
+        print(f"{file_path} exists!")
+    else:
+        # write the file to the correct path
+        df.to_csv(file_path)
+        print(f"{utils.ANSI.GREEN}Success{utils.ANSI.RESET} - NFELO Week {week}")
