@@ -121,6 +121,13 @@ def pick_result(row, spread_col="spread_line"):
     return res
 
 
+def optional_list_label(col):
+    # Calculate the lowest and highest weeks
+    min_val = col.min()
+    max_val = col.max()
+    return str(min_val) if min_val == max_val else f"{min_val}-{max_val}"
+
+
 def reduce_memory_usage(df, verbose=True):
     """Reduct the memory usage of a dataframe by casting columns to their lowest possible values"""
     numerics = ["int8", "int16", "int32", "int64", "float16", "float32", "float64"]
