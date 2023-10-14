@@ -1,3 +1,12 @@
+.vscode/
+data/
+*.png
+*.tif
+.DS_Store
+bin/
+*.zip
+# ---- DEFAULT ----
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
