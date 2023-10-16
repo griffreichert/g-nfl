@@ -11,6 +11,7 @@
 [Era adjusted ELO](https://www.nfeloapp.com/qb-rankings/era-adjusted/)
 [Beginners Guide to NFLFastR - Ben Baldwin](https://www.nflfastr.com/articles/beginners_guide.html)
 [Explanation of columns in NFLFastR](https://www.nflfastr.com/reference/fast_scraper.html)
+[The Odds API]()
 
 ## Data Gems
 ### Power Ratings & ELO

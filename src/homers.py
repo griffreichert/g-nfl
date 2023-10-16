@@ -95,9 +95,50 @@ def evaluate_picks(df, season):
     )
     evaluated_picks["away_cover"] = evaluated_picks.apply(utils.cover_result, axis=1)
     evaluated_picks["home_cover"] = 1 - evaluated_picks["away_cover"]
-    evaluated_picks["pick_result"] = evaluated_picks.apply(utils.pick_result, axis=1)
+    evaluated_picks["pick_result"] = evaluated_picks.apply(pick_result, axis=1)
 
     return evaluated_picks
+
+
+def pick_result(row, spread_col="spread_line"):
+    """Score the result of spread picks, best bets, survivor, and underdog picks
+
+    Args:
+        row (_type_): _description_
+        spread_col (str, optional): _description_. Defaults to "spread_line".
+
+    Returns:
+        int/float: result of the pick
+    """
+    res = 0
+    # determine if pick was home or away team
+    row["away_pick"]
+
+    # determine spread bets
+    if row["spread_pick"]:
+        if row["away_pick"]:
+            res = row["away_cover"]
+        else:
+            res = row["home_cover"]
+        # double best bets
+        if row["best_bet"]:
+            res *= 2
+    # sudden death
+    if row["survivor_pick"]:
+        if row["away_pick"]:
+            if row["result"] < 0:
+                res = 1
+        else:
+            if row["result"] > 0:
+                res = 1
+    if row["underdog_pick"]:
+        if row["away_pick"]:
+            if row["result"] < 0:
+                res = abs(row[spread_col])
+        else:
+            if row["result"] > 0:
+                res = abs(row[spread_col])
+    return res
 
 
 def plot_scores(df, pick_type="spread_pick", agg_sum=True):
