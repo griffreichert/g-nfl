@@ -1,5 +1,8 @@
 from pathlib import Path
 
+BIN_PATH = Path("../bin")
+LOGO_PATH = BIN_PATH / "logos"
+
 # Root Data Path
 DATA_PATH = Path("../data/")
 
