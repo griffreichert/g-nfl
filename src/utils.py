@@ -51,160 +51,170 @@ nfl_teams = {
 
 # color_map = nfl.import_team_desc().set_index('team_abbr')['team_color'].to_dict()
 team_primary_colors = {
-    'ARI': '#97233F',
-    'ATL': '#A71930',
-    'BAL': '#241773',
-    'BUF': '#00338D',
-    'CAR': '#0085CA',
-    'CHI': '#0B162A',
-    'CIN': '#FB4F14',
-    'CLE': '#FF3C00',
-    'DAL': '#002244',
-    'DEN': '#002244',
-    'DET': '#0076B6',
-    'GB': '#203731',
-    'HOU': '#03202F',
-    'IND': '#002C5F',
-    'JAX': '#006778',
-    'KC': '#E31837',
-    'LA': '#003594',
-    'LAC': '#007BC7',
-    'LAR': '#003594',
-    'LV': '#000000',
-    'MIA': '#008E97',
-    'MIN': '#4F2683',
-    'NE': '#002244',
-    'NO': '#D3BC8D',
-    'NYG': '#0B2265',
-    'NYJ': '#003F2D',
-    'OAK': '#000000',
-    'PHI': '#004C54',
-    'PIT': '#000000',
-    'SD': '#007BC7',
-    'SEA': '#002244',
-    'SF': '#AA0000',
-    'STL': '#003594',
-    'TB': '#A71930',
-    'TEN': '#002244',
-    'WAS': '#5A1414'
+    "ARI": "#97233F",
+    "ATL": "#A71930",
+    "BAL": "#241773",
+    "BUF": "#00338D",
+    "CAR": "#0085CA",
+    "CHI": "#0B162A",
+    "CIN": "#FB4F14",
+    "CLE": "#FF3C00",
+    "DAL": "#002244",
+    "DEN": "#002244",
+    "DET": "#0076B6",
+    "GB": "#203731",
+    "HOU": "#03202F",
+    "IND": "#002C5F",
+    "JAX": "#006778",
+    "KC": "#E31837",
+    "LA": "#003594",
+    "LAC": "#007BC7",
+    "LAR": "#003594",
+    "LV": "#000000",
+    "MIA": "#008E97",
+    "MIN": "#4F2683",
+    "NE": "#002244",
+    "NO": "#D3BC8D",
+    "NYG": "#0B2265",
+    "NYJ": "#003F2D",
+    "OAK": "#000000",
+    "PHI": "#004C54",
+    "PIT": "#000000",
+    "SD": "#007BC7",
+    "SEA": "#002244",
+    "SF": "#AA0000",
+    "STL": "#003594",
+    "TB": "#A71930",
+    "TEN": "#002244",
+    "WAS": "#5A1414",
 }
 
 team_alt_colors = {
-    'ARI': '#000000',
-    'ATL': '#000000',
-    'BAL': '#9E7C0C',
-    'BUF': '#C60C30',
-    'CAR': '#000000',
-    'CHI': '#E64100',
-    'CIN': '#000000',
-    'CLE': '#311D00',
-    'DAL': '#B0B7BC',
-    'DEN': '#FB4F14',
-    'DET': '#B0B7BC',
-    'GB': '#FFB612',
-    'HOU': '#A71930',
-    'IND': '#a5acaf',
-    'JAX': '#000000',
-    'KC': '#FFB612',
-    'LA': '#FFD100',
-    'LAC': '#ffc20e',
-    'LAR': '#FFD100',
-    'LV': '#A5ACAF',
-    'MIA': '#F58220',
-    'MIN': '#FFC62F',
-    'NE': '#C60C30',
-    'NO': '#000000',
-    'NYG': '#A71930',
-    'NYJ': '#000000',
-    'OAK': '#A5ACAF',
-    'PHI': '#A5ACAF',
-    'PIT': '#FFB612',
-    'SD': '#ffc20e',
-    'SEA': '#69be28',
-    'SF': '#B3995D',
-    'STL': '#FFD100',
-    'TB': '#322F2B',
-    'TEN': '#4B92DB',
-    'WAS': '#FFB612'
+    "ARI": "#000000",
+    "ATL": "#000000",
+    "BAL": "#9E7C0C",
+    "BUF": "#C60C30",
+    "CAR": "#000000",
+    "CHI": "#E64100",
+    "CIN": "#000000",
+    "CLE": "#311D00",
+    "DAL": "#B0B7BC",
+    "DEN": "#FB4F14",
+    "DET": "#B0B7BC",
+    "GB": "#FFB612",
+    "HOU": "#A71930",
+    "IND": "#a5acaf",
+    "JAX": "#000000",
+    "KC": "#FFB612",
+    "LA": "#FFD100",
+    "LAC": "#ffc20e",
+    "LAR": "#FFD100",
+    "LV": "#A5ACAF",
+    "MIA": "#F58220",
+    "MIN": "#FFC62F",
+    "NE": "#C60C30",
+    "NO": "#000000",
+    "NYG": "#A71930",
+    "NYJ": "#000000",
+    "OAK": "#A5ACAF",
+    "PHI": "#A5ACAF",
+    "PIT": "#FFB612",
+    "SD": "#ffc20e",
+    "SEA": "#69be28",
+    "SF": "#B3995D",
+    "STL": "#FFD100",
+    "TB": "#322F2B",
+    "TEN": "#4B92DB",
+    "WAS": "#FFB612",
 }
 
 team_unique_colors = {
-    'ARI': '#97233F',
-    'ATL': '#A71930',
-    'BAL': '#241773',
-    'BUF': '#00338D',
-    'CAR': '#0085CA',
-    'CHI': '#E64100',
-    'CIN': '#FB4F14',
-    'CLE': '#FF3C00',
-    'DAL': '#002244',
-    'DEN': '#FB4F14',
-    'DET': '#0076B6',
-    'GB': '#203731',
-    'HOU': '#03202F',
-    'IND': '#002C5F',
-    'JAX': '#006778',
-    'KC': '#E31837',
-    'LA': '#003594',
-    'LAC': '#007BC7',
-    'LAR': '#003594',
-    'LV': '#000000',
-    'MIA': '#008E97',
-    'MIN': '#4F2683',
-    'NE': '#002244',
-    'NO': '#D3BC8D',
-    'NYG': '#0B2265',
-    'NYJ': '#003F2D',
-    'OAK': '#000000',
-    'PHI': '#004C54',
-    'PIT': '#000000',
-    'SD': '#007BC7',
-    'SEA': '#69be28',
-    'SF': '#B3995D',
-    'STL': '#003594',
-    'TB': '#A71930',
-    'TEN': '#4B92DB',
-    'WAS': '#5A1414'
+    "ARI": "#97233F",
+    "ATL": "#A71930",
+    "BAL": "#241773",
+    "BUF": "#00338D",
+    "CAR": "#0085CA",
+    "CHI": "#E64100",
+    "CIN": "#FB4F14",
+    "CLE": "#FF3C00",
+    "DAL": "#002244",
+    "DEN": "#FB4F14",
+    "DET": "#0076B6",
+    "GB": "#203731",
+    "HOU": "#03202F",
+    "IND": "#002C5F",
+    "JAX": "#006778",
+    "KC": "#E31837",
+    "LA": "#003594",
+    "LAC": "#007BC7",
+    "LAR": "#003594",
+    "LV": "#000000",
+    "MIA": "#008E97",
+    "MIN": "#4F2683",
+    "NE": "#002244",
+    "NO": "#D3BC8D",
+    "NYG": "#0B2265",
+    "NYJ": "#003F2D",
+    "OAK": "#000000",
+    "PHI": "#004C54",
+    "PIT": "#000000",
+    "SD": "#007BC7",
+    "SEA": "#69be28",
+    "SF": "#B3995D",
+    "STL": "#003594",
+    "TB": "#A71930",
+    "TEN": "#4B92DB",
+    "WAS": "#5A1414",
 }
 
 team_unique_alt_colors = {
-    'ARI': '#000000',
-    'ATL': '#000000',
-    'BAL': '#9E7C0C',
-    'BUF': '#C60C30',
-    'CAR': '#000000',
-    'CHI': '#0B162A',
-    'CIN': '#000000',
-    'CLE': '#311D00',
-    'DAL': '#B0B7BC',
-    'DEN': '#002244',
-    'DET': '#B0B7BC',
-    'GB': '#FFB612',
-    'HOU': '#A71930',
-    'IND': '#a5acaf',
-    'JAX': '#000000',
-    'KC': '#FFB612',
-    'LA': '#FFD100',
-    'LAC': '#ffc20e',
-    'LAR': '#FFD100',
-    'LV': '#A5ACAF',
-    'MIA': '#F58220',
-    'MIN': '#FFC62F',
-    'NE': '#C60C30',
-    'NO': '#000000',
-    'NYG': '#A71930',
-    'NYJ': '#000000',
-    'OAK': '#A5ACAF',
-    'PHI': '#A5ACAF',
-    'PIT': '#FFB612',
-    'SD': '#ffc20e',
-    'SEA': '#002244',
-    'STL': '#FFD100',
-    'SF': '#AA0000',
-    'TB': '#322F2B',
-    'TEN': '#002244',
-    'WAS': '#FFB612'
+    "ARI": "#000000",
+    "ATL": "#000000",
+    "BAL": "#9E7C0C",
+    "BUF": "#C60C30",
+    "CAR": "#000000",
+    "CHI": "#0B162A",
+    "CIN": "#000000",
+    "CLE": "#311D00",
+    "DAL": "#B0B7BC",
+    "DEN": "#002244",
+    "DET": "#B0B7BC",
+    "GB": "#FFB612",
+    "HOU": "#A71930",
+    "IND": "#a5acaf",
+    "JAX": "#000000",
+    "KC": "#FFB612",
+    "LA": "#FFD100",
+    "LAC": "#ffc20e",
+    "LAR": "#FFD100",
+    "LV": "#A5ACAF",
+    "MIA": "#F58220",
+    "MIN": "#FFC62F",
+    "NE": "#C60C30",
+    "NO": "#000000",
+    "NYG": "#A71930",
+    "NYJ": "#000000",
+    "OAK": "#A5ACAF",
+    "PHI": "#A5ACAF",
+    "PIT": "#FFB612",
+    "SD": "#ffc20e",
+    "SEA": "#002244",
+    "STL": "#FFD100",
+    "SF": "#AA0000",
+    "TB": "#322F2B",
+    "TEN": "#002244",
+    "WAS": "#FFB612",
 }
+
+picker_colors = {
+    "chuck": "#0B162A",
+    "griffin": "#FF3C00",
+    "harry": "#311D00",
+    "hunter": "#A71930",
+    "ben": "#5A1414",
+    "final": "#B3995D",
+}
+
 
 def get_nfl_teams() -> list:
     # list(sorted(nfl.import_schedules([2023]).away_team.unique()))
@@ -228,9 +238,10 @@ def standardize_teams(team):
     assert team in nfl_teams, print(team, "not in dict")
     return team
 
+
 def download_team_pngs():
     # Base URL for the team logos and local directory
-    base_url = 'https://a.espncdn.com/i/teamlogos/nfl/500/'
+    base_url = "https://a.espncdn.com/i/teamlogos/nfl/500/"
 
     # Create the local directory if it doesn't exist
     if not os.path.exists(LOGO_PATH):
@@ -239,22 +250,23 @@ def download_team_pngs():
     # Iterate through the list of teams, download logos, and save them locally
     for team in nfl_teams:
         team = team.lower()
-        url = f'{base_url}{team}.png'
+        url = f"{base_url}{team}.png"
         response = requests.get(url)
         if response.status_code == 200:
             # Save the image to the local directory
-            with open(LOGO_PATH / f'{team}.png', 'wb') as file:
+            with open(LOGO_PATH / f"{team}.png", "wb") as file:
                 file.write(response.content)
         else:
             print(f"Failed to download logo for {team}")
-    print(f'Logos downloaded to {LOGO_PATH}')
-    
-    
+    print(f"Logos downloaded to {LOGO_PATH}")
+
+
 ############################
 #                          #
 #       Betting Utils      #
 #                          #
 ############################
+
 
 def derive_market_power_ratings(df: pd.DataFrame, weighted=True) -> tuple:
     """_summary_
@@ -369,7 +381,6 @@ def cover_result(row, result_col="result", spread_col="spread_line"):
     elif row[result_col] < row[spread_col]:
         return 1
     return 0
-
 
 
 def optional_list_label(col):

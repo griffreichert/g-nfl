@@ -151,16 +151,20 @@ def plot_scores(df, pick_type="spread_pick", agg_sum=True):
         grouped_df = grouped_df.sum()
     else:
         grouped_df = grouped_df.mean()
-    grouped_df = grouped_df.sort_values().round(2).reset_index()
+    grouped_df = grouped_df.sort_values(ascending=False).round(2).reset_index()
     # Create a Plotly bar chart
     fig = px.bar(
         grouped_df,
         x="pick_result",
         y="picker",
-        color="pick_result",
         orientation="h",
+        color="picker",
+        color_discrete_map=utils.picker_colors,
         text_auto=True,
         title=f"{season_label} Week{'s' if '-' in week_label else ''} {week_label}{' ' if agg_sum else ' Avg '}Scores - {pick_type.split('_')[0].capitalize()}",
     )
+    # fig.update_yaxes(categoryorder="total descending")
+    fig.update_traces(showlegend=False)
+
     # Show the plot in the Jupyter Notebook
     fig.show()
