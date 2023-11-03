@@ -161,6 +161,8 @@ def plot_scores(df, pick_type="spread_pick", agg_sum=True):
         color="picker",
         color_discrete_map=utils.picker_colors,
         text_auto=True,
+        height=500,
+        width=800,
         title=f"{season_label} Week{'s' if '-' in week_label else ''} {week_label}{' ' if agg_sum else ' Avg '}Scores - {pick_type.split('_')[0].capitalize()}",
     )
     # fig.update_yaxes(categoryorder="total descending")
