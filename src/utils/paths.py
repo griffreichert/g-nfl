@@ -1,10 +1,13 @@
 from pathlib import Path
+import os
 
-BIN_PATH = Path("../bin")
+PROJECT_DIR = Path(os.getcwd().split("nfl-betting/")[0] + "nfl-betting/")
+
+BIN_PATH = PROJECT_DIR / "bin"
 LOGO_PATH = BIN_PATH / "logos"
 
 # Root Data Path
-DATA_PATH = Path("../data/")
+DATA_PATH = PROJECT_DIR / "data"
 
 BETTING_PATH = DATA_PATH / "betting"
 

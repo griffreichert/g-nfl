@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 from io import BytesIO
 from src import utils
-from src.config import (
+from src.nfl.utils.paths import (
     INPREDICABLE_PATH,
     UNABATED_PATH,
     ESPN_PATH,

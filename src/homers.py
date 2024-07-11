@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import nfl_data_py as nfl
 from src import utils
-from src.config import HOMERS_PATH
+from src.nfl.utils.paths import HOMERS_PATH
 import plotly.express as px
 
 PROCESSED_FILE_PATH = f"{HOMERS_PATH}/homers-processed.pkl"
