@@ -1,18 +1,20 @@
 import os
 import re
+from io import BytesIO
+
 import pandas as pd
 import requests
-from io import BytesIO
+
 from src import utils
-from src.nfl.utils.paths import (
-    INPREDICABLE_PATH,
-    UNABATED_PATH,
+from src.utils.paths import (
     ESPN_PATH,
+    INPREDICABLE_PATH,
     NFELO_PATH,
+    SUMER_DEFENSE_PATH,
     SUMER_ELO_PATH,
     SUMER_OFFENSE_PATH,
-    SUMER_DEFENSE_PATH,
     SUMER_PLAYER_PATH,
+    UNABATED_PATH,
 )
 
 
