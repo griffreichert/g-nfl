@@ -19,6 +19,7 @@ jupyter-black = "^0.3.4"
 requests = "^2.32.3"
 ipykernel = "^6.29.5"
 gspread = "^6.1.2"
+pre-commit = "^3.7.1"
 
 
 [build-system]
