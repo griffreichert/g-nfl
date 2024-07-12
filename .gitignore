@@ -3,6 +3,7 @@
 
 .vscode/
 data/
+!src/data/
 *.png
 *.tif
 .DS_Store
