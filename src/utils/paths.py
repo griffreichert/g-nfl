@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 PROJECT_DIR = Path(os.getcwd().split("nfl-betting/")[0] + "nfl-betting/")
 

@@ -1,5 +1,6 @@
 import gspread
 from gspread.client import Client
+
 from src.utils.paths import PROJECT_DIR
 
 

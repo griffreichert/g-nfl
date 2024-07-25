@@ -16,4 +16,3 @@ Establish data model
 
 
 zip data command
-
