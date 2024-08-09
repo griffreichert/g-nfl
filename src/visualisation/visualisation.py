@@ -1,20 +1,21 @@
 import os
 import urllib.request
-from pathlib import Path
+from typing import Tuple, Union
 
 import matplotlib.pyplot as plt
 import nfl_data_py as nfl
+import numpy as np
 import pandas as pd
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from PIL import Image
+
+from src.utils.paths import LOGO_PATH
 
 """ Resources I found helpful
 
 Tej Seth great notebook on logos plotting basics - https://github.com/tejseth/nfl-tutorials-2022/blob/master/nfl_data_py_1.ipynb
 
 """
-
-# define your path to the logos
-LOGO_PATH = Path("../bin/logos")  # os.path.dirname(os.getcwd())
 
 
 def fetch_logos():
@@ -30,21 +31,27 @@ def fetch_logos():
         print("successfully retrieved logos")
 
 
-def get_team_logo(team) -> OffsetImage:
-    return OffsetImage(
-        plt.imread(str(LOGO_PATH / f"{team}.tif"), format="tif"), zoom=0.08
-    )
+def get_team_logo(
+    team: str, size: Tuple[int, int] = (50, 50), alpha: float = 1.0
+) -> OffsetImage:
+    # Open the image with PIL and resize it
+    image = Image.open(str(LOGO_PATH / f"{team}.tif"))
+    image = image.resize(size, Image.Resampling.LANCZOS)
+    return OffsetImage(np.asarray(image), alpha=alpha, zoom=1.0)
 
 
 def plot_team_scatter(
     data: pd.DataFrame,
     x: str,
     y: str,
-    title=None,
-    ax_labels=None,
-    mean_reference=True,
-    zero_reference=True,
-):
+    title: Union[str, None] = None,
+    ax_labels: Tuple[str, str] = ("", ""),
+    mean_reference: bool = True,
+    zero_reference: bool = True,
+    flip_def: bool = False,
+    alpha: float = 1.0,
+) -> None:
+
     # if team is the index of the df, turn it into a regular column
     if "team" not in data.columns:
         data = data.reset_index(level=0)
@@ -59,7 +66,7 @@ def plot_team_scatter(
     fig, ax = plt.subplots()
 
     for xi, yi, team in zip(data[x].values, data[y].values, data["team"].values):
-        ab = AnnotationBbox(get_team_logo(team), (xi, yi), frameon=False)
+        ab = AnnotationBbox(get_team_logo(team, alpha=alpha), (xi, yi), frameon=False)
         ax.add_artist(ab)
 
     # Add padding to the axis limits
@@ -69,9 +76,18 @@ def plot_team_scatter(
 
     x_padding = (x_max - x_min) * padding_percentage
     y_padding = (y_max - y_min) * padding_percentage
-    # set axis limits based on the plot
+
     plt.xlim(x_min - x_padding, x_max + x_padding)
     plt.ylim(y_min - y_padding, y_max + y_padding)
+    # Set axis limits based on the plot
+    if flip_def:
+        # plt.xlim(x_max + x_padding, x_min - x_padding)
+        # plt.ylim(y_max + y_padding, y_min - y_padding)
+        plt.gca().invert_yaxis()
+        plt.gca().invert_xaxis()
+    # else:
+    #     plt.xlim(x_min - x_padding, x_max + x_padding)
+    #     plt.ylim(y_min - y_padding, y_max + y_padding)
 
     # add reference lines for 0's if the min is negative and we show the flag
     if zero_reference:
@@ -90,14 +106,7 @@ def plot_team_scatter(
         plt.title(title)
 
     # label the axes
-    if ax_labels:
-        plt.xlabel(ax_labels[0])
-        plt.ylabel(ax_labels[1])
+    plt.xlabel(ax_labels[0] or x)
+    plt.ylabel(ax_labels[1] or y)
 
     plt.show()
-
-    return plt
-
-
-if __name__ == "__main__":
-    fetch_logos()
