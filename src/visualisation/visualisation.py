@@ -1,43 +1,19 @@
-import os
-import urllib.request
 from typing import Tuple, Union
 
 import matplotlib.pyplot as plt
-import nfl_data_py as nfl
-import numpy as np
 import pandas as pd
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
-from PIL import Image
+import plotly.express as px
+from matplotlib.offsetbox import AnnotationBbox
 
+from src.utils.logos import get_team_logo
 from src.utils.paths import LOGO_PATH
+from src.visualisation import colors
 
 """ Resources I found helpful
 
 Tej Seth great notebook on logos plotting basics - https://github.com/tejseth/nfl-tutorials-2022/blob/master/nfl_data_py_1.ipynb
 
 """
-
-
-def fetch_logos():
-    # if the path to the logos directory does not exist, create it
-    if not os.path.exists(LOGO_PATH):
-        print("fetching team logos...")
-        os.makedirs(LOGO_PATH, exist_ok=True)
-        logos = nfl.import_team_desc()[["team_abbr", "team_logo_espn"]]
-
-        # get the logos for each team and store them to tif files in the logo path directory "<team>.tif"
-        for _, team, logo in logos.itertuples():
-            urllib.request.urlretrieve(logo, LOGO_PATH / f"{team}.tif")
-        print("successfully retrieved logos")
-
-
-def get_team_logo(
-    team: str, size: Tuple[int, int] = (50, 50), alpha: float = 1.0
-) -> OffsetImage:
-    # Open the image with PIL and resize it
-    image = Image.open(str(LOGO_PATH / f"{team}.tif"))
-    image = image.resize(size, Image.Resampling.LANCZOS)
-    return OffsetImage(np.asarray(image), alpha=alpha, zoom=1.0)
 
 
 def plot_team_scatter(
@@ -110,3 +86,80 @@ def plot_team_scatter(
     plt.ylabel(ax_labels[1] or y)
 
     plt.show()
+
+
+def plot_bar(
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    title: Union[str, None] = None,
+    ax_labels: Tuple[str, str] = ("", ""),
+    citation: bool = True,
+    dark_mode: bool = True,
+) -> None:
+    fig = px.bar(
+        data,
+        x=x,
+        y=y,
+        orientation="h",
+        color="team",
+        color_discrete_map=colors.team_unique_colors,
+        opacity=0.85,
+    )
+    if "team" in data.columns:
+        # Iterate through the data and add logos to the chart
+        for _, row in data.iterrows():
+            scale = 1.25
+            fig.add_layout_image(
+                dict(
+                    source=f"https://a.espncdn.com/i/teamlogos/nfl/500/{row['team']}.png",
+                    x=row[x],
+                    y=row[y],
+                    xref="x",
+                    yref="y",
+                    sizex=scale,  # Adjust the size
+                    sizey=scale,  # Adjust the size
+                    sizing="contain",
+                    opacity=1,
+                    xanchor="center",
+                    yanchor="middle",
+                )
+            )
+    # TODO: could flip for defenses here
+    fig.update_yaxes(categoryorder="total ascending")
+
+    MARGIN = 100
+
+    citation_kwargs = {
+        "annotations": [
+            dict(
+                text="Data: @nflfastR | Chart: @griffreichert",
+                x=-0.25,  # centered
+                y=-0.1,  # position above
+                xref="paper",
+                yref="paper",
+                showarrow=False,
+                xanchor="left",
+                yanchor="top",
+                font=dict(size=12),
+            )
+        ],
+        "margin": dict(t=MARGIN, b=MARGIN, l=MARGIN, r=MARGIN),
+    }
+
+    fig.update_layout(
+        height=800,
+        width=700,
+        template="plotly_dark" if dark_mode else "plotly_white",
+        # template="plotly_white",
+        xaxis_title=ax_labels[0] or x,  # NOTE: flipped because horizontal
+        yaxis_title="",
+        title=title,
+        title_x=0.5,  # Centers the title horizontally
+    )
+    if citation:
+        fig.update_layout(**citation_kwargs)
+
+    fig.update_traces(showlegend=False)
+    # Show the chart
+    fig.show()
