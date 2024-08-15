@@ -1,6 +1,7 @@
 from typing import Literal, Tuple, Union
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import plotly.express as px
 from adjustText import adjust_text
@@ -52,6 +53,41 @@ def plot_scatter(
     plt.rcParams["figure.autolayout"] = True
     _, ax = plt.subplots()
 
+    # Add padding to the axis limits
+    padding_percentage = 0.1  # Adjust this value as needed
+    x_min, x_max = data[x].min(), data[x].max()
+    y_min, y_max = data[y].min(), data[y].max()
+
+    x_padding = (x_max - x_min) * padding_percentage
+    y_padding = (y_max - y_min) * padding_percentage
+
+    plt.xlim(x_min - x_padding, x_max + x_padding)
+    plt.ylim(y_min - y_padding, y_max + y_padding)
+    # Set axis limits based on the plot
+    if flip_x:
+        plt.gca().invert_xaxis()
+    if flip_y:
+        plt.gca().invert_yaxis()
+
+    # add reference lines for 0's if the min is negative and we show the flag
+    if zero_reference:
+        if y_min < 0:
+            plt.axhline(0, color="lightgrey", linestyle="-", linewidth=0.75)
+        if x_min < 0:
+            plt.axvline(0, color="lightgrey", linestyle="-", linewidth=0.75)
+
+    # add reference lines for league averages
+    if mean_reference:
+        plt.axhline(data[y].mean(), color="red", linestyle=(0, (5, 10)), linewidth=1)
+        plt.axvline(data[x].mean(), color="red", linestyle=(0, (5, 10)), linewidth=1)
+    # Add line of best fit
+    if best_fit:
+        # Fit the line
+        slope, intercept = np.polyfit(data[x], data[y], 1)
+        best_fit_line = slope * data[x] + intercept
+        # Plot the line
+        ax.plot(data[x], best_fit_line, color="m", linestyle="-", linewidth=1)
+
     marker_labels = []  # List to hold all text objects for adjustment
 
     # Iterate over the DataFrame rows
@@ -88,36 +124,6 @@ def plot_scatter(
             )
             marker_labels.append(label)
 
-    # Adjust text labels to avoid overlap, with parameters to keep them close
-
-    # Add padding to the axis limits
-    padding_percentage = 0.1  # Adjust this value as needed
-    x_min, x_max = data[x].min(), data[x].max()
-    y_min, y_max = data[y].min(), data[y].max()
-
-    x_padding = (x_max - x_min) * padding_percentage
-    y_padding = (y_max - y_min) * padding_percentage
-
-    plt.xlim(x_min - x_padding, x_max + x_padding)
-    plt.ylim(y_min - y_padding, y_max + y_padding)
-    # Set axis limits based on the plot
-    if flip_x:
-        plt.gca().invert_xaxis()
-    if flip_y:
-        plt.gca().invert_yaxis()
-
-    # add reference lines for 0's if the min is negative and we show the flag
-    if zero_reference:
-        if y_min < 0:
-            plt.axhline(0, color="lightgrey", linestyle="-", linewidth=0.8)
-        if x_min < 0:
-            plt.axvline(0, color="lightgrey", linestyle="-", linewidth=0.8)
-
-    # add reference lines for league averages
-    if mean_reference:
-        plt.axhline(data[y].mean(), color="red", linestyle="--", linewidth=0.8)
-        plt.axvline(data[x].mean(), color="red", linestyle="--", linewidth=0.8)
-
     # add a title
     if title:
         plt.title(title)
@@ -136,8 +142,6 @@ def plot_scatter(
                 "texts": "xy",
             },  # Limit movement to reduce displacement
             force_text=0.1,  # Reduce the force to keep text closer
-            # expand_text=(1.05, 1.2),  # Control expansion, adjust these values as needed
-            # expand_points=(1.05, 1.2),  # Control expansion for points as well
             lim=100,  # Limit the number of iterations
         )
     plt.show()
