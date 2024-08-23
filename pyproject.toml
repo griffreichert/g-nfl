@@ -23,6 +23,7 @@ pre-commit = "^3.7.1"
 matplotlib = "^3.9.0"
 tqdm = "^4.66.5"
 adjusttext = "^1.2.0"
+statsmodels = "^0.14.2"
 
 
 [build-system]

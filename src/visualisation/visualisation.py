@@ -36,7 +36,8 @@ def plot_scatter(
     flip_y: bool = False,
     custom_style: Union[dict, None] = None,
 ) -> None:
-
+    if "posteam" in data.columns and "team" not in data.columns:
+        data = data.rename(columns={"posteam": "team"})
     assert all(col in data.columns for col in [marker, x, y])
     add_logo = marker_size == ""
     # make the logo
