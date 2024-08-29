@@ -43,8 +43,12 @@
    - [ ] espn
 
 
-# Homers
+# Homers & Pools
 
+- [ ] Take power ratings and turn them into spreads
+  - [ ] take top ones
+- [ ] weekly schedule sheets and spreads
+- [ ] take adjustments into account
 
 # Fantasy
 - [ ] Red zone touches
@@ -52,4 +56,8 @@
   - [ ] evaluating O line consistency
   - [ ] target distribution post injuries
 - [ ] Pass rate over/under expectation
+  - [x] notebook exploration for coaches
+  - [ ] break out by early downs
+  - [ ] incorporate into weekly report
+- [ ] tempo analysis
 - [ ] weekly expected fantasy points
