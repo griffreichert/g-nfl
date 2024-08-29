@@ -46,7 +46,7 @@
   - [ ] DVOA
 
 # Homers & Pools
-
+- [x] weekly templates
 - [ ] Take power ratings and turn them into weekly spreads
   - [x] percentile to spread conversion
   - [ ] pull google sheets

@@ -1,5 +1,6 @@
 import nfl_data_py as nfl
 import pandas as pd
+from scipy.stats import norm
 
 from src.utils.config import AVG_POINTS, CUR_SEASON, HFA
 from src.utils.connections import load_service_account
@@ -9,6 +10,10 @@ sa = load_service_account()
 
 predict_home_score = lambda row: AVG_POINTS + row.home_off - row.away_def + HFA / 2
 predict_away_score = lambda row: AVG_POINTS + row.away_off - row.home_def - HFA / 2
+
+
+def percentile_to_spread(percentile: float, stdev: float = 11.5) -> float:
+    return round(float(norm.ppf(percentile)) * stdev, 2)
 
 
 def get_power_ratings(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
