@@ -31,7 +31,8 @@
     - from judah
   - [ ] EPA / SR per pass
 - [ ] Special teams
-  - [ ] kicker performance
+  - [x] kicker performance
+  - [ ] DVOA
 - [ ] Coaching / Intangibles
   - [ ] 4th down decision making
 - [ ] automate weekly report for metrics
@@ -41,11 +42,14 @@
    - [ ] nfelo
    - [ ] unabated
    - [ ] espn
-
+- Data Pulls
+  - [ ] DVOA
 
 # Homers & Pools
 
-- [ ] Take power ratings and turn them into spreads
+- [ ] Take power ratings and turn them into weekly spreads
+  - [x] percentile to spread conversion
+  - [ ] pull google sheets
   - [ ] take top ones
 - [ ] weekly schedule sheets and spreads
 - [ ] take adjustments into account
