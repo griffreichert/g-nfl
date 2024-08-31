@@ -47,7 +47,7 @@ def guess_the_lines_ovr(
         }
     )
     gtl = gtl.drop(columns=["total_line"])
-    gtl["pred_line"] = gtl["home_gpf"] - gtl["away_gpf"] + HFA
+    gtl["pred_line"] = (gtl["home_gpf"] - gtl["away_gpf"] + HFA).round(2)
     gtl["difference"] = gtl["pred_line"] - gtl["spread_line"]
     gtl["pick"] = gtl.apply(
         lambda row: row["home_team"] if row["difference"] > 0 else row["away_team"],
