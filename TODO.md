@@ -31,7 +31,8 @@
     - from judah
   - [ ] EPA / SR per pass
 - [ ] Special teams
-  - [ ] kicker performance
+  - [x] kicker performance
+  - [ ] DVOA
 - [ ] Coaching / Intangibles
   - [ ] 4th down decision making
 - [ ] automate weekly report for metrics
@@ -41,10 +42,17 @@
    - [ ] nfelo
    - [ ] unabated
    - [ ] espn
+- Data Pulls
+  - [ ] DVOA
 
-
-# Homers
-
+# Homers & Pools
+- [x] weekly templates
+- [ ] Take power ratings and turn them into weekly spreads
+  - [x] percentile to spread conversion
+  - [ ] pull google sheets
+  - [ ] take top ones
+- [ ] weekly schedule sheets and spreads
+- [ ] take adjustments into account
 
 # Fantasy
 - [ ] Red zone touches
@@ -52,4 +60,8 @@
   - [ ] evaluating O line consistency
   - [ ] target distribution post injuries
 - [ ] Pass rate over/under expectation
+  - [x] notebook exploration for coaches
+  - [ ] break out by early downs
+  - [ ] incorporate into weekly report
+- [ ] tempo analysis
 - [ ] weekly expected fantasy points

@@ -5,7 +5,7 @@ from io import BytesIO
 import pandas as pd
 import requests
 
-from src import utils
+from src.archive import old_utils as utils
 from src.utils.paths import (
     ESPN_PATH,
     INPREDICABLE_PATH,
