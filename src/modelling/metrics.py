@@ -8,7 +8,9 @@ success_rate_lambda = lambda x: 1 if x > 0 else 0
 
 
 def calculate_epa_metrics(
-    data: pd.DataFrame, team: Literal["posteam", "defteam"] = "posteam"
+    data: pd.DataFrame,
+    team: Literal["posteam", "defteam"] = "posteam",
+    percentile: bool = True,
 ) -> pd.DataFrame:
     """_summary_
 
@@ -31,23 +33,26 @@ def calculate_epa_metrics(
         df.groupby(team)
         .agg({team: "count", "epa": "mean", "success": "mean"})
         .sort_values(by="epa", ascending=False)
-        .rename(columns={team: "n", "success": "success_rate"})
+        .rename(columns={team: "plays", "success": "success_rate"})
     )
     for col in ["epa", "success_rate"]:
         epa_df[f"{col}_rank"] = epa_df[col].rank(ascending=sort_ascending).astype(int)
-        epa_df[f"{col}_percentile"] = (
-            epa_df[col].rank(ascending=(not sort_ascending), pct=True).round(2) * 10
-        )
+        if percentile:
+            epa_df[f"{col}_percentile"] = (
+                epa_df[col].rank(ascending=(not sort_ascending), pct=True).round(2) * 10
+            )
     epa_df["epa"] = epa_df["epa"].round(3)
-    epa_df["success_rate"] = epa_df["success_rate"].round(2)
+    epa_df["success_rate"] = epa_df["success_rate"].round(3)
     col_list = list(epa_df.columns)
-    col_list.remove("n")
+    col_list.remove("plays")
     col_list = list(sorted(col_list))
-    col_list.insert(0, "n")
+    col_list.insert(0, "plays")
     return epa_df[col_list].sort_values("epa_rank")
 
 
-def dual_epa_metrics(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def dual_epa_metrics(
+    data: pd.DataFrame, percentile: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """_summary_
 
     Parameters
@@ -60,7 +65,9 @@ def dual_epa_metrics(data: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     Tuple[pd.DataFrame, pd.DataFrame]
         offense epa dataframe, defense epa dataframe
     """
-    return calculate_epa_metrics(data), calculate_epa_metrics(data, "defteam")
+    return calculate_epa_metrics(data, percentile=percentile), calculate_epa_metrics(
+        data, "defteam", percentile=percentile
+    )
 
 
 def metric_over_expectation(

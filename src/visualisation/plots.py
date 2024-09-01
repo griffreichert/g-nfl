@@ -25,7 +25,7 @@ def plot_scatter(
     marker: Literal["team", "player"] = "team",
     marker_size: str = "",
     add_marker_label: bool = False,
-    alpha: float = 1.0,
+    alpha: float = 0.85,
     title: Union[str, None] = None,
     ax_labels: Tuple[str, str] = ("", ""),
     mean_reference: bool = True,
@@ -35,17 +35,33 @@ def plot_scatter(
     flip_x: bool = False,
     flip_y: bool = False,
     custom_style: Union[dict, None] = None,
+    max_marker_size=800,
 ) -> None:
+    # handle team columns
+    if data.index.name in ["posteam", "defteam", "team"]:
+        data = data.reset_index(level=0)
     if "posteam" in data.columns and "team" not in data.columns:
         data = data.rename(columns={"posteam": "team"})
+    if "defteam" in data.columns and "team" not in data.columns:
+        data = data.rename(columns={"defteam": "team"})
+
     assert all(col in data.columns for col in [marker, x, y])
+    # if we are not sizing the dots add the logos
     add_logo = marker_size == ""
+    if not add_logo:
+        assert marker_size in data.columns
+        # scale all dots so the max one is a set size
+        scale_factor = max_marker_size / data[marker_size].max()
+    # if we are sizing the dots, add labels
+    add_marker_label = add_marker_label or not add_logo
     # make the logo
     if logo_size is None:
         if marker == "player":
             logo_size = 30
         elif marker == "team":
-            logo_size = 50
+            logo_size = 40
+
+    # Grid styles
     plt.style.use("seaborn-v0_8-whitegrid")
     if custom_style:
         plt.style.use(custom_style)
@@ -103,8 +119,8 @@ def plot_scatter(
             ax.add_artist(ab)
         # if not adding a logo add a marker dot
         else:
-            if marker_size:
-                size = row[marker_size]
+            if marker_size != "":
+                size = row[marker_size] * scale_factor
             else:
                 size = 40  # Default marker size if marker_size is not provided
             ax.scatter(
@@ -138,11 +154,13 @@ def plot_scatter(
     if add_marker_label:
         adjust_text(
             marker_labels,
-            arrowprops=dict(arrowstyle="-", color="gray", lw=0.5, shrinkA=5, shrinkB=5),
+            arrowprops=dict(
+                arrowstyle="-", color="gray", lw=0.5, shrinkA=10, shrinkB=50
+            ),
             only_move={
                 "texts": "xy",
             },  # Limit movement to reduce displacement
-            force_text=0.1,  # Reduce the force to keep text closer
+            force_text=0.4,  # Reduce the force to keep text closer
             lim=100,  # Limit the number of iterations
         )
     plt.show()

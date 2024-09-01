@@ -1,3 +1,11 @@
+# Today
+
+- [ ] publish dot file repo
+  - [ ] add vscode settings
+- [ ] NFL Weekly Report
+  - [ ] Sort out Plotting
+  - [ ] 1 metric for each position group
+
 # Modelling
 ## Power Ratings
 - [ ] QB
