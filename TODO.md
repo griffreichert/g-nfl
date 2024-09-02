@@ -28,6 +28,10 @@
     - rush yards before contact
     - perfectly blocked runs
 - [ ] Run Stop
+  - [ ] epa & success rate
+    - limit win prob between 25-90 for run
+  - [ ] yards per attempt
+  - [ ] tackles for loss
 - [ ] Pass Rush
   - [ ] pressure rate
     - adjust for time to throw
