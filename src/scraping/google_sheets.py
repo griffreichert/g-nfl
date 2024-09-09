@@ -8,6 +8,22 @@ from src.utils.connections import load_service_account
 sa = load_service_account()
 
 
+def col_to_int(col: str) -> int:
+    """Convert a column to the integer representing it's position
+
+    Parameters
+    ----------
+    col : str
+        Column letter to convert to a number
+
+    Returns
+    -------
+    int
+        0 index position of that column. Ex: 'A' -> 0, 'B' -> 1 ...
+    """
+    return ord(col.upper()) - 65
+
+
 def get_power_ratings(file_name: str, week: int) -> pd.DataFrame:
     """Get the power rating dataframe for the givem
 

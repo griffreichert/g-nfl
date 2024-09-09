@@ -1,4 +1,4 @@
-import gspread
+from gspread.auth import service_account
 from gspread.client import Client
 
 from src.utils.paths import PROJECT_DIR
@@ -12,4 +12,4 @@ def load_service_account() -> Client:
     Client
         google service account client
     """
-    return gspread.service_account(filename=PROJECT_DIR / "google_config.json")
+    return service_account(filename=PROJECT_DIR / "google_config.json")

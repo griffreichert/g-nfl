@@ -33,14 +33,18 @@ def guess_the_lines_ovr(
     schedule_df = get_week_spreads(week, season)
 
     gtl = pd.merge(
-        schedule_df, power_df[["net_gpf"]], left_on="away_team", right_index=True
+        schedule_df,
+        power_df[["net_gpf"]],
+        how="left",
+        left_on="away_team",
+        right_index=True,
     ).rename(
         columns={
             "net_gpf": "away_gpf",
         }
     )
     gtl = pd.merge(
-        gtl, power_df[["net_gpf"]], left_on="home_team", right_index=True
+        gtl, power_df[["net_gpf"]], how="left", left_on="home_team", right_index=True
     ).rename(
         columns={
             "net_gpf": "home_gpf",
@@ -53,10 +57,10 @@ def guess_the_lines_ovr(
         lambda row: row["home_team"] if row["difference"] > 0 else row["away_team"],
         axis=1,
     )
-    gtl["difference_rank"] = (
+    gtl["rank"] = (
         gtl["difference"].abs().rank(method="dense", ascending=False).astype(int)
     )
-    return gtl.sort_values("difference_rank")
+    return gtl.sort_values("rank")
 
 
 def guess_the_lines(
@@ -66,12 +70,12 @@ def guess_the_lines(
     schedule_df = get_week_spreads(week, season)
     # power_df = get_power_ratings(week, season)
 
-    gtl = pd.merge(schedule_df, power_df, left_on="away_team", right_index=True).rename(
-        columns={"ovr": "away_ovr", "off": "away_off", "def": "away_def"}
-    )
-    gtl = pd.merge(gtl, power_df, left_on="home_team", right_index=True).rename(
-        columns={"ovr": "home_ovr", "off": "home_off", "def": "home_def"}
-    )
+    gtl = pd.merge(
+        schedule_df, power_df, how="left", left_on="away_team", right_index=True
+    ).rename(columns={"ovr": "away_ovr", "off": "away_off", "def": "away_def"})
+    gtl = pd.merge(
+        gtl, power_df, how="left", left_on="home_team", right_index=True
+    ).rename(columns={"ovr": "home_ovr", "off": "home_off", "def": "home_def"})
     gtl["hfa"] = HFA
     gtl["pred_away_score"] = gtl.apply(predict_away_score, axis=1)
     gtl["pred_home_score"] = gtl.apply(predict_home_score, axis=1)

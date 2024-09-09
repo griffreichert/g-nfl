@@ -1,19 +1,28 @@
 # Today
+- [ ] power rating pipeline
+  - [ ] set up folder for them
 
+
+  - [ ] Sort out Plotting
 - [ ] publish dot file repo
   - [ ] add vscode settings
 - [ ] NFL Weekly Report
-  - [ ] Sort out Plotting
   - [ ] 1 metric for each position group
 
-# Modelling
-## Power Ratings
-- [ ] QB
-  - [ ] epa per play
-  - [ ] CPOE
-    - rbsdm.com
-  - [ ] pressure to sack
-  - [ ] time to throw
+# Power Ratings
+
+## Offense
+### QB
+- [ ] epa per play
+- [ ] CPOE
+  - rbsdm.com
+- [ ] pressure to sack
+- [ ] time to throw
+- [ ] rushing
+  - [ ] design vs scrambles
+
+
+### Skill Groups
 - [ ] Skill Groups
   - [ ] yprr
   - [ ] fdprr
@@ -21,39 +30,49 @@
   - [ ] usage, target share, etc.
   - [ ] explosive plays
   - [ ] yac
-- [ ] O Line
+### O Line
   - [ ] Continuity
   - [ ] success rate
   - would love but cant get from nflfastr
     - rush yards before contact
     - perfectly blocked runs
-- [ ] Run Stop
+
+
+## Defense
+
+### Run Stop
   - [ ] epa & success rate
     - limit win prob between 25-90 for run
   - [ ] yards per attempt
   - [ ] tackles for loss
-- [ ] Pass Rush
+### Pass Rush
   - [ ] pressure rate
     - adjust for time to throw
   - [ ] sack rate
     - careful bc sacks are a qb stat
   - [ ] epa per pass (weight less)
-- [ ] Coverage
+### Coverage
   - [ ] seperation/catch point grades
     - from judah
   - [ ] EPA / SR per pass
-- [ ] Special teams
+
+
+## Miscelaneous
+
+### Special teams
   - [x] kicker performance
   - [ ] DVOA
 - [ ] Coaching / Intangibles
   - [ ] 4th down decision making
 - [ ] automate weekly report for metrics
 
-## Scrapers
-- [ ] automate scrapers
-   - [ ] nfelo
-   - [ ] unabated
-   - [ ] espn
+# Scrapers
+- [ ] automate scrapers into.py
+ - [x] nfelo
+ - [x] unabated
+ - [x] espn
+ - [x] inpredictable
+- [ ] Save data in a better place
 - Data Pulls
   - [ ] DVOA
 
