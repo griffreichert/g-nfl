@@ -25,7 +25,7 @@ def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
                 "total_line",
             ]
         ]
-        .query(f"week=={2}")
+        .query(f"week=={week}")
         .reset_index(level=0)
         .reset_index(level=0)
         .rename(columns={"level_0": "game_order"})
