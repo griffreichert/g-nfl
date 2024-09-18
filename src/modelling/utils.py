@@ -16,13 +16,23 @@ def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
     schedule_df = nfl.import_schedules([season])
     schedule_df = (
         schedule_df[
-            ["week", "game_id", "away_team", "home_team", "spread_line", "total_line"]
+            [
+                "week",
+                "game_id",
+                "away_team",
+                "home_team",
+                "spread_line",
+                "total_line",
+            ]
         ]
-        .query(f"week=={week}")
+        .query(f"week=={2}")
+        .reset_index(level=0)
+        .reset_index(level=0)
+        .rename(columns={"level_0": "game_order"})
+        .drop(columns=["index", "week"])
         .set_index("game_id")
-        .drop(columns=["week"])
-        # .rename(columns={"spread_line": "market_line"})
     )
+    schedule_df["game_order"] = schedule_df["game_order"] + 1
     return schedule_df
 
 
@@ -60,7 +70,7 @@ def guess_the_lines_ovr(
     gtl["rank"] = (
         gtl["difference"].abs().rank(method="dense", ascending=False).astype(int)
     )
-    return gtl.sort_values("rank")
+    return gtl
 
 
 def guess_the_lines(
