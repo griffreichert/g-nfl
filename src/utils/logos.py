@@ -1,16 +1,20 @@
 import os
 import urllib.request
-from typing import Tuple
 
 import nfl_data_py as nfl
 import numpy as np
-import pandas as pd
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+from matplotlib.offsetbox import OffsetImage
 from PIL import Image
 
 from src.utils.paths import LOGO_PATH
+from src.utils.teams import nfl_teams
 
 espn_logo_url = "https://a.espncdn.com/i/teamlogos/nfl/500/{team}.png"
+
+
+def get_logo_url(team: str, size: int = 25):
+    assert team.upper() in nfl_teams
+    return f'<img src="{espn_logo_url.format(team=team)}" style="width:auto;height:{size}px;">'
 
 
 def fetch_logos():
@@ -27,8 +31,9 @@ def fetch_logos():
 
 
 def get_team_logo(
-    team: str, size: Tuple[int, int] = (50, 50), alpha: float = 1.0
+    team: str, size: tuple[int, int] = (50, 50), alpha: float = 1.0
 ) -> OffsetImage:
+    team = team.upper()
     # Open the image with PIL and resize it
     image = Image.open(str(LOGO_PATH / f"{team}.tif"))
     image = image.resize(size, Image.Resampling.LANCZOS)

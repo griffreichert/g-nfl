@@ -1,6 +1,3 @@
-*.lock
-
-
 .vscode/
 data/
 !src/data/

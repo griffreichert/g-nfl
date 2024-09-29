@@ -1,4 +1,5 @@
 import pandas as pd
+import scipy.stats as stats
 from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
 
 from src.modelling.utils import guess_the_lines_ovr
@@ -21,6 +22,14 @@ master_google_sheet = "Picks Pool 24"
 
 # Load the service acount from the google_config.json file
 sa = load_service_account()
+
+
+def calc_percentile_to_gpf(percentile: float, stdev=11.5) -> float:
+    assert percentile >= 0.0
+    while percentile > 1.0:
+        percentile /= 10
+    gpf = stats.norm.ppf(percentile) * stdev
+    return gpf
 
 
 def get_power_ratings(
@@ -132,12 +141,13 @@ def orchestrate_power_ratings_to_picks(
         pass
 
     pick_worksheet = gsheet.add_worksheet(pick_tab, 100, 100)
-    # Convert DataFrame to list of lists
-    data_to_upload = gtl.map(
-        lambda x: round(x, 2) if isinstance(x, float) else x
-    ).values.tolist()
-    # Optionally, add header if needed
+
+    data_to_upload = gtl.values.tolist()
     data_to_upload.insert(0, gtl.columns.tolist())
+    data_to_upload = [
+        [round(val, 2) if isinstance(val, float) else val for val in row]
+        for row in data_to_upload
+    ]
     # Update the worksheet with formulas
     # If update is causing issues, ensure that the values are treated correctly
     # by setting values explicitly as formulas
