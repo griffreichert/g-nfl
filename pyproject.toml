@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "The cleveland browns can stay irrational longer than i can stay solvent"
 authors = ["Griffin Reichert <griffin.reichert@gmail.com>"]
 readme = "README.md"
-packages = [{ include = "src" }]
+packages = [{ include = "fantasy", from = 'src' }]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
