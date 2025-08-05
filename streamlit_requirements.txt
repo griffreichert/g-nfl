@@ -1,7 +1,7 @@
 streamlit>=1.47.1
 pandas
 numpy==1.26
-nfl_data_py>=0.3.1
+nfl-data-py==0.3.2
 pillow
 requests
 beautifulsoup4
@@ -14,3 +14,4 @@ statsmodels
 xgboost
 joblib
 lxml
+scipy

@@ -125,6 +125,14 @@ if load_button or "games_data" not in st.session_state:
             st.session_state.current_week = week
             st.session_state.current_season = season
 
+            # Check if we're using sample data and show warning
+            from src.modelling.utils import NFL_DATA_AVAILABLE
+
+            if not NFL_DATA_AVAILABLE:
+                st.warning(
+                    "⚠️ Using sample data - NFL API not available. This is for demonstration purposes only."
+                )
+
             # Load existing picks if picker is selected and week/season changed
             if (
                 "last_week_season_picker" not in st.session_state
