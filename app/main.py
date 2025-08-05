@@ -18,7 +18,7 @@ def run_app():
     subprocess.run([sys.executable, "-m", "streamlit", "run", app_path])
 
 
-st.set_page_config(page_title="NFL Weekly Games", layout="wide")
+st.set_page_config(page_title="no-homers", layout="wide")
 
 # Initialize session state for picks
 if "picks" not in st.session_state:
@@ -31,7 +31,7 @@ st.title("📈 NFL Weekly Games & Spreads")
 if st.sidebar.button("ℹ️ About"):
     st.sidebar.info(
         """
-    **NFL Picks App**
+    **no-homers**
     - Select up to 6 picks per week
     - Data saved locally in SQLite
     - Each picker has independent picks
