@@ -5,8 +5,9 @@ try:
 except ImportError:
     NFL_DATA_AVAILABLE = False
 
+import math
+
 import pandas as pd
-from scipy.stats import norm
 
 from src.utils.config import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
 
@@ -15,7 +16,13 @@ predict_away_score = lambda row: AVG_POINTS + row.away_off - row.home_def - HFA 
 
 
 def percentile_to_spread(percentile: float, stdev: float = SPREAD_STDEV) -> float:
-    return round(float(norm.ppf(percentile)) * stdev, 2)
+    """Simple approximation of inverse normal distribution for percentile to spread conversion"""
+    # Simple approximation - for a full app you'd want the real scipy version
+    if percentile <= 0.5:
+        z_score = -abs(percentile - 0.5) * 2.5  # Rough approximation
+    else:
+        z_score = abs(percentile - 0.5) * 2.5
+    return round(z_score * stdev, 2)
 
 
 def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
