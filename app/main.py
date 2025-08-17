@@ -7,9 +7,9 @@ import streamlit as st
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.modelling.utils import get_week_spreads
-from src.utils.config import CUR_SEASON
-from src.utils.web_app import get_team_logo, load_existing_picks, save_picks_data
+from g_nfl.modelling.utils import get_week_spreads
+from g_nfl.utils.config import CUR_SEASON
+from g_nfl.utils.web_app import get_team_logo, load_existing_picks, save_picks_data
 
 
 def run_app():
@@ -126,7 +126,7 @@ if load_button or "games_data" not in st.session_state:
             st.session_state.current_season = season
 
             # Check if we're using sample data and show warning
-            from src.modelling.utils import NFL_DATA_AVAILABLE
+            from g_nfl.modelling.utils import NFL_DATA_AVAILABLE
 
             if not NFL_DATA_AVAILABLE:
                 st.warning(

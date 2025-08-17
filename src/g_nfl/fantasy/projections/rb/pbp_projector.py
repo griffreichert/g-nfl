@@ -6,7 +6,7 @@ import nfl_data_py as nfl
 import numpy as np
 import pandas as pd
 
-from src.utils.config import (
+from g_nfl.utils.config import (
     CUR_SEASON,
     DEFAULT_WIN_PROB,
     EXPLOSIVE_PASS_THRESHOLD,

@@ -1,7 +1,7 @@
 from gspread.auth import service_account
 from gspread.client import Client
 
-from src.utils.paths import PROJECT_DIR
+from g_nfl.utils.paths import PROJECT_DIR
 
 
 def load_service_account() -> Client:

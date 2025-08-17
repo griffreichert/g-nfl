@@ -5,8 +5,8 @@ from io import BytesIO
 import pandas as pd
 import requests
 
-from src.archive import old_utils as utils
-from src.utils.paths import (
+from g_nfl.archive import old_utils as utils
+from g_nfl.utils.paths import (
     ESPN_PATH,
     INPREDICABLE_PATH,
     NFELO_PATH,

@@ -9,7 +9,7 @@ import math
 
 import pandas as pd
 
-from src.utils.config import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
+from g_nfl import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
 
 predict_home_score = lambda row: AVG_POINTS + row.home_off - row.away_def + HFA / 2
 predict_away_score = lambda row: AVG_POINTS + row.away_off - row.home_def - HFA / 2

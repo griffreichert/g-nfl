@@ -2,7 +2,7 @@ import os
 
 import requests
 
-from src.utils.paths import LOGO_PATH
+from g_nfl.utils.paths import LOGO_PATH
 
 nfl_teams = {
     "ARI",
