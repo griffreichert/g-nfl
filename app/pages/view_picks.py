@@ -4,7 +4,9 @@ import sys
 import pandas as pd
 import streamlit as st
 
+# Add both parent directory and src directory to path for Streamlit Cloud compatibility
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
