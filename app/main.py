@@ -311,6 +311,7 @@ if load_button or "games_data" not in st.session_state:
 
             # Convert market lines to DataFrame
             games_data = []
+            game_ids = []
             for line in market_lines:
                 game_id = line["game_id"]
                 # Parse game_id: 2025_01_KC_LAC
@@ -326,13 +327,12 @@ if load_button or "games_data" not in st.session_state:
                             "total_line": line.get("total"),
                         }
                     )
+                    # Use the original game_id from database to ensure consistency
+                    game_ids.append(game_id)
 
             games_df = pd.DataFrame(games_data)
-            # Use a composite index similar to nfl_data format
-            games_df.index = [
-                f"{season}_{week}_{row['away_team']}_{row['home_team']}"
-                for _, row in games_df.iterrows()
-            ]
+            # Use the original game_ids from the database to ensure picks match
+            games_df.index = game_ids
             data_source = "database"
 
             st.session_state.games_data = games_df
