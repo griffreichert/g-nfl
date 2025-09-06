@@ -234,18 +234,31 @@ if load_button or "games_data" not in st.session_state:
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_KEY")
 
-                if not supabase_url or not supabase_key:
-                    st.error("❌ Missing environment variables")
-                    st.markdown(
-                        """
-                    **Required environment variables:**
-                    - `SUPABASE_URL`: Your Supabase project URL
-                    - `SUPABASE_KEY`: Your Supabase anon/public key
+                # Debug: Show what we found
+                st.write("🔍 Debug environment variables:")
+                st.write(f"SUPABASE_URL found: {'✅' if supabase_url else '❌'}")
+                st.write(f"SUPABASE_KEY found: {'✅' if supabase_key else '❌'}")
 
-                    Set these in your Streamlit Cloud app settings.
-                    """
-                    )
-                    st.stop()
+                # Try streamlit secrets as fallback
+                if not supabase_url or not supabase_key:
+                    try:
+                        if not supabase_url:
+                            supabase_url = st.secrets["SUPABASE_URL"]
+                        if not supabase_key:
+                            supabase_key = st.secrets["SUPABASE_KEY"]
+                        st.info("✅ Found credentials in Streamlit secrets")
+                    except:
+                        st.error("❌ Missing environment variables and secrets")
+                        st.markdown(
+                            """
+                        **Required environment variables:**
+                        - `SUPABASE_URL`: Your Supabase project URL
+                        - `SUPABASE_KEY`: Your Supabase anon/public key
+
+                        Set these in your Streamlit Cloud app settings under 'Secrets management'.
+                        """
+                        )
+                        st.stop()
 
                 market_db = MarketLinesDatabase()
                 market_lines = market_db.get_market_lines(season, week)
