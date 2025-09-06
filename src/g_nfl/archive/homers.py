@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 
+from g_nfl.utils.paths import HOMERS_PATH
 from src import old_utils
-from src.utils.paths import HOMERS_PATH
 
 PROCESSED_FILE_PATH = f"{HOMERS_PATH}/homers-processed.pkl"
 

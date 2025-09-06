@@ -2,11 +2,11 @@ import pandas as pd
 import scipy.stats as stats
 from gspread.exceptions import SpreadsheetNotFound, WorksheetNotFound
 
-from src.modelling.utils import guess_the_lines_ovr
-from src.scraping.google_sheets import col_to_int
-from src.utils.config import CUR_SEASON
-from src.utils.connections import load_service_account
-from src.utils.teams import standardize_teams
+from g_nfl.modelling.utils import guess_the_lines_ovr
+from g_nfl.scraping.google_sheets import col_to_int
+from g_nfl.utils.config import CUR_SEASON
+from g_nfl.utils.connections import load_service_account
+from g_nfl.utils.teams import standardize_teams
 
 pickers = ["Griffin", "Harry", "Chuck", "Hunter", "Jacko"]
 

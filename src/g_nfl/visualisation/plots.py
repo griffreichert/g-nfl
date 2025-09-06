@@ -7,9 +7,9 @@ import plotly.express as px
 from adjustText import adjust_text
 from matplotlib.offsetbox import AnnotationBbox
 
-from src.utils.logos import get_team_logo
-from src.utils.paths import LOGO_PATH
-from src.visualisation import colors
+from g_nfl.utils.logos import get_team_logo
+from g_nfl.utils.paths import LOGO_PATH
+from g_nfl.visualisation import colors
 
 """ Resources I found helpful
 

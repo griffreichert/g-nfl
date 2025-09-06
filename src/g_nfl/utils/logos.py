@@ -6,8 +6,8 @@ import numpy as np
 from matplotlib.offsetbox import OffsetImage
 from PIL import Image
 
-from src.utils.paths import LOGO_PATH
-from src.utils.teams import nfl_teams
+from g_nfl.utils.paths import LOGO_PATH
+from g_nfl.utils.teams import nfl_teams
 
 espn_logo_url = "https://a.espncdn.com/i/teamlogos/nfl/500/{team}.png"
 

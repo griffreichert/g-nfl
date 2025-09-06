@@ -5,13 +5,3 @@ nfl-data-py==0.3.2
 pillow
 requests
 beautifulsoup4
-scikit-learn
-plotly
-gspread
-matplotlib
-adjusttext
-statsmodels
-xgboost
-joblib
-lxml
-scipy

@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 from sklearn.linear_model import LinearRegression, Ridge
 
-from src.utils.paths import LOGO_PATH
+from g_nfl.utils.paths import LOGO_PATH
 
 ############################
 #                          #
