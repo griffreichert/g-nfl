@@ -1,114 +1,73 @@
 import os
-import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from supabase import Client
+
+from .supabase_client import get_supabase
+
 
 class PicksDatabase:
-    """SQLite database handler for storing NFL picks"""
+    """Supabase database handler for storing NFL picks"""
 
-    def __init__(self, db_path: Optional[str] = None):
-        """Initialize database connection
-
-        Args:
-            db_path: Path to SQLite database file. If None, uses default location.
-        """
-        if db_path is None:
-            # Default to data/web_app/picks.db
-            db_dir = os.path.join(
-                os.path.dirname(__file__), "..", "..", "data", "web_app"
-            )
-            os.makedirs(db_dir, exist_ok=True)
-            db_path = os.path.join(db_dir, "picks.db")
-
-        self.db_path = db_path
-        self._init_database()
-
-    def _init_database(self):
-        """Initialize database tables if they don't exist"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS picks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    season INTEGER NOT NULL,
-                    week INTEGER NOT NULL,
-                    game_id TEXT NOT NULL,
-                    team_picked TEXT NOT NULL,
-                    picker TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # Create index for faster queries
-            conn.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_picks_season_week_picker
-                ON picks(season, week, picker)
-            """
-            )
-
-            conn.commit()
+    def __init__(self):
+        """Initialize Supabase client"""
+        self.client: Client = get_supabase()
 
     def save_picks(
         self,
         season: int,
         week: int,
-        picks: Dict[str, str],
+        picks: Dict[str, Dict[str, any]],
         picker: str,
         replace: bool = True,
     ) -> int:
-        """Save picks to database
+        """Save picks to Supabase
 
         Args:
             season: NFL season year
             week: Week number
-            picks: Dictionary mapping game_id to team_picked
+            picks: Dictionary mapping game_id to pick data {'team_picked': str, 'spread': float}
             picker: Name of the person making picks
             replace: If True, replace existing picks for this picker/season/week
 
         Returns:
             Number of picks saved
         """
-        timestamp = datetime.now().isoformat()
+        # If replace is True, delete existing picks for this picker/season/week
+        if replace:
+            self.client.table("picks").delete().eq("season", season).eq(
+                "week", week
+            ).eq("picker", picker).execute()
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-
-            # If replace is True, delete existing picks for this picker/season/week
-            if replace:
-                cursor.execute(
-                    """
-                    DELETE FROM picks
-                    WHERE season = ? AND week = ? AND picker = ?
-                """,
-                    (season, week, picker),
-                )
-
-            # Insert each pick
-            picks_data = []
-            for game_id, team_picked in picks.items():
-                picks_data.append(
-                    (season, week, game_id, team_picked, picker, timestamp)
-                )
-
-            cursor.executemany(
-                """
-                INSERT INTO picks (season, week, game_id, team_picked, picker, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                picks_data,
+        # Prepare picks data for insertion
+        picks_data = []
+        for game_id, pick_data in picks.items():
+            picks_data.append(
+                {
+                    "season": season,
+                    "week": week,
+                    "game_id": game_id,
+                    "team_picked": (
+                        pick_data.get("team_picked", pick_data)
+                        if isinstance(pick_data, dict)
+                        else pick_data
+                    ),
+                    "spread": (
+                        pick_data.get("spread") if isinstance(pick_data, dict) else None
+                    ),
+                    "picker": picker,
+                }
             )
 
-            conn.commit()
-            return len(picks_data)
+        # Insert picks
+        result = self.client.table("picks").insert(picks_data).execute()
+        return len(picks_data)
 
     def get_picks(
         self, season: int, week: int, picker: Optional[str] = None
     ) -> List[Dict]:
-        """Retrieve picks from database
+        """Retrieve picks from Supabase
 
         Args:
             season: NFL season year
@@ -118,30 +77,17 @@ class PicksDatabase:
         Returns:
             List of pick dictionaries
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row  # Enable dict-like access
-            cursor = conn.cursor()
+        query = (
+            self.client.table("picks").select("*").eq("season", season).eq("week", week)
+        )
 
-            if picker:
-                cursor.execute(
-                    """
-                    SELECT * FROM picks
-                    WHERE season = ? AND week = ? AND picker = ?
-                    ORDER BY created_at DESC
-                """,
-                    (season, week, picker),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT * FROM picks
-                    WHERE season = ? AND week = ?
-                    ORDER BY picker, created_at DESC
-                """,
-                    (season, week),
-                )
+        if picker:
+            query = query.eq("picker", picker)
 
-            return [dict(row) for row in cursor.fetchall()]
+        query = query.order("created_at", desc=True)
+        result = query.execute()
+
+        return result.data
 
     def get_all_picks(self, limit: Optional[int] = None) -> List[Dict]:
         """Get all picks with optional limit
@@ -152,16 +98,13 @@ class PicksDatabase:
         Returns:
             List of all pick dictionaries
         """
-        with sqlite3.connect(self.db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+        query = self.client.table("picks").select("*").order("created_at", desc=True)
 
-            query = "SELECT * FROM picks ORDER BY created_at DESC"
-            if limit:
-                query += f" LIMIT {limit}"
+        if limit:
+            query = query.limit(limit)
 
-            cursor.execute(query)
-            return [dict(row) for row in cursor.fetchall()]
+        result = query.execute()
+        return result.data
 
     def delete_picks(self, season: int, week: int, picker: str) -> int:
         """Delete picks for a specific season/week/picker
@@ -174,17 +117,15 @@ class PicksDatabase:
         Returns:
             Number of records deleted
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                DELETE FROM picks
-                WHERE season = ? AND week = ? AND picker = ?
-            """,
-                (season, week, picker),
-            )
-            conn.commit()
-            return cursor.rowcount
+        result = (
+            self.client.table("picks")
+            .delete()
+            .eq("season", season)
+            .eq("week", week)
+            .eq("picker", picker)
+            .execute()
+        )
+        return len(result.data) if result.data else 0
 
     def get_database_stats(self) -> Dict:
         """Get database statistics
@@ -192,29 +133,33 @@ class PicksDatabase:
         Returns:
             Dictionary with database stats
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        # Get all picks to calculate stats
+        all_picks_result = (
+            self.client.table("picks").select("season, week, picker").execute()
+        )
+        all_picks = all_picks_result.data
 
-            # Total picks
-            cursor.execute("SELECT COUNT(*) FROM picks")
-            total_picks = cursor.fetchone()[0]
-
-            # Unique pickers
-            cursor.execute("SELECT COUNT(DISTINCT picker) FROM picks")
-            unique_pickers = cursor.fetchone()[0]
-
-            # Seasons covered
-            cursor.execute("SELECT MIN(season), MAX(season) FROM picks")
-            season_range = cursor.fetchone()
-
-            # Weeks covered
-            cursor.execute("SELECT MIN(week), MAX(week) FROM picks")
-            week_range = cursor.fetchone()
-
+        if not all_picks:
             return {
-                "total_picks": total_picks,
-                "unique_pickers": unique_pickers,
-                "season_range": season_range,
-                "week_range": week_range,
-                "database_path": self.db_path,
+                "total_picks": 0,
+                "unique_pickers": 0,
+                "season_range": (None, None),
+                "week_range": (None, None),
             }
+
+        # Calculate stats
+        total_picks = len(all_picks)
+        unique_pickers = len(set(pick["picker"] for pick in all_picks))
+
+        seasons = [pick["season"] for pick in all_picks if pick["season"]]
+        season_range = (min(seasons), max(seasons)) if seasons else (None, None)
+
+        weeks = [pick["week"] for pick in all_picks if pick["week"]]
+        week_range = (min(weeks), max(weeks)) if weeks else (None, None)
+
+        return {
+            "total_picks": total_picks,
+            "unique_pickers": unique_pickers,
+            "season_range": season_range,
+            "week_range": week_range,
+        }

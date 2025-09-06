@@ -21,7 +21,7 @@ def get_team_logo(team_name):
 
 
 def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optional[str]:
-    """Save picks data to SQLite database
+    """Save picks data to Supabase database
 
     Args:
         season: NFL season year
@@ -45,7 +45,7 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
 
 
 def get_picks_data(season: int, week: int, picker: Optional[str] = None):
-    """Retrieve picks data from SQLite database
+    """Retrieve picks data from Supabase database
 
     Args:
         season: NFL season year

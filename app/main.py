@@ -33,10 +33,10 @@ if st.sidebar.button("ℹ️ About"):
         """
     **no-homers**
     - Select up to 6 picks per week
-    - Data saved locally in SQLite
+    - Data saved to Supabase cloud database
     - Each picker has independent picks
 
-    ⚠️ **Note**: Data may be lost when app restarts
+    ✅ **Note**: Data persists between app sessions
 
     Made with ❤️ and Streamlit
     """
