@@ -3,7 +3,11 @@
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
 from supabase import Client, create_client
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class SupabaseClient:
@@ -29,33 +33,34 @@ class SupabaseClient:
 
     @classmethod
     def _get_url(cls) -> str:
-        """Get Supabase URL from DATABASE_URL environment variable"""
+        """Get Supabase URL from environment variables"""
         if cls._url:
             return cls._url
 
-        # Get from DATABASE_URL (format: postgresql://...)
-        database_url = os.getenv("DATABASE_URL")
-        if database_url:
-            # Convert PostgreSQL URL to Supabase URL
-            # Typically DATABASE_URL is postgresql://... but we need https://...
-            if database_url.startswith("postgresql://"):
-                # Extract project from the host part
-                # Format: postgresql://postgres:[password]@[project].supabase.co:5432/postgres
-                import re
+        # Try SUPABASE_URL first
+        url = os.getenv("SUPABASE_URL")
+        if url:
+            return url
 
-                match = re.search(r"@([^.]+)\.supabase\.co", database_url)
-                if match:
-                    project_id = match.group(1)
-                    return f"https://{project_id}.supabase.co"
+        # Try to extract from DATABASE_URL if SUPABASE_URL not available
+        database_url = os.getenv("DATABASE_URL")
+        if database_url and "supabase.co" in database_url:
+            import re
+
+            # Extract project ID from db.project-id.supabase.co
+            match = re.search(r"@db\.([^.]+)\.supabase\.co", database_url)
+            if match:
+                project_id = match.group(1)
+                return f"https://{project_id}.supabase.co"
 
         raise ValueError(
-            "DATABASE_URL not found or invalid format. "
-            "Expected format: postgresql://postgres:[password]@[project].supabase.co:5432/postgres"
+            "Supabase URL not found. Please set SUPABASE_URL environment variable.\n"
+            "Example: SUPABASE_URL=https://your-project-id.supabase.co"
         )
 
     @classmethod
     def _get_key(cls) -> str:
-        """Get Supabase anon key from environment or config"""
+        """Get Supabase anon key from environment variables"""
         if cls._key:
             return cls._key
 
@@ -64,19 +69,9 @@ class SupabaseClient:
         if key:
             return key
 
-        # Extract key from DATABASE_URL if available
-        database_url = os.getenv("DATABASE_URL")
-        if database_url:
-            # Extract password from postgresql://postgres:[password]@...
-            import re
-
-            match = re.search(r"postgres:([^@]+)@", database_url)
-            if match:
-                return match.group(1)
-
         raise ValueError(
-            "Supabase anon key not found. Set SUPABASE_ANON_KEY environment variable "
-            "or ensure DATABASE_URL contains the anon key as the password"
+            "Supabase anon key not found. Please set SUPABASE_ANON_KEY environment variable.\n"
+            "You can find this in your Supabase dashboard under Settings > API"
         )
 
     @classmethod
