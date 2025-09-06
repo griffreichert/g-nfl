@@ -1,7 +1,0 @@
-streamlit>=1.47.1
-pandas
-numpy==1.26
-nfl-data-py==0.3.2
-pillow
-requests
-beautifulsoup4

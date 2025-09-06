@@ -57,3 +57,9 @@ The fantasy analysis system provides player evaluation and projection tools acro
 - `src/fantasy/projections/rb/projector.py`: Running back projection engine
 - Position-specific notebooks for weekly analysis and player evaluation
 - Integration with power ratings for defensive matchup assessment
+
+
+Update market lines
+```zsh
+python scripts/update_market_lines.py --season 2025 --week 1
+```

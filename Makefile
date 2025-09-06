@@ -37,8 +37,7 @@ run:
 # Deployment
 deploy-prep:
 	@echo "🚀 Preparing for deployment..."
-	poetry export -f requirements.txt --output requirements.txt --without-hashes
-	@echo "✅ requirements.txt generated"
+	@echo "✅ Using streamlit-compatible requirements.txt (already created)"
 	@echo ""
 	@echo "📝 Next steps for Streamlit Cloud:"
 	@echo "1. Commit and push to GitHub"
@@ -47,6 +46,9 @@ deploy-prep:
 	@echo "4. Add environment variables:"
 	@echo "   - SUPABASE_URL"
 	@echo "   - SUPABASE_KEY"
+	@echo ""
+	@echo "ℹ️  Note: Using minimal requirements.txt without nfl_data_py"
+	@echo "   Full poetry requirements available in requirements_full.txt"
 
 # Data Management
 update-lines:
