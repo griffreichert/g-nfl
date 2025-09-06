@@ -67,6 +67,8 @@ def get_button_style(is_selected, pick_type, is_disabled):
         return "secondary"
     elif not is_selected:
         return "secondary"
+    elif pick_type == "best_bet":
+        return "primary"  # We'll handle best_bet with CSS classes
     else:
         return "primary"
 
@@ -121,18 +123,6 @@ div.stButton > button[kind="primary"]:hover {
     border-color: #1e7e34 !important;
 }
 
-/* Best bet (light purple) - using custom data attribute */
-div.stButton > button[data-best-bet="true"] {
-    background-color: #b19cd9 !important;
-    border-color: #b19cd9 !important;
-    color: #ffffff !important;
-    font-weight: bold !important;
-}
-div.stButton > button[data-best-bet="true"]:hover {
-    background-color: #9d84d1 !important;
-    border-color: #9d84d1 !important;
-}
-
 /* Disabled buttons */
 div.stButton > button:disabled {
     background-color: #6c757d !important;
@@ -146,7 +136,50 @@ div.stButton > button:disabled:hover {
     border-color: #6c757d !important;
     color: #ffffff !important;
 }
+
+/* JavaScript to style best bet buttons */
 </style>
+<script>
+// Wait for page to load, then style best bet buttons
+setTimeout(function() {
+    // Find all buttons with star emoji (best bets)
+    const buttons = document.querySelectorAll('button[kind="primary"]');
+    buttons.forEach(button => {
+        if (button.textContent.includes('⭐')) {
+            button.style.backgroundColor = '#b19cd9';
+            button.style.borderColor = '#b19cd9';
+            button.style.color = '#ffffff';
+            button.style.fontWeight = 'bold';
+
+            // Add hover effect
+            button.addEventListener('mouseenter', function() {
+                this.style.backgroundColor = '#9d84d1';
+                this.style.borderColor = '#9d84d1';
+            });
+            button.addEventListener('mouseleave', function() {
+                this.style.backgroundColor = '#b19cd9';
+                this.style.borderColor = '#b19cd9';
+            });
+        }
+    });
+}, 100);
+
+// Re-run the styling when content changes
+const observer = new MutationObserver(function() {
+    setTimeout(function() {
+        const buttons = document.querySelectorAll('button[kind="primary"]');
+        buttons.forEach(button => {
+            if (button.textContent.includes('⭐') && button.style.backgroundColor !== 'rgb(177, 156, 217)') {
+                button.style.backgroundColor = '#b19cd9';
+                button.style.borderColor = '#b19cd9';
+                button.style.color = '#ffffff';
+                button.style.fontWeight = 'bold';
+            }
+        });
+    }, 100);
+});
+observer.observe(document.body, { childList: true, subtree: true });
+</script>
 """,
     unsafe_allow_html=True,
 )
@@ -216,9 +249,6 @@ if (
     )
     if total_picks > 0:
         st.info(f"✅ Loaded {total_picks} existing picks for {picker}")
-        # Debug info
-        if regular_picks:
-            st.expander("🔍 Debug: Loaded picks").write(regular_picks)
     st.rerun()
 
 if load_button or "games_data" not in st.session_state:
@@ -233,11 +263,6 @@ if load_button or "games_data" not in st.session_state:
 
                 supabase_url = os.getenv("SUPABASE_URL")
                 supabase_key = os.getenv("SUPABASE_ANON_KEY")
-
-                # Debug: Show what we found
-                st.write("🔍 Debug environment variables:")
-                st.write(f"SUPABASE_URL found: {'✅' if supabase_url else '❌'}")
-                st.write(f"SUPABASE_ANON_KEY found: {'✅' if supabase_key else '❌'}")
 
                 # Try streamlit secrets as fallback
                 if not supabase_url or not supabase_key:
@@ -381,17 +406,6 @@ if "games_data" in st.session_state:
         st.markdown("---")
         st.markdown(f"### 🏈 Week {st.session_state.current_week} Games")
 
-        # Debug: Show data source and first few games
-        if st.checkbox("🔍 Debug: Show loaded games"):
-            st.write(
-                f"**Data source**: {st.session_state.get('data_source', 'unknown')}"
-            )
-            st.write("**First 5 games loaded:**")
-            for game_id in list(games_df.index)[:5]:
-                game = games_df.loc[game_id]
-                st.text(f"{game['away_team']} @ {game['home_team']} (ID: {game_id})")
-            st.write(f"**Total games**: {len(games_df)}")
-
         # Show current pick counts
         if (
             st.session_state.picks
@@ -405,19 +419,6 @@ if "games_data" in st.session_state:
             st.info(
                 f"**Current Picks**: {total_regular}/6 regular • {has_survivor} survivor • {has_underdog} underdog"
             )
-
-            # Debug: Show games available vs picks made
-            if st.checkbox("🔍 Debug: Show game ID matching"):
-                st.write("**Available games:**")
-                for game_id in list(games_df.index)[:5]:  # First 5 games
-                    st.text(f"Game: {game_id}")
-                st.write("**Your picks:**")
-                for pick_id in list(st.session_state.picks.keys())[:5]:  # First 5 picks
-                    st.text(f"Pick: {pick_id}")
-                st.write("**Matches:**")
-                for pick_id, pick_data in st.session_state.picks.items():
-                    match = "✅" if pick_id in games_df.index else "❌"
-                    st.text(f"{match} {pick_id} -> {pick_data.get('team_picked')}")
 
         # Create centered container with limited width
         col_spacer1, col_content, col_spacer2 = st.columns([1, 8, 1])
