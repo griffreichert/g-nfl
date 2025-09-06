@@ -216,6 +216,9 @@ if (
     )
     if total_picks > 0:
         st.info(f"✅ Loaded {total_picks} existing picks for {picker}")
+        # Debug info
+        if regular_picks:
+            st.expander("🔍 Debug: Loaded picks").write(regular_picks)
     st.rerun()
 
 if load_button or "games_data" not in st.session_state:
@@ -335,7 +338,7 @@ if load_button or "games_data" not in st.session_state:
                     games_data = []
                     for line in market_lines:
                         game_id = line["game_id"]
-                        # Parse game_id: 2025_1_KC_LAC
+                        # Parse game_id: 2025_01_KC_LAC
                         parts = game_id.split("_")
                         if len(parts) >= 4:
                             away_team = parts[2]
@@ -443,6 +446,19 @@ if "games_data" in st.session_state:
             st.info(
                 f"**Current Picks**: {total_regular}/6 regular • {has_survivor} survivor • {has_underdog} underdog"
             )
+
+            # Debug: Show games available vs picks made
+            if st.checkbox("🔍 Debug: Show game ID matching"):
+                st.write("**Available games:**")
+                for game_id in list(games_df.index)[:5]:  # First 5 games
+                    st.text(f"Game: {game_id}")
+                st.write("**Your picks:**")
+                for pick_id in list(st.session_state.picks.keys())[:5]:  # First 5 picks
+                    st.text(f"Pick: {pick_id}")
+                st.write("**Matches:**")
+                for pick_id, pick_data in st.session_state.picks.items():
+                    match = "✅" if pick_id in games_df.index else "❌"
+                    st.text(f"{match} {pick_id} -> {pick_data.get('team_picked')}")
 
         # Create centered container with limited width
         col_spacer1, col_content, col_spacer2 = st.columns([1, 8, 1])
