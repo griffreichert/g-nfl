@@ -25,6 +25,45 @@ if "picks" not in st.session_state:
     st.session_state.picks = {}
 
 
+def get_next_pick_state(current_pick, team_name):
+    """Get the next state when clicking a team button
+
+    States cycle: unselected -> regular -> best_bet -> unselected
+    """
+    if not current_pick or current_pick.get("team_picked") != team_name:
+        # First click: select as regular
+        return {"team_picked": team_name, "pick_type": "regular"}
+
+    current_type = current_pick.get("pick_type", "regular")
+    if current_type == "regular":
+        # Second click: upgrade to best bet
+        return {"team_picked": team_name, "pick_type": "best_bet"}
+    elif current_type == "best_bet":
+        # Third click: unselect
+        return None
+    else:
+        # Default: select as regular
+        return {"team_picked": team_name, "pick_type": "regular"}
+
+
+def get_button_style(is_selected, pick_type, is_disabled):
+    """Get button type for styling"""
+    if is_disabled:
+        return "secondary"
+    elif not is_selected:
+        return "secondary"
+    else:
+        return "primary"
+
+
+def get_button_label(team_name, pick_type):
+    """Get button label with pick type indicator"""
+    if pick_type == "best_bet":
+        return f"⭐ {team_name}"
+    else:
+        return team_name
+
+
 st.title("📈 NFL Weekly Games & Spreads")
 
 # Add deployment info
@@ -42,10 +81,11 @@ if st.sidebar.button("ℹ️ About"):
     """
     )
 
-# Custom CSS to make selected buttons green and disabled buttons grey
+# Custom CSS for different button states
 st.markdown(
     """
 <style>
+/* Regular selected (green) */
 div.stButton > button[kind="primary"] {
     background-color: #28a745 !important;
     border-color: #28a745 !important;
@@ -55,6 +95,20 @@ div.stButton > button[kind="primary"]:hover {
     background-color: #218838 !important;
     border-color: #1e7e34 !important;
 }
+
+/* Best bet (light purple) - using custom data attribute */
+div.stButton > button[data-best-bet="true"] {
+    background-color: #b19cd9 !important;
+    border-color: #b19cd9 !important;
+    color: #ffffff !important;
+    font-weight: bold !important;
+}
+div.stButton > button[data-best-bet="true"]:hover {
+    background-color: #9d84d1 !important;
+    border-color: #9d84d1 !important;
+}
+
+/* Disabled buttons */
 div.stButton > button:disabled {
     background-color: #6c757d !important;
     border-color: #6c757d !important;
@@ -179,60 +233,88 @@ if "games_data" in st.session_state:
                 with st.container():
                     col1, col2, col3 = st.columns([2, 2, 2])
 
-                    # Check if we have 6 picks or if this game already has a selection
+                    # Check pick states for this game
                     max_picks_reached = len(st.session_state.picks) >= 6
                     game_has_selection = game_id in st.session_state.picks
-                    home_selected = (
-                        st.session_state.picks.get(game_id) == game["home_team"]
+
+                    current_pick = st.session_state.picks.get(game_id, {})
+                    if isinstance(current_pick, str):
+                        # Handle legacy format
+                        current_pick = {
+                            "team_picked": current_pick,
+                            "pick_type": "regular",
+                        }
+
+                    home_selected = current_pick.get("team_picked") == game["home_team"]
+                    away_selected = current_pick.get("team_picked") == game["away_team"]
+                    home_pick_type = (
+                        current_pick.get("pick_type", "regular")
+                        if home_selected
+                        else None
                     )
-                    away_selected = (
-                        st.session_state.picks.get(game_id) == game["away_team"]
+                    away_pick_type = (
+                        current_pick.get("pick_type", "regular")
+                        if away_selected
+                        else None
                     )
 
                     with col1:
                         # Away team button
                         away_disabled = (
-                            max_picks_reached and not away_selected
-                        ) or home_selected
+                            (max_picks_reached and not away_selected)
+                            or home_selected
+                            or not picker
+                        )  # Disable if no picker selected
 
                         away_logo = get_team_logo(game["away_team"])
+                        button_type = get_button_style(
+                            away_selected, away_pick_type, away_disabled
+                        )
+                        button_label = get_button_label(
+                            game["away_team"], away_pick_type
+                        )
+
                         if away_logo:
                             col_logo, col_button = st.columns([1, 3])
                             with col_logo:
                                 st.image(away_logo, width=35)
                             with col_button:
-                                button_type = (
-                                    "primary" if away_selected else "secondary"
-                                )
                                 if st.button(
-                                    f"{game['away_team']}",
+                                    button_label,
                                     key=f"away_{game_id}",
                                     type=button_type,
                                     disabled=away_disabled,
                                 ):
-                                    if away_selected:
-                                        # Unselect if already selected
+                                    next_state = get_next_pick_state(
+                                        current_pick, game["away_team"]
+                                    )
+                                    if next_state is None:
+                                        # Remove the pick
                                         if game_id in st.session_state.picks:
                                             del st.session_state.picks[game_id]
                                     else:
-                                        st.session_state.picks[game_id] = game[
-                                            "away_team"
-                                        ]
+                                        # Add spread info
+                                        next_state["spread"] = game.get("spread_line")
+                                        st.session_state.picks[game_id] = next_state
                                     st.rerun()
                         else:
-                            button_type = "primary" if away_selected else "secondary"
                             if st.button(
-                                f"{game['away_team']}",
+                                button_label,
                                 key=f"away_{game_id}",
                                 type=button_type,
                                 disabled=away_disabled,
                             ):
-                                if away_selected:
-                                    # Unselect if already selected
+                                next_state = get_next_pick_state(
+                                    current_pick, game["away_team"]
+                                )
+                                if next_state is None:
+                                    # Remove the pick
                                     if game_id in st.session_state.picks:
                                         del st.session_state.picks[game_id]
                                 else:
-                                    st.session_state.picks[game_id] = game["away_team"]
+                                    # Add spread info
+                                    next_state["spread"] = game.get("spread_line")
+                                    st.session_state.picks[game_id] = next_state
                                 st.rerun()
 
                     with col2:
@@ -252,74 +334,105 @@ if "games_data" in st.session_state:
                     with col3:
                         # Home team button
                         home_disabled = (
-                            max_picks_reached and not home_selected
-                        ) or away_selected
+                            (max_picks_reached and not home_selected)
+                            or away_selected
+                            or not picker
+                        )  # Disable if no picker selected
 
                         home_logo = get_team_logo(game["home_team"])
+                        button_type = get_button_style(
+                            home_selected, home_pick_type, home_disabled
+                        )
+                        button_label = get_button_label(
+                            game["home_team"], home_pick_type
+                        )
+
                         if home_logo:
                             col_logo, col_button = st.columns([1, 3])
                             with col_logo:
                                 st.image(home_logo, width=35)
                             with col_button:
-                                button_type = (
-                                    "primary" if home_selected else "secondary"
-                                )
                                 if st.button(
-                                    f"{game['home_team']}",
+                                    button_label,
                                     key=f"home_{game_id}",
                                     type=button_type,
                                     disabled=home_disabled,
                                 ):
-                                    if home_selected:
-                                        # Unselect if already selected
+                                    next_state = get_next_pick_state(
+                                        current_pick, game["home_team"]
+                                    )
+                                    if next_state is None:
+                                        # Remove the pick
                                         if game_id in st.session_state.picks:
                                             del st.session_state.picks[game_id]
                                     else:
-                                        st.session_state.picks[game_id] = game[
-                                            "home_team"
-                                        ]
+                                        # Add spread info
+                                        next_state["spread"] = game.get("spread_line")
+                                        st.session_state.picks[game_id] = next_state
                                     st.rerun()
                         else:
-                            button_type = "primary" if home_selected else "secondary"
                             if st.button(
-                                f"{game['home_team']}",
+                                button_label,
                                 key=f"home_{game_id}",
                                 type=button_type,
                                 disabled=home_disabled,
                             ):
-                                if home_selected:
-                                    # Unselect if already selected
+                                next_state = get_next_pick_state(
+                                    current_pick, game["home_team"]
+                                )
+                                if next_state is None:
+                                    # Remove the pick
                                     if game_id in st.session_state.picks:
                                         del st.session_state.picks[game_id]
                                 else:
-                                    st.session_state.picks[game_id] = game["home_team"]
+                                    # Add spread info
+                                    next_state["spread"] = game.get("spread_line")
+                                    st.session_state.picks[game_id] = next_state
                                 st.rerun()
 
                 # Use a thinner divider
                 st.markdown("---")
+
+        # Show instruction if no picker selected
+        if not picker:
+            st.info("👆 Please select a picker above to start making picks")
 
         st.caption(
             f"📊 Showing {len(games_df)} games for Week {st.session_state.current_week}"
         )
 
         # Show picks summary
-        if st.session_state.picks:
+        if st.session_state.picks and picker:
             st.subheader("🎯 Your Picks")
             picks_list = []
-            for game_id, team in st.session_state.picks.items():
+            for game_id, pick_data in st.session_state.picks.items():
                 if game_id in games_df.index:
                     game = games_df.loc[game_id]
+
+                    # Handle both old and new pick formats
+                    if isinstance(pick_data, str):
+                        team = pick_data
+                        pick_type = "regular"
+                    else:
+                        team = pick_data.get("team_picked", "")
+                        pick_type = pick_data.get("pick_type", "regular")
+
                     # Show spread exactly as it comes from get_week_spreads()
                     spread = (
                         f"{game['spread_line']:+.1f}"
                         if pd.notna(game["spread_line"])
                         else "N/A"
                     )
-                    picks_list.append(f"**{team}** ({spread})")
+
+                    # Format pick with type indicator
+                    if pick_type == "best_bet":
+                        picks_list.append(f"• **{team}** ({spread}) 🌟 **BEST BET**")
+                    else:
+                        picks_list.append(f"• **{team}** ({spread})")
 
             if picks_list:
                 for pick in picks_list:
-                    st.write(f"• {pick}")
+                    st.markdown(pick)
 
                 col1, col2 = st.columns(2)
                 with col1:

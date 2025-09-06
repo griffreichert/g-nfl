@@ -27,7 +27,7 @@ class PicksDatabase:
         Args:
             season: NFL season year
             week: Week number
-            picks: Dictionary mapping game_id to pick data {'team_picked': str, 'spread': float}
+            picks: Dictionary mapping game_id to pick data {'team_picked': str, 'spread': float, 'pick_type': str}
             picker: Name of the person making picks
             replace: If True, replace existing picks for this picker/season/week
 
@@ -55,6 +55,11 @@ class PicksDatabase:
                     ),
                     "spread": (
                         pick_data.get("spread") if isinstance(pick_data, dict) else None
+                    ),
+                    "pick_type": (
+                        pick_data.get("pick_type", "regular")
+                        if isinstance(pick_data, dict)
+                        else "regular"
                     ),
                     "picker": picker,
                 }

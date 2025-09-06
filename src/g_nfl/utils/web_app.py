@@ -7,17 +7,13 @@ from .database import PicksDatabase
 
 
 def get_team_logo(team_name):
-    """Get team logo image from bin/logos/ directory"""
-    # Navigate from src/utils back to project root, then to bin/logos
-    logo_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "bin", "logos", f"{team_name}.tif"
-    )
-    if os.path.exists(logo_path):
-        try:
-            return Image.open(logo_path)
-        except Exception:
-            return None
-    return None
+    """Get team logo URL from ESPN CDN"""
+    if not team_name:
+        return None
+
+    # Convert team name to lowercase for ESPN URL
+    team_lower = team_name.lower()
+    return f"https://a.espncdn.com/i/teamlogos/nfl/500/{team_lower}.png"
 
 
 def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optional[str]:
@@ -72,7 +68,7 @@ def load_existing_picks(season: int, week: int, picker: str) -> dict:
         picker: Picker name
 
     Returns:
-        Dictionary mapping game_id to team_picked
+        Dictionary mapping game_id to pick data {'team_picked': str, 'pick_type': str, 'spread': float}
     """
     try:
         db = PicksDatabase()
@@ -81,7 +77,11 @@ def load_existing_picks(season: int, week: int, picker: str) -> dict:
         # Convert to dictionary format expected by streamlit session state
         picks_dict = {}
         for pick in picks_list:
-            picks_dict[pick["game_id"]] = pick["team_picked"]
+            picks_dict[pick["game_id"]] = {
+                "team_picked": pick["team_picked"],
+                "pick_type": pick.get("pick_type", "regular"),
+                "spread": pick.get("spread"),
+            }
 
         return picks_dict
     except Exception as e:
