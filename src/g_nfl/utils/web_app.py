@@ -3,7 +3,7 @@ from typing import Optional
 
 from PIL import Image
 
-from .database import PicksDatabase
+from .database import MarketLinesDatabase, PicksDatabase, PoolSpreadsDatabase
 
 
 def get_team_logo(team_name):
@@ -101,3 +101,83 @@ def get_database_stats():
     except Exception as e:
         print(f"Error getting database stats: {e}")
         return {}
+
+
+def get_market_lines(season: int, week: int) -> dict:
+    """Get market lines for a specific season/week
+
+    Args:
+        season: NFL season year
+        week: Week number
+
+    Returns:
+        Dictionary mapping game_id to market line data
+    """
+    try:
+        db = MarketLinesDatabase()
+        lines_list = db.get_market_lines(season, week)
+
+        # Convert to dictionary format
+        lines_dict = {}
+        for line in lines_list:
+            lines_dict[line["game_id"]] = {
+                "spread": line.get("spread"),
+                "total": line.get("total"),
+            }
+
+        return lines_dict
+    except Exception as e:
+        print(f"Error getting market lines: {e}")
+        return {}
+
+
+def get_pool_spreads(season: int, week: int) -> dict:
+    """Get pool spreads for a specific season/week
+
+    Args:
+        season: NFL season year
+        week: Week number
+
+    Returns:
+        Dictionary mapping game_id to pool spread
+    """
+    try:
+        db = PoolSpreadsDatabase()
+        spreads_list = db.get_pool_spreads(season, week)
+
+        # Convert to dictionary format
+        spreads_dict = {}
+        for spread in spreads_list:
+            spreads_dict[spread["game_id"]] = spread.get("spread")
+
+        return spreads_dict
+    except Exception as e:
+        print(f"Error getting pool spreads: {e}")
+        return {}
+
+
+def get_all_lines_data(season: int, week: int) -> dict:
+    """Get combined market lines and pool spreads for a season/week
+
+    Args:
+        season: NFL season year
+        week: Week number
+
+    Returns:
+        Dictionary with combined line data
+    """
+    market_lines = get_market_lines(season, week)
+    pool_spreads = get_pool_spreads(season, week)
+
+    # Combine data
+    combined = {}
+    all_game_ids = set(market_lines.keys()) | set(pool_spreads.keys())
+
+    for game_id in all_game_ids:
+        combined[game_id] = {
+            "market_spread": market_lines.get(game_id, {}).get("spread"),
+            "market_total": market_lines.get(game_id, {}).get("total"),
+            "pool_spread": pool_spreads.get(game_id),
+        }
+
+    return combined

@@ -168,3 +168,193 @@ class PicksDatabase:
             "season_range": season_range,
             "week_range": week_range,
         }
+
+
+class MarketLinesDatabase:
+    """Supabase database handler for storing market spread and total lines"""
+
+    def __init__(self):
+        """Initialize Supabase client"""
+        self.client: Client = get_supabase()
+
+    def save_market_lines(
+        self,
+        season: int,
+        week: int,
+        lines: Dict[str, Dict[str, float]],
+        replace: bool = True,
+    ) -> int:
+        """Save market lines to Supabase
+
+        Args:
+            season: NFL season year
+            week: Week number
+            lines: Dictionary mapping game_id to line data {'spread': float, 'total': float}
+            replace: If True, replace existing lines for this season/week
+
+        Returns:
+            Number of lines saved
+        """
+        # If replace is True, delete existing lines for this season/week
+        if replace:
+            self.client.table("market_lines").delete().eq("season", season).eq(
+                "week", week
+            ).execute()
+
+        # Prepare lines data for insertion
+        lines_data = []
+        for game_id, line_data in lines.items():
+            lines_data.append(
+                {
+                    "season": season,
+                    "week": week,
+                    "game_id": game_id,
+                    "spread": line_data.get("spread"),
+                    "total": line_data.get("total"),
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            )
+
+        # Insert lines
+        if lines_data:
+            result = self.client.table("market_lines").insert(lines_data).execute()
+            return len(lines_data)
+        return 0
+
+    def get_market_lines(self, season: int, week: int) -> List[Dict]:
+        """Retrieve market lines from Supabase
+
+        Args:
+            season: NFL season year
+            week: Week number
+
+        Returns:
+            List of market line dictionaries
+        """
+        query = (
+            self.client.table("market_lines")
+            .select("*")
+            .eq("season", season)
+            .eq("week", week)
+        )
+
+        result = query.execute()
+        return result.data
+
+
+class PoolSpreadsDatabase:
+    """Supabase database handler for storing pool/competition spread lines"""
+
+    def __init__(self):
+        """Initialize Supabase client"""
+        self.client: Client = get_supabase()
+
+    def save_pool_spreads(
+        self,
+        season: int,
+        week: int,
+        spreads: Dict[str, float],
+        replace: bool = True,
+    ) -> int:
+        """Save pool spreads to Supabase
+
+        Args:
+            season: NFL season year
+            week: Week number
+            spreads: Dictionary mapping game_id to spread value
+            replace: If True, replace existing spreads for this season/week
+
+        Returns:
+            Number of spreads saved
+        """
+        # If replace is True, delete existing spreads for this season/week
+        if replace:
+            self.client.table("pool_spreads").delete().eq("season", season).eq(
+                "week", week
+            ).execute()
+
+        # Prepare spreads data for insertion
+        spreads_data = []
+        for game_id, spread in spreads.items():
+            spreads_data.append(
+                {
+                    "season": season,
+                    "week": week,
+                    "game_id": game_id,
+                    "spread": spread,
+                    "created_at": datetime.utcnow().isoformat(),
+                }
+            )
+
+        # Insert spreads
+        if spreads_data:
+            result = self.client.table("pool_spreads").insert(spreads_data).execute()
+            return len(spreads_data)
+        return 0
+
+    def get_pool_spreads(self, season: int, week: int) -> List[Dict]:
+        """Retrieve pool spreads from Supabase
+
+        Args:
+            season: NFL season year
+            week: Week number
+
+        Returns:
+            List of pool spread dictionaries
+        """
+        query = (
+            self.client.table("pool_spreads")
+            .select("*")
+            .eq("season", season)
+            .eq("week", week)
+        )
+
+        result = query.execute()
+        return result.data
+
+    def update_pool_spread(
+        self, season: int, week: int, game_id: str, spread: float
+    ) -> bool:
+        """Update a single pool spread
+
+        Args:
+            season: NFL season year
+            week: Week number
+            game_id: Game identifier
+            spread: New spread value
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Try to update existing record
+            update_result = (
+                self.client.table("pool_spreads")
+                .update({"spread": spread})
+                .eq("season", season)
+                .eq("week", week)
+                .eq("game_id", game_id)
+                .execute()
+            )
+
+            # If no record was updated, insert a new one
+            if not update_result.data:
+                insert_result = (
+                    self.client.table("pool_spreads")
+                    .insert(
+                        {
+                            "season": season,
+                            "week": week,
+                            "game_id": game_id,
+                            "spread": spread,
+                            "created_at": datetime.utcnow().isoformat(),
+                        }
+                    )
+                    .execute()
+                )
+                return len(insert_result.data) > 0
+
+            return len(update_result.data) > 0
+        except Exception as e:
+            print(f"Error updating pool spread: {e}")
+            return False
