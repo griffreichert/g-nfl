@@ -224,155 +224,90 @@ if (
 if load_button or "games_data" not in st.session_state:
     try:
         with st.spinner("Loading NFL games data..."):
-            # Try nfl_data first, fallback to database for deployment
+            # Always use database data (deployment-ready)
             try:
-                games_df = get_week_spreads(week, season)
-                data_source = "nfl_data"
-            except Exception as e:
-                # Fallback to database (deployment mode)
-                st.info(
-                    f"📊 NFL data not available ({str(e)}), loading from database..."
-                )
+                # Check environment variables
+                import os
 
-                try:
-                    # Check environment variables
-                    import os
+                from g_nfl.utils.database import MarketLinesDatabase
 
-                    from g_nfl.utils.database import MarketLinesDatabase
+                supabase_url = os.getenv("SUPABASE_URL")
+                supabase_key = os.getenv("SUPABASE_KEY")
 
-                    supabase_url = os.getenv("SUPABASE_URL")
-                    supabase_key = os.getenv("SUPABASE_KEY")
-
-                    if not supabase_url or not supabase_key:
-                        st.error("❌ Missing environment variables")
-                        st.markdown(
-                            """
-                        **Required environment variables:**
-                        - `SUPABASE_URL`: Your Supabase project URL
-                        - `SUPABASE_KEY`: Your Supabase anon/public key
-
-                        Set these in your Streamlit Cloud app settings.
-                        """
-                        )
-                        st.stop()
-
-                    st.success("✅ Environment variables found")
-
-                    market_db = MarketLinesDatabase()
-                    market_lines = market_db.get_market_lines(season, week)
-                except Exception as db_error:
-                    st.error(f"❌ Database error: {str(db_error)}")
-                    st.markdown(f"**Error details:** {type(db_error).__name__}")
-                    st.stop()
-
-                if not market_lines:
-                    st.warning(
-                        f"❌ No market data found for Week {week}, Season {season}"
-                    )
+                if not supabase_url or not supabase_key:
+                    st.error("❌ Missing environment variables")
                     st.markdown(
                         """
-                    **To fix this:**
-                    1. Run locally: `python scripts/update_market_lines.py --season {season} --week {week}`
-                    2. Or try a different week that has data
+                    **Required environment variables:**
+                    - `SUPABASE_URL`: Your Supabase project URL
+                    - `SUPABASE_KEY`: Your Supabase anon/public key
 
-                    **Note:** This app requires market data to be pre-loaded into the database for deployment.
-                    """.format(
-                            season=season, week=week
-                        )
+                    Set these in your Streamlit Cloud app settings.
+                    """
+                    )
+                    st.stop()
+
+                market_db = MarketLinesDatabase()
+                market_lines = market_db.get_market_lines(season, week)
+            except Exception as db_error:
+                st.error(f"❌ Database error: {str(db_error)}")
+                st.markdown(f"**Error details:** {type(db_error).__name__}")
+                st.stop()
+
+            if not market_lines:
+                st.error(f"❌ No market data found for Week {week}, Season {season}")
+                st.markdown(
+                    """
+                **To fix this:**
+                1. Run locally: `python scripts/update_market_lines.py --season {season} --week {week}`
+                2. Or try a different week that has data
+
+                **Note:** This app requires market data to be pre-loaded into the database for deployment.
+                """.format(
+                        season=season, week=week
+                    )
+                )
+                st.stop()
+
+            st.success(f"✅ Found {len(market_lines)} games in database")
+
+            # Convert market lines to DataFrame
+            games_data = []
+            for line in market_lines:
+                game_id = line["game_id"]
+                # Parse game_id: 2025_01_KC_LAC
+                parts = game_id.split("_")
+                if len(parts) >= 4:
+                    away_team = parts[2]
+                    home_team = parts[3]
+                    games_data.append(
+                        {
+                            "away_team": away_team,
+                            "home_team": home_team,
+                            "spread_line": line.get("spread"),
+                            "total_line": line.get("total"),
+                        }
                     )
 
-                    # Provide sample games for demo purposes
-                    st.markdown("---")
-                    st.info("🎮 **Demo Mode**: Using sample games for demonstration")
-
-                    # Create sample games
-                    sample_games = [
-                        {
-                            "away_team": "KC",
-                            "home_team": "LAC",
-                            "spread_line": -3.5,
-                            "total_line": 47.5,
-                        },
-                        {
-                            "away_team": "BUF",
-                            "home_team": "MIA",
-                            "spread_line": -6.0,
-                            "total_line": 44.0,
-                        },
-                        {
-                            "away_team": "GB",
-                            "home_team": "CHI",
-                            "spread_line": -4.5,
-                            "total_line": 43.5,
-                        },
-                        {
-                            "away_team": "DAL",
-                            "home_team": "NYG",
-                            "spread_line": -7.0,
-                            "total_line": 41.0,
-                        },
-                        {
-                            "away_team": "SF",
-                            "home_team": "SEA",
-                            "spread_line": -2.5,
-                            "total_line": 48.5,
-                        },
-                        {
-                            "away_team": "BAL",
-                            "home_team": "PIT",
-                            "spread_line": -3.0,
-                            "total_line": 42.0,
-                        },
-                    ]
-
-                    games_df = pd.DataFrame(sample_games)
-                    games_df.index = [
-                        f"{season}_{week}_{row['away_team']}_{row['home_team']}"
-                        for _, row in games_df.iterrows()
-                    ]
-                    data_source = "sample"
-                else:
-                    st.success(f"✅ Found {len(market_lines)} games in database")
-
-                    # Convert market lines to DataFrame
-                    games_data = []
-                    for line in market_lines:
-                        game_id = line["game_id"]
-                        # Parse game_id: 2025_01_KC_LAC
-                        parts = game_id.split("_")
-                        if len(parts) >= 4:
-                            away_team = parts[2]
-                            home_team = parts[3]
-                            games_data.append(
-                                {
-                                    "away_team": away_team,
-                                    "home_team": home_team,
-                                    "spread_line": line.get("spread"),
-                                    "total_line": line.get("total"),
-                                }
-                            )
-
-                    games_df = pd.DataFrame(games_data)
-                    # Use a composite index similar to nfl_data format
-                    games_df.index = [
-                        f"{season}_{week}_{row['away_team']}_{row['home_team']}"
-                        for _, row in games_df.iterrows()
-                    ]
-                    data_source = "database"
+            games_df = pd.DataFrame(games_data)
+            # Use a composite index similar to nfl_data format
+            games_df.index = [
+                f"{season}_{week}_{row['away_team']}_{row['home_team']}"
+                for _, row in games_df.iterrows()
+            ]
+            data_source = "database"
 
             st.session_state.games_data = games_df
             st.session_state.current_week = week
             st.session_state.current_season = season
+            st.session_state.data_source = data_source
 
             # Load market lines and pool spreads
             lines_data = get_all_lines_data(season, week)
             st.session_state.lines_data = lines_data
 
             # Show data source info
-            if data_source == "database":
-                st.info("📊 Using stored market data (deployment mode)")
-            elif data_source == "sample":
-                st.info("🎮 Using sample data for demonstration")
+            st.info("📊 Using stored market data from database")
 
             # Load existing picks if picker is selected and week/season changed
             if (
@@ -432,6 +367,17 @@ if "games_data" in st.session_state:
         # Games section header
         st.markdown("---")
         st.markdown(f"### 🏈 Week {st.session_state.current_week} Games")
+
+        # Debug: Show data source and first few games
+        if st.checkbox("🔍 Debug: Show loaded games"):
+            st.write(
+                f"**Data source**: {st.session_state.get('data_source', 'unknown')}"
+            )
+            st.write("**First 5 games loaded:**")
+            for game_id in list(games_df.index)[:5]:
+                game = games_df.loc[game_id]
+                st.text(f"{game['away_team']} @ {game['home_team']} (ID: {game_id})")
+            st.write(f"**Total games**: {len(games_df)}")
 
         # Show current pick counts
         if (
