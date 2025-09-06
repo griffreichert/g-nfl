@@ -25,7 +25,7 @@ def run_app():
     subprocess.run([sys.executable, "-m", "streamlit", "run", app_path])
 
 
-st.set_page_config(page_title="no-homers", layout="wide")
+st.set_page_config(page_title="Make Picks - no-homers", layout="wide")
 
 # Initialize session state for picks
 if "picks" not in st.session_state:
@@ -79,18 +79,28 @@ def get_button_label(team_name, pick_type):
         return team_name
 
 
-st.title("📈 NFL Weekly Games & Spreads")
+st.title("🎯 Make Picks")
 
-# Add deployment info
+# Sidebar info
+st.sidebar.markdown("## 📋 Pick Rules")
+st.sidebar.markdown(
+    """
+- **Regular picks**: 1 point each
+- **Best bets** ⭐: 2 points each
+- **Survivor** 💀: One per week
+- **Underdog** 🐶: One per week
+- **Maximum**: 6 regular/best bet picks
+"""
+)
+
+st.sidebar.markdown("---")
 if st.sidebar.button("ℹ️ About"):
     st.sidebar.info(
         """
     **no-homers**
-    - Select up to 6 picks per week
-    - Data saved to Supabase cloud database
-    - Each picker has independent picks
 
-    ✅ **Note**: Data persists between app sessions
+    NFL picks competition with survivor and underdog pools.
+    Data saved to cloud database and persists between sessions.
 
     Made with ❤️ and Streamlit
     """
@@ -141,33 +151,32 @@ div.stButton > button:disabled:hover {
     unsafe_allow_html=True,
 )
 
-# Create centered container matching table width
-col_spacer1, col_controls, col_spacer2 = st.columns([2, 6, 2])
+# Main controls
+st.markdown("### 🎮 Select Your Week & Identity")
 
-with col_controls:
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+col1, col2, col3, col4 = st.columns([1, 1, 2, 1])
 
-    with col1:
-        season = st.selectbox(
-            "Select Season",
-            list(range(2020, CUR_SEASON + 1)),
-            index=len(list(range(2020, CUR_SEASON + 1))) - 1,
-        )
+with col1:
+    season = st.selectbox(
+        "Season",
+        list(range(2020, CUR_SEASON + 1)),
+        index=len(list(range(2020, CUR_SEASON + 1))) - 1,
+    )
 
-    with col2:
-        week = st.selectbox("Select Week", list(range(1, 19)), index=0)
+with col2:
+    week = st.selectbox("Week", list(range(1, 19)), index=0)
 
-    with col3:
-        picker = st.selectbox(
-            "Select Picker",
-            [None] + ["Griffin", "Harry", "Ben", "Chuck", "Hunter", "Jacko"],
-            index=0,
-            format_func=lambda x: "Choose picker..." if x is None else x,
-        )
+with col3:
+    picker = st.selectbox(
+        "Picker",
+        [None] + ["Griffin", "Harry", "Ben", "Chuck", "Hunter", "Jacko"],
+        index=0,
+        format_func=lambda x: "👤 Choose your name..." if x is None else f"👤 {x}",
+    )
 
-    with col4:
-        st.write("")  # Add some vertical spacing
-        load_button = st.button("Load Games")
+with col4:
+    st.write("")  # Add some vertical spacing
+    load_button = st.button("🔄 Load Games", type="primary")
 
 # Auto-load picks when picker changes (even without clicking Load Games)
 if (
@@ -216,44 +225,137 @@ if load_button or "games_data" not in st.session_state:
             try:
                 games_df = get_week_spreads(week, season)
                 data_source = "nfl_data"
-            except:
+            except Exception as e:
                 # Fallback to database (deployment mode)
-                from g_nfl.utils.database import MarketLinesDatabase
+                st.info(
+                    f"📊 NFL data not available ({str(e)}), loading from database..."
+                )
 
-                market_db = MarketLinesDatabase()
-                market_lines = market_db.get_market_lines(season, week)
+                try:
+                    # Check environment variables
+                    import os
 
-                if not market_lines:
-                    st.error(
-                        f"No games found for Week {week}. Run 'python scripts/update_market_lines.py --season {season} --week {week}' locally first."
-                    )
+                    from g_nfl.utils.database import MarketLinesDatabase
+
+                    supabase_url = os.getenv("SUPABASE_URL")
+                    supabase_key = os.getenv("SUPABASE_KEY")
+
+                    if not supabase_url or not supabase_key:
+                        st.error("❌ Missing environment variables")
+                        st.markdown(
+                            """
+                        **Required environment variables:**
+                        - `SUPABASE_URL`: Your Supabase project URL
+                        - `SUPABASE_KEY`: Your Supabase anon/public key
+
+                        Set these in your Streamlit Cloud app settings.
+                        """
+                        )
+                        st.stop()
+
+                    st.success("✅ Environment variables found")
+
+                    market_db = MarketLinesDatabase()
+                    market_lines = market_db.get_market_lines(season, week)
+                except Exception as db_error:
+                    st.error(f"❌ Database error: {str(db_error)}")
+                    st.markdown(f"**Error details:** {type(db_error).__name__}")
                     st.stop()
 
-                # Convert market lines to DataFrame
-                games_data = []
-                for line in market_lines:
-                    game_id = line["game_id"]
-                    # Parse game_id: 2025_1_KC_LAC
-                    parts = game_id.split("_")
-                    if len(parts) >= 4:
-                        away_team = parts[2]
-                        home_team = parts[3]
-                        games_data.append(
-                            {
-                                "away_team": away_team,
-                                "home_team": home_team,
-                                "spread_line": line.get("spread"),
-                                "total_line": line.get("total"),
-                            }
-                        )
+                if not market_lines:
+                    st.warning(
+                        f"❌ No market data found for Week {week}, Season {season}"
+                    )
+                    st.markdown(
+                        """
+                    **To fix this:**
+                    1. Run locally: `python scripts/update_market_lines.py --season {season} --week {week}`
+                    2. Or try a different week that has data
 
-                games_df = pd.DataFrame(games_data)
-                # Use a composite index similar to nfl_data format
-                games_df.index = [
-                    f"{season}_{week}_{row['away_team']}_{row['home_team']}"
-                    for _, row in games_df.iterrows()
-                ]
-                data_source = "database"
+                    **Note:** This app requires market data to be pre-loaded into the database for deployment.
+                    """.format(
+                            season=season, week=week
+                        )
+                    )
+
+                    # Provide sample games for demo purposes
+                    st.markdown("---")
+                    st.info("🎮 **Demo Mode**: Using sample games for demonstration")
+
+                    # Create sample games
+                    sample_games = [
+                        {
+                            "away_team": "KC",
+                            "home_team": "LAC",
+                            "spread_line": -3.5,
+                            "total_line": 47.5,
+                        },
+                        {
+                            "away_team": "BUF",
+                            "home_team": "MIA",
+                            "spread_line": -6.0,
+                            "total_line": 44.0,
+                        },
+                        {
+                            "away_team": "GB",
+                            "home_team": "CHI",
+                            "spread_line": -4.5,
+                            "total_line": 43.5,
+                        },
+                        {
+                            "away_team": "DAL",
+                            "home_team": "NYG",
+                            "spread_line": -7.0,
+                            "total_line": 41.0,
+                        },
+                        {
+                            "away_team": "SF",
+                            "home_team": "SEA",
+                            "spread_line": -2.5,
+                            "total_line": 48.5,
+                        },
+                        {
+                            "away_team": "BAL",
+                            "home_team": "PIT",
+                            "spread_line": -3.0,
+                            "total_line": 42.0,
+                        },
+                    ]
+
+                    games_df = pd.DataFrame(sample_games)
+                    games_df.index = [
+                        f"{season}_{week}_{row['away_team']}_{row['home_team']}"
+                        for _, row in games_df.iterrows()
+                    ]
+                    data_source = "sample"
+                else:
+                    st.success(f"✅ Found {len(market_lines)} games in database")
+
+                    # Convert market lines to DataFrame
+                    games_data = []
+                    for line in market_lines:
+                        game_id = line["game_id"]
+                        # Parse game_id: 2025_1_KC_LAC
+                        parts = game_id.split("_")
+                        if len(parts) >= 4:
+                            away_team = parts[2]
+                            home_team = parts[3]
+                            games_data.append(
+                                {
+                                    "away_team": away_team,
+                                    "home_team": home_team,
+                                    "spread_line": line.get("spread"),
+                                    "total_line": line.get("total"),
+                                }
+                            )
+
+                    games_df = pd.DataFrame(games_data)
+                    # Use a composite index similar to nfl_data format
+                    games_df.index = [
+                        f"{season}_{week}_{row['away_team']}_{row['home_team']}"
+                        for _, row in games_df.iterrows()
+                    ]
+                    data_source = "database"
 
             st.session_state.games_data = games_df
             st.session_state.current_week = week
@@ -266,6 +368,8 @@ if load_button or "games_data" not in st.session_state:
             # Show data source info
             if data_source == "database":
                 st.info("📊 Using stored market data (deployment mode)")
+            elif data_source == "sample":
+                st.info("🎮 Using sample data for demonstration")
 
             # Load existing picks if picker is selected and week/season changed
             if (
@@ -317,19 +421,41 @@ if "games_data" in st.session_state:
     games_df = st.session_state.games_data
 
     if not games_df.empty:
+        # Show instruction if no picker selected
+        if not picker:
+            st.warning("👆 Please select your name above to start making picks")
+            st.stop()
+
+        # Games section header
+        st.markdown("---")
+        st.markdown(f"### 🏈 Week {st.session_state.current_week} Games")
+
+        # Show current pick counts
+        if (
+            st.session_state.picks
+            or st.session_state.survivor_pick
+            or st.session_state.underdog_pick
+        ):
+            total_regular = len(st.session_state.picks)
+            has_survivor = "✅" if st.session_state.survivor_pick else "⬜"
+            has_underdog = "✅" if st.session_state.underdog_pick else "⬜"
+
+            st.info(
+                f"**Current Picks**: {total_regular}/6 regular • {has_survivor} survivor • {has_underdog} underdog"
+            )
 
         # Create centered container with limited width
-        col_spacer1, col_content, col_spacer2 = st.columns([2, 6, 2])
+        col_spacer1, col_content, col_spacer2 = st.columns([1, 8, 1])
 
         with col_content:
             # Header row
             header_col1, header_col2, header_col3 = st.columns([2, 2, 2])
             with header_col1:
-                st.markdown("**Away**")
+                st.markdown("**🏃 Away Team**")
             with header_col2:
-                st.markdown("**Pool / Market / Total**")
+                st.markdown("**📊 Lines (Pool / Market / Total)**")
             with header_col3:
-                st.markdown("**Home**")
+                st.markdown("**🏠 Home Team**")
             st.markdown("---")
 
             for _, game in games_df.iterrows():
@@ -816,21 +942,14 @@ if "games_data" in st.session_state:
                 # Use a thinner divider
                 st.markdown("---")
 
-        # Show instruction if no picker selected
-        if not picker:
-            st.info("👆 Please select a picker above to start making picks")
-
-        st.caption(
-            f"📊 Showing {len(games_df)} games for Week {st.session_state.current_week}"
-        )
-
         # Show picks summary
         if (
             st.session_state.picks
             or st.session_state.survivor_pick
             or st.session_state.underdog_pick
         ) and picker:
-            st.subheader("🎯 Your Picks")
+            st.markdown("---")
+            st.markdown("### 📋 Pick Summary")
             picks_list = []
 
             # Add regular/best bet picks
@@ -872,12 +991,21 @@ if "games_data" in st.session_state:
                 )
 
             if picks_list:
+                # Display picks in a nice format
                 for pick in picks_list:
                     st.markdown(pick)
 
-                col1, col2 = st.columns(2)
+                st.markdown("---")
+
+                # Action buttons
+                col1, col2, col3 = st.columns([2, 1, 2])
+
                 with col1:
-                    if st.button("Submit Picks", type="primary"):
+                    if st.button(
+                        "💾 Save Picks",
+                        type="primary",
+                        help="Save your picks to the database",
+                    ):
                         if not picker:
                             st.error("⚠️ Please select a picker before submitting")
                         elif (
@@ -919,22 +1047,26 @@ if "games_data" in st.session_state:
                                 picker,
                             )
                             if filepath:
-                                st.success(f"✅ {filepath}")
+                                st.success(f"✅ Picks saved successfully!")
                             else:
                                 st.error("❌ Failed to save picks")
                         else:
                             st.warning("⚠️ No picks to save")
 
-                with col2:
-                    if st.button("Clear All Picks", type="secondary"):
+                with col3:
+                    if st.button(
+                        "🗑️ Clear All", type="secondary", help="Clear all your picks"
+                    ):
                         st.session_state.picks = {}
                         st.session_state.survivor_pick = None
                         st.session_state.underdog_pick = None
+                        st.success("✅ All picks cleared!")
                         st.rerun()
-        else:
-            st.warning("No games found for the selected week and season.")
-            st.session_state.survivor_pick = None
-            st.session_state.underdog_pick = None
-            st.rerun()
+
+        # Footer info
+        st.markdown("---")
+        st.caption(
+            f"📊 Showing {len(games_df)} games for Week {st.session_state.current_week} • Season {season}"
+        )
     else:
         st.warning("No games found for the selected week and season.")
