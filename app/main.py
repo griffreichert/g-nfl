@@ -232,12 +232,12 @@ if load_button or "games_data" not in st.session_state:
                 from g_nfl.utils.database import MarketLinesDatabase
 
                 supabase_url = os.getenv("SUPABASE_URL")
-                supabase_key = os.getenv("SUPABASE_KEY")
+                supabase_key = os.getenv("SUPABASE_ANON_KEY")
 
                 # Debug: Show what we found
                 st.write("🔍 Debug environment variables:")
                 st.write(f"SUPABASE_URL found: {'✅' if supabase_url else '❌'}")
-                st.write(f"SUPABASE_KEY found: {'✅' if supabase_key else '❌'}")
+                st.write(f"SUPABASE_ANON_KEY found: {'✅' if supabase_key else '❌'}")
 
                 # Try streamlit secrets as fallback
                 if not supabase_url or not supabase_key:
@@ -245,7 +245,7 @@ if load_button or "games_data" not in st.session_state:
                         if not supabase_url:
                             supabase_url = st.secrets["SUPABASE_URL"]
                         if not supabase_key:
-                            supabase_key = st.secrets["SUPABASE_KEY"]
+                            supabase_key = st.secrets["SUPABASE_ANON_KEY"]
                         st.info("✅ Found credentials in Streamlit secrets")
                     except:
                         st.error("❌ Missing environment variables and secrets")
@@ -253,7 +253,7 @@ if load_button or "games_data" not in st.session_state:
                             """
                         **Required environment variables:**
                         - `SUPABASE_URL`: Your Supabase project URL
-                        - `SUPABASE_KEY`: Your Supabase anon/public key
+                        - `SUPABASE_ANON_KEY`: Your Supabase anon/public key
 
                         Set these in your Streamlit Cloud app settings under 'Secrets management'.
                         """
