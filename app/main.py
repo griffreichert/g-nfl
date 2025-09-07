@@ -391,6 +391,17 @@ if load_button or "games_data" not in st.session_state:
             lines_data = get_all_lines_data(season, week)
             st.session_state.lines_data = lines_data
 
+            # Debug: show lines data structure
+            with st.expander("🔍 Debug: Show lines data", expanded=False):
+                st.write("**Games DataFrame game IDs:**")
+                st.write(list(games_df.index))
+                st.write("**Lines data game IDs:**")
+                st.write(list(lines_data.keys()))
+                st.write("**Sample lines data:**")
+                if lines_data:
+                    sample_key = list(lines_data.keys())[0]
+                    st.json({sample_key: lines_data[sample_key]})
+
             # Show data source info
             st.info("📊 Using stored market data from database")
 
@@ -1240,20 +1251,35 @@ if "games_data" in st.session_state:
                                     }
                                 )
 
+                            # Add more debugging for the save process
+                            st.write(
+                                f"**Attempting to save {len(all_picks)} picks...**"
+                            )
+
                             result = save_picks_data(
                                 st.session_state.current_season,
                                 st.session_state.current_week,
                                 all_picks,
                                 picker,
                             )
+
+                            # Debug the result
+                            st.write(f"**Save result:** `{repr(result)}`")
+
                             if result and not result.startswith("ERROR:"):
                                 st.success(f"✅ {result}")
                             elif result and result.startswith("ERROR:"):
                                 st.error(
                                     f"❌ Failed to save picks: {result[7:]}"
                                 )  # Remove "ERROR: " prefix
+                            elif result is None:
+                                st.error(
+                                    "❌ Failed to save picks: save_picks_data returned None"
+                                )
                             else:
-                                st.error("❌ Failed to save picks: Unknown error")
+                                st.error(
+                                    f"❌ Failed to save picks: Unexpected result type: {type(result)} - {result}"
+                                )
                         else:
                             st.warning("⚠️ No picks to save")
 
