@@ -34,17 +34,26 @@ class PicksDatabase:
         Returns:
             Number of picks saved
         """
-        # If replace is True, delete existing picks for this picker/season/week
-        if replace:
-            self.client.table("picks").delete().eq("season", season).eq(
-                "week", week
-            ).eq("picker", picker).execute()
+        try:
+            # If replace is True, delete existing picks for this picker/season/week
+            if replace:
+                print(
+                    f"DEBUG: Deleting existing picks for season={season}, week={week}, picker={picker}"
+                )
+                delete_result = (
+                    self.client.table("picks")
+                    .delete()
+                    .eq("season", season)
+                    .eq("week", week)
+                    .eq("picker", picker)
+                    .execute()
+                )
+                print(f"DEBUG: Delete result: {delete_result}")
 
-        # Prepare picks data for insertion
-        picks_data = []
-        for game_id, pick_data in picks.items():
-            picks_data.append(
-                {
+            # Prepare picks data for insertion
+            picks_data = []
+            for game_id, pick_data in picks.items():
+                pick_record = {
                     "season": season,
                     "week": week,
                     "game_id": game_id,
@@ -63,11 +72,24 @@ class PicksDatabase:
                     ),
                     "picker": picker,
                 }
-            )
+                picks_data.append(pick_record)
+                print(f"DEBUG: Prepared pick record: {pick_record}")
 
-        # Insert picks
-        result = self.client.table("picks").insert(picks_data).execute()
-        return len(picks_data)
+            print(f"DEBUG: Total picks to insert: {len(picks_data)}")
+
+            # Insert picks
+            print(f"DEBUG: Attempting to insert picks into 'picks' table")
+            result = self.client.table("picks").insert(picks_data).execute()
+            print(f"DEBUG: Insert result: {result}")
+
+            return len(picks_data)
+
+        except Exception as e:
+            print(f"DEBUG: Exception in PicksDatabase.save_picks: {e}")
+            import traceback
+
+            print(f"DEBUG: Traceback in save_picks: {traceback.format_exc()}")
+            raise  # Re-raise the exception so it can be caught by the calling function
 
     def get_picks(
         self, season: int, week: int, picker: Optional[str] = None

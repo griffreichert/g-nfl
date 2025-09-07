@@ -32,13 +32,30 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         return None
 
     try:
+        print(
+            f"DEBUG: Attempting to save picks - season: {season}, week: {week}, picker: {picker}"
+        )
+        print(f"DEBUG: Number of picks to save: {len(picks)}")
+        print(f"DEBUG: Picks data: {picks}")
+
         db = PicksDatabase()
+        print(f"DEBUG: PicksDatabase created successfully")
+
         picks_saved = db.save_picks(season, week, picks, picker)
+        print(f"DEBUG: save_picks returned: {picks_saved}")
+
         return f"Successfully saved {picks_saved} picks to database"
     except Exception as e:
-        print(f"Error saving picks to database: {e}")
+        error_msg = f"Error saving picks to database: {e}"
+        error_type = type(e).__name__
+        print(f"DEBUG: {error_msg}")
+        print(f"DEBUG: Error type: {error_type}")
+        import traceback
+
+        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+
         # Return error message so it can be displayed in Streamlit
-        return f"ERROR: {str(e)}"
+        return f"ERROR: {error_type}: {str(e)}"
 
 
 def get_picks_data(season: int, week: int, picker: Optional[str] = None):
