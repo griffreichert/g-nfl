@@ -733,28 +733,30 @@ if "games_data" in st.session_state:
                                             == game["away_team"]
                                         )
 
-                                    survivor_button_type = (
-                                        "primary" if survivor_selected else "secondary"
-                                    )
-                                    if st.button(
-                                        "💀",
-                                        key=f"survivor_away_nologo_{game_id}",
-                                        type=survivor_button_type,
-                                        disabled=survivor_disabled,
-                                        help="Survivor pick",
-                                    ):
-                                        if (
-                                            st.session_state.survivor_pick
-                                            == game["away_team"]
+                                        survivor_button_type = (
+                                            "primary"
+                                            if survivor_selected
+                                            else "secondary"
+                                        )
+                                        if st.button(
+                                            "💀",
+                                            key=f"survivor_away_nologo_{game_id}",
+                                            type=survivor_button_type,
+                                            disabled=survivor_disabled,
+                                            help="Survivor pick",
                                         ):
-                                            # Deselect survivor pick
-                                            st.session_state.survivor_pick = None
-                                        else:
-                                            # Select survivor pick
-                                            st.session_state.survivor_pick = game[
-                                                "away_team"
-                                            ]
-                                        st.rerun()
+                                            if (
+                                                st.session_state.survivor_pick
+                                                == game["away_team"]
+                                            ):
+                                                # Deselect survivor pick
+                                                st.session_state.survivor_pick = None
+                                            else:
+                                                # Select survivor pick
+                                                st.session_state.survivor_pick = game[
+                                                    "away_team"
+                                                ]
+                                            st.rerun()
 
                                     with col_underdog:
                                         # Underdog pick button
@@ -768,28 +770,30 @@ if "games_data" in st.session_state:
                                             == game["away_team"]
                                         )
 
-                                    underdog_button_type = (
-                                        "primary" if underdog_selected else "secondary"
-                                    )
-                                    if st.button(
-                                        "🐶",
-                                        key=f"underdog_away_nologo_{game_id}",
-                                        type=underdog_button_type,
-                                        disabled=underdog_disabled,
-                                        help="Underdog pick",
-                                    ):
-                                        if (
-                                            st.session_state.underdog_pick
-                                            == game["away_team"]
+                                        underdog_button_type = (
+                                            "primary"
+                                            if underdog_selected
+                                            else "secondary"
+                                        )
+                                        if st.button(
+                                            "🐶",
+                                            key=f"underdog_away_nologo_{game_id}",
+                                            type=underdog_button_type,
+                                            disabled=underdog_disabled,
+                                            help="Underdog pick",
                                         ):
-                                            # Deselect underdog pick
-                                            st.session_state.underdog_pick = None
-                                        else:
-                                            # Select underdog pick
-                                            st.session_state.underdog_pick = game[
-                                                "away_team"
-                                            ]
-                                        st.rerun()
+                                            if (
+                                                st.session_state.underdog_pick
+                                                == game["away_team"]
+                                            ):
+                                                # Deselect underdog pick
+                                                st.session_state.underdog_pick = None
+                                            else:
+                                                # Select underdog pick
+                                                st.session_state.underdog_pick = game[
+                                                    "away_team"
+                                                ]
+                                            st.rerun()
 
                     with col2:
                         # Get line data for this game
@@ -1017,28 +1021,30 @@ if "games_data" in st.session_state:
                                             == game["home_team"]
                                         )
 
-                                    survivor_button_type = (
-                                        "primary" if survivor_selected else "secondary"
-                                    )
-                                    if st.button(
-                                        "💀",
-                                        key=f"survivor_home_nologo_{game_id}",
-                                        type=survivor_button_type,
-                                        disabled=survivor_disabled,
-                                        help="Survivor pick",
-                                    ):
-                                        if (
-                                            st.session_state.survivor_pick
-                                            == game["home_team"]
+                                        survivor_button_type = (
+                                            "primary"
+                                            if survivor_selected
+                                            else "secondary"
+                                        )
+                                        if st.button(
+                                            "💀",
+                                            key=f"survivor_home_nologo_{game_id}",
+                                            type=survivor_button_type,
+                                            disabled=survivor_disabled,
+                                            help="Survivor pick",
                                         ):
-                                            # Deselect survivor pick
-                                            st.session_state.survivor_pick = None
-                                        else:
-                                            # Select survivor pick
-                                            st.session_state.survivor_pick = game[
-                                                "home_team"
-                                            ]
-                                        st.rerun()
+                                            if (
+                                                st.session_state.survivor_pick
+                                                == game["home_team"]
+                                            ):
+                                                # Deselect survivor pick
+                                                st.session_state.survivor_pick = None
+                                            else:
+                                                # Select survivor pick
+                                                st.session_state.survivor_pick = game[
+                                                    "home_team"
+                                                ]
+                                            st.rerun()
 
                                 with col_underdog:
                                     # Underdog pick button
