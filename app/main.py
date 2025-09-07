@@ -39,6 +39,10 @@ if "survivor_pick" not in st.session_state:
 if "underdog_pick" not in st.session_state:
     st.session_state.underdog_pick = None
 
+# Initialize session state for MNF pick
+if "mnf_pick" not in st.session_state:
+    st.session_state.mnf_pick = None
+
 
 def get_next_pick_state(current_pick, team_name):
     """Get the next state when clicking a team button
@@ -59,6 +63,19 @@ def get_next_pick_state(current_pick, team_name):
     else:
         # Default: select as regular
         return {"team_picked": team_name, "pick_type": "regular"}
+
+
+def get_next_mnf_pick_state(current_pick, team_name):
+    """Get the next state for MNF picks (only regular, no best bet)
+
+    States cycle: unselected -> regular -> unselected
+    """
+    if not current_pick or current_pick.get("team_picked") != team_name:
+        # First click: select as regular
+        return {"team_picked": team_name, "pick_type": "regular"}
+    else:
+        # Second click: unselect
+        return None
 
 
 def get_button_style(is_selected, pick_type, is_disabled):
@@ -91,6 +108,7 @@ st.sidebar.markdown(
 - **Best bets** ⭐: 2 points each
 - **Survivor** 💀: One per week
 - **Underdog** 🐶: One per week
+- **Monday Night** 🌙: Separate pick, 1 point
 - **Maximum**: 6 regular/best bet picks
 """
 )
@@ -227,6 +245,7 @@ if (
     regular_picks = {}
     survivor_pick = None
     underdog_pick = None
+    mnf_pick = None
 
     for game_id, pick_data in existing_picks.items():
         if isinstance(pick_data, dict):
@@ -234,6 +253,8 @@ if (
                 survivor_pick = pick_data.get("team_picked")
             elif pick_data.get("pick_type") == "underdog":
                 underdog_pick = pick_data.get("team_picked")
+            elif pick_data.get("pick_type") == "mnf":
+                mnf_pick = pick_data.get("team_picked")
             else:
                 regular_picks[game_id] = pick_data
         else:
@@ -242,10 +263,14 @@ if (
     st.session_state.picks = regular_picks
     st.session_state.survivor_pick = survivor_pick
     st.session_state.underdog_pick = underdog_pick
+    st.session_state.mnf_pick = mnf_pick
     st.session_state.last_picker = picker
 
     total_picks = (
-        len(regular_picks) + (1 if survivor_pick else 0) + (1 if underdog_pick else 0)
+        len(regular_picks)
+        + (1 if survivor_pick else 0)
+        + (1 if underdog_pick else 0)
+        + (1 if mnf_pick else 0)
     )
     if total_picks > 0:
         st.info(f"✅ Loaded {total_picks} existing picks for {picker}")
@@ -359,6 +384,7 @@ if load_button or "games_data" not in st.session_state:
                     regular_picks = {}
                     survivor_pick = None
                     underdog_pick = None
+                    mnf_pick = None
 
                     for game_id, pick_data in existing_picks.items():
                         if isinstance(pick_data, dict):
@@ -366,6 +392,8 @@ if load_button or "games_data" not in st.session_state:
                                 survivor_pick = pick_data.get("team_picked")
                             elif pick_data.get("pick_type") == "underdog":
                                 underdog_pick = pick_data.get("team_picked")
+                            elif pick_data.get("pick_type") == "mnf":
+                                mnf_pick = pick_data.get("team_picked")
                             else:
                                 regular_picks[game_id] = pick_data
                         else:
@@ -374,11 +402,13 @@ if load_button or "games_data" not in st.session_state:
                     st.session_state.picks = regular_picks
                     st.session_state.survivor_pick = survivor_pick
                     st.session_state.underdog_pick = underdog_pick
+                    st.session_state.mnf_pick = mnf_pick
 
                     total_picks = (
                         len(regular_picks)
                         + (1 if survivor_pick else 0)
                         + (1 if underdog_pick else 0)
+                        + (1 if mnf_pick else 0)
                     )
                     if total_picks > 0:
                         st.info(f"✅ Loaded {total_picks} existing picks for {picker}")
@@ -386,6 +416,7 @@ if load_button or "games_data" not in st.session_state:
                     st.session_state.picks = {}
                     st.session_state.survivor_pick = None
                     st.session_state.underdog_pick = None
+                    st.session_state.mnf_pick = None
 
                 st.session_state.last_week_season_picker = (week, season, picker)
     except Exception as e:
@@ -411,19 +442,29 @@ if "games_data" in st.session_state:
             st.session_state.picks
             or st.session_state.survivor_pick
             or st.session_state.underdog_pick
+            or st.session_state.mnf_pick
         ):
             total_regular = len(st.session_state.picks)
             has_survivor = "✅" if st.session_state.survivor_pick else "⬜"
             has_underdog = "✅" if st.session_state.underdog_pick else "⬜"
+            has_mnf = "✅" if st.session_state.mnf_pick else "⬜"
 
             st.info(
-                f"**Current Picks**: {total_regular}/6 regular • {has_survivor} survivor • {has_underdog} underdog"
+                f"**Current Picks**: {total_regular}/6 regular • {has_survivor} survivor • {has_underdog} underdog • {has_mnf} MNF"
             )
 
         # Create centered container with limited width
         col_spacer1, col_content, col_spacer2 = st.columns([1, 8, 1])
 
+        # Split games into regular and MNF (last game)
+        regular_games = games_df.iloc[:-1]  # All games except the last one
+        mnf_game = (
+            games_df.iloc[-1:] if len(games_df) > 0 else pd.DataFrame()
+        )  # Last game only
+
         with col_content:
+            # Regular Games Section
+            st.markdown("#### 📅 Sunday Games")
             # Header row
             header_col1, header_col2, header_col3 = st.columns([2, 2, 2])
             with header_col1:
@@ -434,7 +475,7 @@ if "games_data" in st.session_state:
                 st.markdown("**🏠 Home Team**")
             st.markdown("---")
 
-            for _, game in games_df.iterrows():
+            for _, game in regular_games.iterrows():
                 game_id = game.name  # This is the game_id from the index
 
                 with st.container():
@@ -918,11 +959,168 @@ if "games_data" in st.session_state:
                 # Use a thinner divider
                 st.markdown("---")
 
+            # MNF Section
+            if not mnf_game.empty:
+                st.markdown("#### 🌙 Monday Night Football")
+                # Header row for MNF
+                header_col1, header_col2, header_col3 = st.columns([2, 2, 2])
+                with header_col1:
+                    st.markdown("**🏃 Away Team**")
+                with header_col2:
+                    st.markdown("**📊 Lines (Pool / Market / Total)**")
+                with header_col3:
+                    st.markdown("**🏠 Home Team**")
+                st.markdown("---")
+
+                for _, game in mnf_game.iterrows():
+                    game_id = game.name  # This is the game_id from the index
+
+                    with st.container():
+                        col1, col2, col3 = st.columns([2, 2, 2])
+
+                        # MNF picks don't count towards the 6 pick limit
+                        # and can only be regular picks (no best bets)
+
+                        # Check if MNF pick exists
+                        mnf_selected_team = st.session_state.mnf_pick
+                        home_selected = mnf_selected_team == game["home_team"]
+                        away_selected = mnf_selected_team == game["away_team"]
+
+                        with col1:
+                            # Away team button for MNF
+                            away_disabled = home_selected or not picker
+
+                            away_logo = get_team_logo(game["away_team"])
+                            button_type = "primary" if away_selected else "secondary"
+
+                            if away_logo:
+                                col_logo, col_button, col_spacer = st.columns([1, 2, 1])
+                                with col_logo:
+                                    st.image(away_logo, width=35)
+                                with col_button:
+                                    if st.button(
+                                        f"🌙 {game['away_team']}",
+                                        key=f"mnf_away_{game_id}",
+                                        type=button_type,
+                                        disabled=away_disabled,
+                                        help="Monday Night Football pick",
+                                    ):
+                                        if away_selected:
+                                            # Deselect MNF pick
+                                            st.session_state.mnf_pick = None
+                                        else:
+                                            # Select MNF pick
+                                            st.session_state.mnf_pick = game[
+                                                "away_team"
+                                            ]
+                                        st.rerun()
+                            else:
+                                if st.button(
+                                    f"🌙 {game['away_team']}",
+                                    key=f"mnf_away_{game_id}",
+                                    type=button_type,
+                                    disabled=away_disabled,
+                                    help="Monday Night Football pick",
+                                ):
+                                    if away_selected:
+                                        # Deselect MNF pick
+                                        st.session_state.mnf_pick = None
+                                    else:
+                                        # Select MNF pick
+                                        st.session_state.mnf_pick = game["away_team"]
+                                    st.rerun()
+
+                        with col2:
+                            # Get line data for MNF game (same as regular games)
+                            lines = st.session_state.get("lines_data", {}).get(
+                                game_id, {}
+                            )
+
+                            # Pool spread
+                            pool_spread = lines.get("pool_spread")
+                            if pool_spread is not None:
+                                pool_text = f"{pool_spread:+g}"
+                            else:
+                                pool_text = "TBD"
+
+                            # Market spread (fallback to nfl_data)
+                            market_spread = lines.get("market_spread")
+                            if market_spread is None and pd.notna(game["spread_line"]):
+                                market_spread = game["spread_line"]
+
+                            if market_spread is not None:
+                                market_spread_text = f"{market_spread:+g}"
+                            else:
+                                market_spread_text = "N/A"
+
+                            # Market total (fallback to nfl_data)
+                            market_total = lines.get("market_total")
+                            if market_total is None and pd.notna(game["total_line"]):
+                                market_total = game["total_line"]
+
+                            if market_total is not None:
+                                market_total_text = f"{market_total:g}"
+                            else:
+                                market_total_text = "N/A"
+
+                            # Display: Pool / Market / Total on one line with bold pool
+                            st.markdown(
+                                f"**{pool_text}** / {market_spread_text} / {market_total_text}"
+                            )
+
+                        with col3:
+                            # Home team button for MNF
+                            home_disabled = away_selected or not picker
+
+                            home_logo = get_team_logo(game["home_team"])
+                            button_type = "primary" if home_selected else "secondary"
+
+                            if home_logo:
+                                col_logo, col_button, col_spacer = st.columns([1, 2, 1])
+                                with col_logo:
+                                    st.image(home_logo, width=35)
+                                with col_button:
+                                    if st.button(
+                                        f"🌙 {game['home_team']}",
+                                        key=f"mnf_home_{game_id}",
+                                        type=button_type,
+                                        disabled=home_disabled,
+                                        help="Monday Night Football pick",
+                                    ):
+                                        if home_selected:
+                                            # Deselect MNF pick
+                                            st.session_state.mnf_pick = None
+                                        else:
+                                            # Select MNF pick
+                                            st.session_state.mnf_pick = game[
+                                                "home_team"
+                                            ]
+                                        st.rerun()
+                            else:
+                                if st.button(
+                                    f"🌙 {game['home_team']}",
+                                    key=f"mnf_home_{game_id}",
+                                    type=button_type,
+                                    disabled=home_disabled,
+                                    help="Monday Night Football pick",
+                                ):
+                                    if home_selected:
+                                        # Deselect MNF pick
+                                        st.session_state.mnf_pick = None
+                                    else:
+                                        # Select MNF pick
+                                        st.session_state.mnf_pick = game["home_team"]
+                                    st.rerun()
+
+                    # Divider after MNF game
+                    st.markdown("---")
+
         # Show picks summary
         if (
             st.session_state.picks
             or st.session_state.survivor_pick
             or st.session_state.underdog_pick
+            or st.session_state.mnf_pick
         ) and picker:
             st.markdown("---")
             st.markdown("### 📋 Pick Summary")
@@ -966,6 +1164,12 @@ if "games_data" in st.session_state:
                     f"• **{st.session_state.underdog_pick}** 🐶 **UNDERDOG**"
                 )
 
+            # Add MNF pick
+            if st.session_state.mnf_pick:
+                picks_list.append(
+                    f"• **{st.session_state.mnf_pick}** 🌙 **MONDAY NIGHT**"
+                )
+
             if picks_list:
                 # Display picks in a nice format
                 for pick in picks_list:
@@ -988,6 +1192,7 @@ if "games_data" in st.session_state:
                             st.session_state.picks
                             or st.session_state.survivor_pick
                             or st.session_state.underdog_pick
+                            or st.session_state.mnf_pick
                         ):
                             # Create combined picks dict including special picks
                             all_picks = dict(
@@ -1016,6 +1221,15 @@ if "games_data" in st.session_state:
                                     "spread": None,
                                 }
 
+                            # Add MNF pick as a special entry
+                            if st.session_state.mnf_pick:
+                                mnf_game_id = f"mnf_{st.session_state.current_week}"
+                                all_picks[mnf_game_id] = {
+                                    "team_picked": st.session_state.mnf_pick,
+                                    "pick_type": "mnf",
+                                    "spread": None,
+                                }
+
                             filepath = save_picks_data(
                                 st.session_state.current_season,
                                 st.session_state.current_week,
@@ -1036,6 +1250,7 @@ if "games_data" in st.session_state:
                         st.session_state.picks = {}
                         st.session_state.survivor_pick = None
                         st.session_state.underdog_pick = None
+                        st.session_state.mnf_pick = None
                         st.success("✅ All picks cleared!")
                         st.rerun()
 
