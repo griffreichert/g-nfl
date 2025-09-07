@@ -1199,16 +1199,34 @@ if "games_data" in st.session_state:
                                     "spread": None,
                                 }
 
-                            filepath = save_picks_data(
+                            # Debug: show what we're trying to save
+                            with st.expander(
+                                "🔍 Debug: Show picks data being saved", expanded=False
+                            ):
+                                st.json(
+                                    {
+                                        "season": st.session_state.current_season,
+                                        "week": st.session_state.current_week,
+                                        "picker": picker,
+                                        "total_picks": len(all_picks),
+                                        "picks": all_picks,
+                                    }
+                                )
+
+                            result = save_picks_data(
                                 st.session_state.current_season,
                                 st.session_state.current_week,
                                 all_picks,
                                 picker,
                             )
-                            if filepath:
-                                st.success(f"✅ Picks saved successfully!")
+                            if result and not result.startswith("ERROR:"):
+                                st.success(f"✅ {result}")
+                            elif result and result.startswith("ERROR:"):
+                                st.error(
+                                    f"❌ Failed to save picks: {result[7:]}"
+                                )  # Remove "ERROR: " prefix
                             else:
-                                st.error("❌ Failed to save picks")
+                                st.error("❌ Failed to save picks: Unknown error")
                         else:
                             st.warning("⚠️ No picks to save")
 

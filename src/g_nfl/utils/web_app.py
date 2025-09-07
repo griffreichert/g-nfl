@@ -37,7 +37,8 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         return f"Successfully saved {picks_saved} picks to database"
     except Exception as e:
         print(f"Error saving picks to database: {e}")
-        return None
+        # Return error message so it can be displayed in Streamlit
+        return f"ERROR: {str(e)}"
 
 
 def get_picks_data(season: int, week: int, picker: Optional[str] = None):
