@@ -174,6 +174,20 @@ def get_pool_spreads(season: int, week: int) -> dict:
         return {}
 
 
+def normalize_game_id(game_id: str) -> str:
+    """Normalize game ID to use zero-padded week format
+
+    Converts formats like '2025_1_KC_LAC' to '2025_01_KC_LAC'
+    """
+    parts = game_id.split("_")
+    if len(parts) >= 4:
+        season, week, away, home = parts[0], parts[1], parts[2], parts[3]
+        # Zero-pad week to 2 digits
+        normalized_week = week.zfill(2)
+        return f"{season}_{normalized_week}_{away}_{home}"
+    return game_id
+
+
 def get_all_lines_data(season: int, week: int) -> dict:
     """Get combined market lines and pool spreads for a season/week
 
@@ -187,15 +201,28 @@ def get_all_lines_data(season: int, week: int) -> dict:
     market_lines = get_market_lines(season, week)
     pool_spreads = get_pool_spreads(season, week)
 
-    # Combine data
+    # Normalize all game IDs to use consistent format
+    normalized_market_lines = {}
+    for game_id, data in market_lines.items():
+        normalized_id = normalize_game_id(game_id)
+        normalized_market_lines[normalized_id] = data
+
+    normalized_pool_spreads = {}
+    for game_id, spread in pool_spreads.items():
+        normalized_id = normalize_game_id(game_id)
+        normalized_pool_spreads[normalized_id] = spread
+
+    # Combine data using normalized game IDs
     combined = {}
-    all_game_ids = set(market_lines.keys()) | set(pool_spreads.keys())
+    all_game_ids = set(normalized_market_lines.keys()) | set(
+        normalized_pool_spreads.keys()
+    )
 
     for game_id in all_game_ids:
         combined[game_id] = {
-            "market_spread": market_lines.get(game_id, {}).get("spread"),
-            "market_total": market_lines.get(game_id, {}).get("total"),
-            "pool_spread": pool_spreads.get(game_id),
+            "market_spread": normalized_market_lines.get(game_id, {}).get("spread"),
+            "market_total": normalized_market_lines.get(game_id, {}).get("total"),
+            "pool_spread": normalized_pool_spreads.get(game_id),
         }
 
     return combined

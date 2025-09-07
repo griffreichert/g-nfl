@@ -1231,11 +1231,32 @@ if "games_data" in st.session_state:
                                 if len(games_df) > 0:
                                     mnf_game = games_df.iloc[-1]  # Last game is MNF
                                     mnf_game_id = mnf_game.name  # Use actual game ID
-                                    all_picks[mnf_game_id] = {
-                                        "team_picked": st.session_state.mnf_pick,
-                                        "pick_type": "mnf",
-                                        "spread": mnf_game.get("spread_line"),
-                                    }
+
+                                    # Check if this game already has a regular pick
+                                    if mnf_game_id in all_picks:
+                                        # Update existing pick to be MNF instead of regular
+                                        existing_pick = all_picks[mnf_game_id]
+                                        if (
+                                            existing_pick.get("team_picked")
+                                            == st.session_state.mnf_pick
+                                        ):
+                                            # Same team - just change the pick type to MNF
+                                            all_picks[mnf_game_id]["pick_type"] = "mnf"
+                                        else:
+                                            # Different team - this shouldn't happen, but handle it
+                                            # MNF pick takes precedence
+                                            all_picks[mnf_game_id] = {
+                                                "team_picked": st.session_state.mnf_pick,
+                                                "pick_type": "mnf",
+                                                "spread": mnf_game.get("spread_line"),
+                                            }
+                                    else:
+                                        # No existing pick for this game - add MNF pick
+                                        all_picks[mnf_game_id] = {
+                                            "team_picked": st.session_state.mnf_pick,
+                                            "pick_type": "mnf",
+                                            "spread": mnf_game.get("spread_line"),
+                                        }
 
                             # Debug: show what we're trying to save
                             with st.expander(
