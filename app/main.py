@@ -1168,36 +1168,63 @@ if "games_data" in st.session_state:
                                 st.session_state.picks
                             )  # Copy regular picks
 
-                            # Add survivor pick as a special entry
+                            # Add survivor pick using actual game ID
                             if st.session_state.survivor_pick:
-                                survivor_game_id = (
-                                    f"survivor_{st.session_state.current_week}"
-                                )
-                                all_picks[survivor_game_id] = {
-                                    "team_picked": st.session_state.survivor_pick,
-                                    "pick_type": "survivor",
-                                    "spread": None,
-                                }
+                                # Find the game ID for the survivor pick
+                                survivor_game_id = None
+                                survivor_spread = None
+                                for _, game in games_df.iterrows():
+                                    if (
+                                        game["away_team"]
+                                        == st.session_state.survivor_pick
+                                        or game["home_team"]
+                                        == st.session_state.survivor_pick
+                                    ):
+                                        survivor_game_id = game.name
+                                        survivor_spread = game.get("spread_line")
+                                        break
 
-                            # Add underdog pick as a special entry
+                                if survivor_game_id:
+                                    all_picks[survivor_game_id] = {
+                                        "team_picked": st.session_state.survivor_pick,
+                                        "pick_type": "survivor",
+                                        "spread": survivor_spread,
+                                    }
+
+                            # Add underdog pick using actual game ID
                             if st.session_state.underdog_pick:
-                                underdog_game_id = (
-                                    f"underdog_{st.session_state.current_week}"
-                                )
-                                all_picks[underdog_game_id] = {
-                                    "team_picked": st.session_state.underdog_pick,
-                                    "pick_type": "underdog",
-                                    "spread": None,
-                                }
+                                # Find the game ID for the underdog pick
+                                underdog_game_id = None
+                                underdog_spread = None
+                                for _, game in games_df.iterrows():
+                                    if (
+                                        game["away_team"]
+                                        == st.session_state.underdog_pick
+                                        or game["home_team"]
+                                        == st.session_state.underdog_pick
+                                    ):
+                                        underdog_game_id = game.name
+                                        underdog_spread = game.get("spread_line")
+                                        break
 
-                            # Add MNF pick as a special entry
+                                if underdog_game_id:
+                                    all_picks[underdog_game_id] = {
+                                        "team_picked": st.session_state.underdog_pick,
+                                        "pick_type": "underdog",
+                                        "spread": underdog_spread,
+                                    }
+
+                            # Add MNF pick using actual game ID (last game in list)
                             if st.session_state.mnf_pick:
-                                mnf_game_id = f"mnf_{st.session_state.current_week}"
-                                all_picks[mnf_game_id] = {
-                                    "team_picked": st.session_state.mnf_pick,
-                                    "pick_type": "mnf",
-                                    "spread": None,
-                                }
+                                # Find the MNF game (last game) and its spread
+                                if len(games_df) > 0:
+                                    mnf_game = games_df.iloc[-1]  # Last game is MNF
+                                    mnf_game_id = mnf_game.name  # Use actual game ID
+                                    all_picks[mnf_game_id] = {
+                                        "team_picked": st.session_state.mnf_pick,
+                                        "pick_type": "mnf",
+                                        "spread": mnf_game.get("spread_line"),
+                                    }
 
                             # Debug: show what we're trying to save
                             with st.expander(
