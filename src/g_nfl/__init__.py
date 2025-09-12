@@ -1,3 +1,4 @@
+CUR_WEEK = 2
 CUR_SEASON = 2025
 
 HFA = 1.5
@@ -10,6 +11,7 @@ EXPLOSIVE_RUN_THRESHOLD = 10
 EXPLOSIVE_PASS_THRESHOLD = 15
 
 __all__ = [
+    "CUR_WEEK",
     "CUR_SEASON",
     "HFA",
     "WP_FILTER",

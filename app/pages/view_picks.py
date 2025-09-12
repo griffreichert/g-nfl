@@ -8,6 +8,7 @@ import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.web_app import get_picks_data, get_team_logo
@@ -31,7 +32,9 @@ with col_controls:
         )
 
     with col2:
-        week = st.selectbox("Select Week", list(range(1, 19)), index=0, key="view_week")
+        week = st.selectbox(
+            "Select Week", list(range(1, 19)), index=CUR_WEEK - 1, key="view_week"
+        )
 
     with col3:
         st.write("")  # Empty space where picker filter was

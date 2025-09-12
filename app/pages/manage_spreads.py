@@ -9,6 +9,7 @@ import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.database import MarketLinesDatabase, PoolSpreadsDatabase
@@ -34,7 +35,7 @@ with col_controls:
 
     with col2:
         week = st.selectbox(
-            "Select Week", list(range(1, 19)), index=0, key="manage_week"
+            "Select Week", list(range(1, 19)), index=CUR_WEEK - 1, key="manage_week"
         )
 
     with col3:

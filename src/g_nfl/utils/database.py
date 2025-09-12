@@ -52,7 +52,15 @@ class PicksDatabase:
 
             # Prepare picks data for insertion
             picks_data = []
-            for game_id, pick_data in picks.items():
+            for pick_key, pick_data in picks.items():
+                # Handle special pick keys vs regular game_id keys
+                if pick_key.startswith(("survivor_", "underdog_", "mnf_")):
+                    # Special picks: extract game_id from after the prefix
+                    prefix, game_id = pick_key.split("_", 1)
+                else:
+                    # Regular picks: key is the game_id
+                    game_id = pick_key
+
                 pick_record = {
                     "season": season,
                     "week": week,

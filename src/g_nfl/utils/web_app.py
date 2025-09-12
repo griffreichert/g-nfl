@@ -22,7 +22,7 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
     Args:
         season: NFL season year
         week: Week number
-        picks: Dictionary mapping game_id to team_picked
+        picks: Dictionary mapping unique_key to pick data with game_id included
         picker: Name of the person making picks
 
     Returns:
@@ -38,10 +38,45 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         print(f"DEBUG: Number of picks to save: {len(picks)}")
         print(f"DEBUG: Picks data: {picks}")
 
+        # Transform picks data to use actual game_id as key for database save
+        transformed_picks = {}
+        for unique_key, pick_data in picks.items():
+            # Handle special pick prefixes (survivor_, underdog_, mnf_) vs regular game_id keys
+            if unique_key.startswith(("survivor_", "underdog_", "mnf_")):
+                # Extract actual game_id from pick_data for special picks
+                actual_game_id = pick_data.get("game_id")
+                pick_type = pick_data.get("pick_type", "regular")
+                # Use the original unique_key as the transformed key for special picks
+                transformed_key = unique_key
+            else:
+                # Regular pick - key is the game_id, just pass through
+                actual_game_id = unique_key
+                pick_type = (
+                    pick_data.get("pick_type", "regular")
+                    if isinstance(pick_data, dict)
+                    else "regular"
+                )
+                # For regular picks, use the game_id as the key
+                transformed_key = unique_key
+
+            transformed_picks[transformed_key] = {
+                "team_picked": (
+                    pick_data.get("team_picked")
+                    if isinstance(pick_data, dict)
+                    else pick_data
+                ),
+                "pick_type": pick_type,
+                "spread": (
+                    pick_data.get("spread") if isinstance(pick_data, dict) else None
+                ),
+            }
+
+        print(f"DEBUG: Transformed picks for database: {transformed_picks}")
+
         db = PicksDatabase()
         print(f"DEBUG: PicksDatabase created successfully")
 
-        picks_saved = db.save_picks(season, week, picks, picker)
+        picks_saved = db.save_picks(season, week, transformed_picks, picker)
         print(f"DEBUG: save_picks returned: {picks_saved}")
 
         return f"Successfully saved {picks_saved} picks to database"
@@ -93,13 +128,20 @@ def load_existing_picks(season: int, week: int, picker: str) -> dict:
         picks_list = db.get_picks(season, week, picker)
 
         # Convert to dictionary format expected by streamlit session state
+        # Keep original format - only regular/best_bet picks go in picks dict
+        # Special picks (survivor, underdog, mnf) will be handled separately in main.py
         picks_dict = {}
         for pick in picks_list:
-            picks_dict[pick["game_id"]] = {
-                "team_picked": pick["team_picked"],
-                "pick_type": pick.get("pick_type", "regular"),
-                "spread": pick.get("spread"),
-            }
+            game_id = pick["game_id"]
+            pick_type = pick.get("pick_type", "regular")
+
+            # Only store regular/best_bet picks in the main picks dict
+            if pick_type in ["regular", "best_bet"]:
+                picks_dict[game_id] = {
+                    "team_picked": pick["team_picked"],
+                    "pick_type": pick_type,
+                    "spread": pick.get("spread"),
+                }
 
         return picks_dict
     except Exception as e:
