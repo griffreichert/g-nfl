@@ -271,6 +271,38 @@ class MarketLinesDatabase:
         result = query.execute()
         return result.data
 
+    def get_available_weeks(self, season: int) -> List[int]:
+        """Get all weeks that have market lines data for a given season
+
+        Args:
+            season: NFL season year
+
+        Returns:
+            List of week numbers that have market lines data, sorted ascending
+        """
+        query = self.client.table("market_lines").select("week").eq("season", season)
+
+        result = query.execute()
+
+        if not result.data:
+            return []
+
+        # Extract unique weeks and sort them
+        weeks = list(set(row["week"] for row in result.data if row["week"]))
+        return sorted(weeks)
+
+    def get_max_week_for_season(self, season: int) -> Optional[int]:
+        """Get the maximum week number that has market lines data for a given season
+
+        Args:
+            season: NFL season year
+
+        Returns:
+            Maximum week number with data, or None if no data exists
+        """
+        available_weeks = self.get_available_weeks(season)
+        return max(available_weeks) if available_weeks else None
+
 
 class PoolSpreadsDatabase:
     """Supabase database handler for storing pool/competition spread lines"""

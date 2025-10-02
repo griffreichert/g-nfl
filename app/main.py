@@ -255,12 +255,39 @@ with col1:
     )
 
 with col2:
-    week = st.selectbox("Week", list(range(1, 19)), index=CUR_WEEK - 1)
+    # Get available weeks from database for the selected season
+    try:
+        from g_nfl.utils.database import MarketLinesDatabase
+
+        market_db = MarketLinesDatabase()
+        available_weeks = market_db.get_available_weeks(season)
+        max_week = market_db.get_max_week_for_season(season)
+
+        if available_weeks:
+            # Use available weeks from database
+            week_options = available_weeks
+            # Set default to max week if it exists, otherwise first available week
+            if max_week and max_week in available_weeks:
+                default_week_index = available_weeks.index(max_week)
+            else:
+                default_week_index = (
+                    len(available_weeks) - 1
+                )  # Last week in available list
+        else:
+            # Fallback to full range if no data in database
+            week_options = list(range(1, 19))
+            default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
+    except Exception as e:
+        # Fallback to full range if database access fails
+        week_options = list(range(1, 19))
+        default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
+
+    week = st.selectbox("Week", week_options, index=default_week_index)
 
 with col3:
     picker = st.selectbox(
         "Picker",
-        [None] + ["Griffin", "Harry", "Ben", "Chuck", "Hunter", "Jacko"],
+        [None] + ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "Jacko"],
         index=0,
         format_func=lambda x: "👤 Choose your name..." if x is None else f"👤 {x}",
     )
@@ -419,15 +446,15 @@ if load_button or "games_data" not in st.session_state:
             st.session_state.lines_data = lines_data
 
             # Debug: show lines data structure
-            with st.expander("🔍 Debug: Show lines data", expanded=False):
-                st.write("**Games DataFrame game IDs:**")
-                st.write(list(games_df.index))
-                st.write("**Lines data game IDs:**")
-                st.write(list(lines_data.keys()))
-                st.write("**Sample lines data:**")
-                if lines_data:
-                    sample_key = list(lines_data.keys())[0]
-                    st.json({sample_key: lines_data[sample_key]})
+            # with st.expander("🔍 Debug: Show lines data", expanded=False):
+            #     st.write("**Games DataFrame game IDs:**")
+            #     st.write(list(games_df.index))
+            #     st.write("**Lines data game IDs:**")
+            #     st.write(list(lines_data.keys()))
+            #     st.write("**Sample lines data:**")
+            #     if lines_data:
+            #         sample_key = list(lines_data.keys())[0]
+            #         st.json({sample_key: lines_data[sample_key]})
 
             # Show data source info
             st.info("📊 Using stored market data from database")
@@ -1303,29 +1330,29 @@ if "games_data" in st.session_state:
                                     }
 
                             # Debug: show what we're trying to save
-                            with st.expander(
-                                "🔍 Debug: Show picks data being saved", expanded=False
-                            ):
-                                st.write("**Session State Picks:**")
-                                st.json(dict(st.session_state.picks))
-                                st.write("**Special Picks:**")
-                                st.write(f"Survivor: {st.session_state.survivor_pick}")
-                                st.write(f"Underdog: {st.session_state.underdog_pick}")
-                                st.write(f"MNF: {st.session_state.mnf_pick}")
-                                st.write("**Combined All Picks:**")
-                                st.json(
-                                    {
-                                        "season": st.session_state.current_season,
-                                        "week": st.session_state.current_week,
-                                        "picker": picker,
-                                        "picks": all_picks,
-                                    }
-                                )
+                            # with st.expander(
+                            #     "🔍 Debug: Show picks data being saved", expanded=False
+                            # ):
+                            #     st.write("**Session State Picks:**")
+                            #     st.json(dict(st.session_state.picks))
+                            #     st.write("**Special Picks:**")
+                            #     st.write(f"Survivor: {st.session_state.survivor_pick}")
+                            #     st.write(f"Underdog: {st.session_state.underdog_pick}")
+                            #     st.write(f"MNF: {st.session_state.mnf_pick}")
+                            #     st.write("**Combined All Picks:**")
+                            #     st.json(
+                            #         {
+                            #             "season": st.session_state.current_season,
+                            #             "week": st.session_state.current_week,
+                            #             "picker": picker,
+                            #             "picks": all_picks,
+                            #         }
+                            #     )
 
                             # Add more debugging for the save process
-                            st.write(
-                                f"**Attempting to save {len(all_picks)} picks...**"
-                            )
+                            # st.write(
+                            #     f"**Attempting to save {len(all_picks)} picks...**"
+                            # )
 
                             result = save_picks_data(
                                 st.session_state.current_season,
@@ -1335,7 +1362,7 @@ if "games_data" in st.session_state:
                             )
 
                             # Debug the result
-                            st.write(f"**Save result:** `{repr(result)}`")
+                            # st.write(f"**Save result:** `{repr(result)}`")
 
                             if result and not result.startswith("ERROR:"):
                                 st.success(f"✅ {result}")
