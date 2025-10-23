@@ -159,6 +159,12 @@ div.stButton > button[kind="primary"]:hover {
     border-color: #1e7e34 !important;
 }
 
+/* Save Picks button - make it green */
+div.stButton > button[kind="primary"]:has-text("💾 Save Picks") {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+}
+
 /* Disabled buttons */
 div.stButton > button:disabled {
     background-color: #6c757d !important;
@@ -563,19 +569,51 @@ if "games_data" in st.session_state:
                 st.markdown("**🏠 Home Team**")
             st.markdown("---")
 
+            # Prepare games with spread data for sorting
+            games_with_spreads = []
             for game_index, (_, game) in enumerate(games_df.iterrows()):
-                game_id = game.name  # This is the game_id from the index
-                is_mnf = game_index == len(games_df) - 1  # Last game is MNF
+                game_id = game.name
+                is_mnf = game_index == len(games_df) - 1
+
+                # Get spread (pool preferred, fallback to market)
+                lines = st.session_state.get("lines_data", {}).get(game_id, {})
+                pool_spread = lines.get("pool_spread")
+                market_spread = lines.get("market_spread")
+                if market_spread is None and pd.notna(game["spread_line"]):
+                    market_spread = game["spread_line"]
+
+                effective_spread = (
+                    pool_spread if pool_spread is not None else market_spread
+                )
+
+                games_with_spreads.append(
+                    {
+                        "game": game,
+                        "game_id": game_id,
+                        "game_index": game_index,
+                        "is_mnf": is_mnf,
+                        "spread": effective_spread,
+                    }
+                )
+
+            # Render regular/best bet games (including MNF)
+            for game_data in games_with_spreads:
+                game = game_data["game"]
+                game_id = game_data["game_id"]
+                is_mnf = game_data["is_mnf"]
 
                 with st.container():
-                    col1, col2, col3 = st.columns([2, 2, 2])
-
                     if is_mnf:
-                        # MNF game logic
+                        # MNF game uses separate state
                         mnf_selected_team = st.session_state.mnf_pick
                         home_selected = mnf_selected_team == game["home_team"]
                         away_selected = mnf_selected_team == game["away_team"]
-                        current_pick = None  # MNF doesn't use regular pick format
+                        current_pick = None
+                        home_pick_type = "mnf" if home_selected else None
+                        away_pick_type = "mnf" if away_selected else None
+                        max_picks_reached = (
+                            False  # MNF doesn't count toward 6-pick limit
+                        )
                     else:
                         # Regular game logic
                         max_picks_reached = len(st.session_state.picks) >= 6
@@ -596,11 +634,6 @@ if "games_data" in st.session_state:
                             current_pick.get("team_picked") == game["away_team"]
                         )
 
-                    if is_mnf:
-                        # MNF picks are always "regular" type (no best bets)
-                        home_pick_type = "mnf" if home_selected else None
-                        away_pick_type = "mnf" if away_selected else None
-                    else:
                         # Regular game pick types
                         home_pick_type = (
                             current_pick.get("pick_type", "regular")
@@ -613,31 +646,33 @@ if "games_data" in st.session_state:
                             else None
                         )
 
+                    # Create flexible mobile-responsive layout
+                    col1, col2, col3 = st.columns([3, 2, 3])
+
                     with col1:
                         # Away team button
+                        away_disabled = (
+                            (max_picks_reached and not away_selected)
+                            or home_selected
+                            or not picker
+                        )
+                        button_type = get_button_style(
+                            away_selected, away_pick_type, away_disabled
+                        )
+
+                        # Add MNF emoji if this is MNF game
                         if is_mnf:
-                            # MNF button logic
-                            away_disabled = home_selected or not picker
-                            button_type = "primary" if away_selected else "secondary"
                             button_label = f"🌙 {game['away_team']}"
                         else:
-                            # Regular game button logic
-                            away_disabled = (
-                                (max_picks_reached and not away_selected)
-                                or home_selected
-                                or not picker
-                            )
-                            button_type = get_button_style(
-                                away_selected, away_pick_type, away_disabled
-                            )
                             button_label = get_button_label(
                                 game["away_team"], away_pick_type
                             )
 
                         away_logo = get_team_logo(game["away_team"])
 
+                        # Mobile-responsive: logo and button on same line
                         if away_logo:
-                            col_logo, col_button, col_special = st.columns([1, 2, 1])
+                            col_logo, col_button = st.columns([1, 4])
                             with col_logo:
                                 st.image(away_logo, width=35)
                             with col_button:
@@ -646,14 +681,13 @@ if "games_data" in st.session_state:
                                     key=f"away_{game_id}",
                                     type=button_type,
                                     disabled=away_disabled,
+                                    use_container_width=True,
                                 ):
                                     if is_mnf:
                                         # MNF pick logic
                                         if away_selected:
-                                            # Deselect MNF pick
                                             st.session_state.mnf_pick = None
                                         else:
-                                            # Select MNF pick
                                             st.session_state.mnf_pick = game[
                                                 "away_team"
                                             ]
@@ -673,201 +707,34 @@ if "games_data" in st.session_state:
                                             )
                                             st.session_state.picks[game_id] = next_state
                                     st.rerun()
-                            with col_special:
-                                if (
-                                    not is_mnf
-                                ):  # Survivor/Underdog only for regular games
-                                    # Put both buttons in a single row
-                                    col_survivor, col_underdog = st.columns(2)
-
-                                    with col_survivor:
-                                        # Survivor pick button
-                                        survivor_disabled = not picker or (
-                                            st.session_state.survivor_pick is not None
-                                            and st.session_state.survivor_pick
-                                            != game["away_team"]
-                                        )
-                                        survivor_selected = (
-                                            st.session_state.survivor_pick
-                                            == game["away_team"]
-                                        )
-
-                                        survivor_button_type = (
-                                            "primary"
-                                            if survivor_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "💀",
-                                            key=f"survivor_away_{game_id}",
-                                            type=survivor_button_type,
-                                            disabled=survivor_disabled,
-                                            help="Survivor pick",
-                                        ):
-                                            if (
-                                                st.session_state.survivor_pick
-                                                == game["away_team"]
-                                            ):
-                                                # Deselect survivor pick
-                                                st.session_state.survivor_pick = None
-                                            else:
-                                                # Select survivor pick
-                                                st.session_state.survivor_pick = game[
-                                                    "away_team"
-                                                ]
-                                            st.rerun()
-
-                                    with col_underdog:
-                                        # Underdog pick button
-                                        underdog_disabled = not picker or (
-                                            st.session_state.underdog_pick is not None
-                                            and st.session_state.underdog_pick
-                                            != game["away_team"]
-                                        )
-                                        underdog_selected = (
-                                            st.session_state.underdog_pick
-                                            == game["away_team"]
-                                        )
-
-                                        underdog_button_type = (
-                                            "primary"
-                                            if underdog_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "🐶",
-                                            key=f"underdog_away_{game_id}",
-                                            type=underdog_button_type,
-                                            disabled=underdog_disabled,
-                                            help="Underdog pick",
-                                        ):
-                                            if (
-                                                st.session_state.underdog_pick
-                                                == game["away_team"]
-                                            ):
-                                                # Deselect underdog pick
-                                                st.session_state.underdog_pick = None
-                                            else:
-                                                # Select underdog pick
-                                                st.session_state.underdog_pick = game[
-                                                    "away_team"
-                                                ]
-                                            st.rerun()
                         else:
-                            col_button, col_special = st.columns([3, 1])
-                            with col_button:
-                                if st.button(
-                                    button_label,
-                                    key=f"away_{game_id}",
-                                    type=button_type,
-                                    disabled=away_disabled,
-                                ):
-                                    if is_mnf:
-                                        # MNF pick logic
-                                        if away_selected:
-                                            # Deselect MNF pick
-                                            st.session_state.mnf_pick = None
-                                        else:
-                                            # Select MNF pick
-                                            st.session_state.mnf_pick = game[
-                                                "away_team"
-                                            ]
+                            if st.button(
+                                button_label,
+                                key=f"away_{game_id}",
+                                type=button_type,
+                                disabled=away_disabled,
+                                use_container_width=True,
+                            ):
+                                if is_mnf:
+                                    # MNF pick logic
+                                    if away_selected:
+                                        st.session_state.mnf_pick = None
                                     else:
-                                        # Regular game pick logic
-                                        next_state = get_next_pick_state(
-                                            current_pick, game["away_team"]
-                                        )
-                                        if next_state is None:
-                                            # Remove the pick
-                                            if game_id in st.session_state.picks:
-                                                del st.session_state.picks[game_id]
-                                        else:
-                                            # Add spread info
-                                            next_state["spread"] = game.get(
-                                                "spread_line"
-                                            )
-                                            st.session_state.picks[game_id] = next_state
-                                    st.rerun()
-                            with col_special:
-                                if (
-                                    not is_mnf
-                                ):  # Survivor/Underdog only for regular games
-                                    # Put both buttons in a single row
-                                    col_survivor, col_underdog = st.columns(2)
-
-                                    with col_survivor:
-                                        # Survivor pick button
-                                        survivor_disabled = not picker or (
-                                            st.session_state.survivor_pick is not None
-                                            and st.session_state.survivor_pick
-                                            != game["away_team"]
-                                        )
-                                        survivor_selected = (
-                                            st.session_state.survivor_pick
-                                            == game["away_team"]
-                                        )
-
-                                        survivor_button_type = (
-                                            "primary"
-                                            if survivor_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "💀",
-                                            key=f"survivor_away_nologo_{game_id}",
-                                            type=survivor_button_type,
-                                            disabled=survivor_disabled,
-                                            help="Survivor pick",
-                                        ):
-                                            if (
-                                                st.session_state.survivor_pick
-                                                == game["away_team"]
-                                            ):
-                                                # Deselect survivor pick
-                                                st.session_state.survivor_pick = None
-                                            else:
-                                                # Select survivor pick
-                                                st.session_state.survivor_pick = game[
-                                                    "away_team"
-                                                ]
-                                            st.rerun()
-
-                                    with col_underdog:
-                                        # Underdog pick button
-                                        underdog_disabled = not picker or (
-                                            st.session_state.underdog_pick is not None
-                                            and st.session_state.underdog_pick
-                                            != game["away_team"]
-                                        )
-                                        underdog_selected = (
-                                            st.session_state.underdog_pick
-                                            == game["away_team"]
-                                        )
-
-                                        underdog_button_type = (
-                                            "primary"
-                                            if underdog_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "🐶",
-                                            key=f"underdog_away_nologo_{game_id}",
-                                            type=underdog_button_type,
-                                            disabled=underdog_disabled,
-                                            help="Underdog pick",
-                                        ):
-                                            if (
-                                                st.session_state.underdog_pick
-                                                == game["away_team"]
-                                            ):
-                                                # Deselect underdog pick
-                                                st.session_state.underdog_pick = None
-                                            else:
-                                                # Select underdog pick
-                                                st.session_state.underdog_pick = game[
-                                                    "away_team"
-                                                ]
-                                            st.rerun()
+                                        st.session_state.mnf_pick = game["away_team"]
+                                else:
+                                    # Regular game pick logic
+                                    next_state = get_next_pick_state(
+                                        current_pick, game["away_team"]
+                                    )
+                                    if next_state is None:
+                                        # Remove the pick
+                                        if game_id in st.session_state.picks:
+                                            del st.session_state.picks[game_id]
+                                    else:
+                                        # Add spread info
+                                        next_state["spread"] = game.get("spread_line")
+                                        st.session_state.picks[game_id] = next_state
+                                st.rerun()
 
                     with col2:
                         # Get line data for this game
@@ -907,29 +774,28 @@ if "games_data" in st.session_state:
 
                     with col3:
                         # Home team button
+                        home_disabled = (
+                            (max_picks_reached and not home_selected)
+                            or away_selected
+                            or not picker
+                        )
+                        button_type = get_button_style(
+                            home_selected, home_pick_type, home_disabled
+                        )
+
+                        # Add MNF emoji if this is MNF game
                         if is_mnf:
-                            # MNF button logic
-                            home_disabled = away_selected or not picker
-                            button_type = "primary" if home_selected else "secondary"
                             button_label = f"🌙 {game['home_team']}"
                         else:
-                            # Regular game button logic
-                            home_disabled = (
-                                (max_picks_reached and not home_selected)
-                                or away_selected
-                                or not picker
-                            )
-                            button_type = get_button_style(
-                                home_selected, home_pick_type, home_disabled
-                            )
                             button_label = get_button_label(
                                 game["home_team"], home_pick_type
                             )
 
                         home_logo = get_team_logo(game["home_team"])
 
+                        # Mobile-responsive: logo and button on same line
                         if home_logo:
-                            col_logo, col_button, col_special = st.columns([1, 2, 1])
+                            col_logo, col_button = st.columns([1, 4])
                             with col_logo:
                                 st.image(home_logo, width=35)
                             with col_button:
@@ -938,14 +804,13 @@ if "games_data" in st.session_state:
                                     key=f"home_{game_id}",
                                     type=button_type,
                                     disabled=home_disabled,
+                                    use_container_width=True,
                                 ):
                                     if is_mnf:
                                         # MNF pick logic
                                         if home_selected:
-                                            # Deselect MNF pick
                                             st.session_state.mnf_pick = None
                                         else:
-                                            # Select MNF pick
                                             st.session_state.mnf_pick = game[
                                                 "home_team"
                                             ]
@@ -965,204 +830,203 @@ if "games_data" in st.session_state:
                                             )
                                             st.session_state.picks[game_id] = next_state
                                     st.rerun()
-                            with col_special:
-                                if (
-                                    not is_mnf
-                                ):  # Survivor/Underdog only for regular games
-                                    # Put both buttons in a single row
-                                    col_survivor, col_underdog = st.columns(2)
-
-                                    with col_survivor:
-                                        # Survivor pick button
-                                        survivor_disabled = not picker or (
-                                            st.session_state.survivor_pick is not None
-                                            and st.session_state.survivor_pick
-                                            != game["home_team"]
-                                        )
-                                        survivor_selected = (
-                                            st.session_state.survivor_pick
-                                            == game["home_team"]
-                                        )
-
-                                        survivor_button_type = (
-                                            "primary"
-                                            if survivor_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "💀",
-                                            key=f"survivor_home_{game_id}",
-                                            type=survivor_button_type,
-                                            disabled=survivor_disabled,
-                                            help="Survivor pick",
-                                        ):
-                                            if (
-                                                st.session_state.survivor_pick
-                                                == game["home_team"]
-                                            ):
-                                                # Deselect survivor pick
-                                                st.session_state.survivor_pick = None
-                                            else:
-                                                # Select survivor pick
-                                                st.session_state.survivor_pick = game[
-                                                    "home_team"
-                                                ]
-                                            st.rerun()
-
-                                    with col_underdog:
-                                        # Underdog pick button
-                                        underdog_disabled = not picker or (
-                                            st.session_state.underdog_pick is not None
-                                            and st.session_state.underdog_pick
-                                            != game["home_team"]
-                                        )
-                                        underdog_selected = (
-                                            st.session_state.underdog_pick
-                                            == game["home_team"]
-                                        )
-
-                                        underdog_button_type = (
-                                            "primary"
-                                            if underdog_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "🐶",
-                                            key=f"underdog_home_{game_id}",
-                                            type=underdog_button_type,
-                                            disabled=underdog_disabled,
-                                            help="Underdog pick",
-                                        ):
-                                            if (
-                                                st.session_state.underdog_pick
-                                                == game["home_team"]
-                                            ):
-                                                # Deselect underdog pick
-                                                st.session_state.underdog_pick = None
-                                            else:
-                                                # Select underdog pick
-                                                st.session_state.underdog_pick = game[
-                                                    "home_team"
-                                                ]
-                                            st.rerun()
                         else:
-                            col_button, col_special = st.columns([3, 1])
-                            with col_button:
-                                if st.button(
-                                    button_label,
-                                    key=f"home_{game_id}",
-                                    type=button_type,
-                                    disabled=home_disabled,
-                                ):
-                                    if is_mnf:
-                                        # MNF pick logic
-                                        if home_selected:
-                                            # Deselect MNF pick
-                                            st.session_state.mnf_pick = None
-                                        else:
-                                            # Select MNF pick
-                                            st.session_state.mnf_pick = game[
-                                                "home_team"
-                                            ]
+                            if st.button(
+                                button_label,
+                                key=f"home_{game_id}",
+                                type=button_type,
+                                disabled=home_disabled,
+                                use_container_width=True,
+                            ):
+                                if is_mnf:
+                                    # MNF pick logic
+                                    if home_selected:
+                                        st.session_state.mnf_pick = None
                                     else:
-                                        # Regular game pick logic
-                                        next_state = get_next_pick_state(
-                                            current_pick, game["home_team"]
-                                        )
-                                        if next_state is None:
-                                            # Remove the pick
-                                            if game_id in st.session_state.picks:
-                                                del st.session_state.picks[game_id]
-                                        else:
-                                            # Add spread info
-                                            next_state["spread"] = game.get(
-                                                "spread_line"
-                                            )
-                                            st.session_state.picks[game_id] = next_state
-                                    st.rerun()
-                            with col_special:
-                                if (
-                                    not is_mnf
-                                ):  # Survivor/Underdog only for regular games
-                                    # Put both buttons in a single row
-                                    col_survivor, col_underdog = st.columns(2)
+                                        st.session_state.mnf_pick = game["home_team"]
+                                else:
+                                    # Regular game pick logic
+                                    next_state = get_next_pick_state(
+                                        current_pick, game["home_team"]
+                                    )
+                                    if next_state is None:
+                                        # Remove the pick
+                                        if game_id in st.session_state.picks:
+                                            del st.session_state.picks[game_id]
+                                    else:
+                                        # Add spread info
+                                        next_state["spread"] = game.get("spread_line")
+                                        st.session_state.picks[game_id] = next_state
+                                st.rerun()
 
-                                    with col_survivor:
-                                        # Survivor pick button
-                                        survivor_disabled = not picker or (
-                                            st.session_state.survivor_pick is not None
-                                            and st.session_state.survivor_pick
-                                            != game["home_team"]
-                                        )
-                                        survivor_selected = (
-                                            st.session_state.survivor_pick
-                                            == game["home_team"]
-                                        )
+                    # Use a thinner divider
+                    st.markdown("---")
 
-                                        survivor_button_type = (
-                                            "primary"
-                                            if survivor_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "💀",
-                                            key=f"survivor_home_nologo_{game_id}",
-                                            type=survivor_button_type,
-                                            disabled=survivor_disabled,
-                                            help="Survivor pick",
-                                        ):
-                                            if (
-                                                st.session_state.survivor_pick
-                                                == game["home_team"]
-                                            ):
-                                                # Deselect survivor pick
-                                                st.session_state.survivor_pick = None
-                                            else:
-                                                # Select survivor pick
-                                                st.session_state.survivor_pick = game[
-                                                    "home_team"
-                                                ]
-                                            st.rerun()
+            # Survivor Section (Favorites)
+            st.markdown("### 💀 Survivor Pool")
+            st.markdown("Pick ONE favorite (lowest spread) for the week")
 
-                                    with col_underdog:
-                                        # Underdog pick button
-                                        underdog_disabled = not picker or (
-                                            st.session_state.underdog_pick is not None
-                                            and st.session_state.underdog_pick
-                                            != game["home_team"]
-                                        )
-                                        underdog_selected = (
-                                            st.session_state.underdog_pick
-                                            == game["home_team"]
-                                        )
+            # Sort games by spread (most negative = biggest favorite)
+            favorites = []
+            for game_data in games_with_spreads:
+                if game_data["spread"] is not None:
+                    game = game_data["game"]
+                    spread = game_data["spread"]
+                    game_id = game_data["game_id"]
 
-                                        underdog_button_type = (
-                                            "primary"
-                                            if underdog_selected
-                                            else "secondary"
-                                        )
-                                        if st.button(
-                                            "🐶",
-                                            key=f"underdog_home_nologo_{game_id}",
-                                            type=underdog_button_type,
-                                            disabled=underdog_disabled,
-                                            help="Underdog pick",
-                                        ):
-                                            if (
-                                                st.session_state.underdog_pick
-                                                == game["home_team"]
-                                            ):
-                                                # Deselect underdog pick
-                                                st.session_state.underdog_pick = None
-                                            else:
-                                                # Select underdog pick
-                                                st.session_state.underdog_pick = game[
-                                                    "home_team"
-                                                ]
-                                            st.rerun()
+                    # Determine favorite (negative spread = away favorite, positive = home favorite)
+                    if spread < 0:
+                        favorite_team = game["away_team"]
+                        opponent_team = game["home_team"]
+                        favorite_spread = spread
+                    else:
+                        favorite_team = game["home_team"]
+                        opponent_team = game["away_team"]
+                        favorite_spread = -spread
 
-                # Use a thinner divider
-                st.markdown("---")
+                    favorites.append(
+                        {
+                            "team": favorite_team,
+                            "opponent": opponent_team,
+                            "spread": favorite_spread,
+                            "game_id": game_id,
+                            "game": game,
+                        }
+                    )
+
+            # Sort by spread (most negative first = biggest favorite)
+            favorites.sort(key=lambda x: x["spread"])
+
+            # Display favorites
+            for fav_data in favorites:
+                survivor_selected = st.session_state.survivor_pick == fav_data["team"]
+                survivor_disabled = not picker or (
+                    st.session_state.survivor_pick is not None
+                    and st.session_state.survivor_pick != fav_data["team"]
+                )
+
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    team_logo = get_team_logo(fav_data["team"])
+
+                    if team_logo:
+                        col_logo, col_info = st.columns([1, 6])
+                        with col_logo:
+                            st.image(team_logo, width=35)
+                        with col_info:
+                            st.markdown(
+                                f"**{fav_data['team']}** ({fav_data['spread']:+.1f}) vs {fav_data['opponent']}"
+                            )
+                    else:
+                        st.markdown(
+                            f"**{fav_data['team']}** ({fav_data['spread']:+.1f}) vs {fav_data['opponent']}"
+                        )
+
+                with col2:
+                    button_type = "primary" if survivor_selected else "secondary"
+                    button_text = (
+                        f"💀 {fav_data['team']}"
+                        if survivor_selected
+                        else fav_data["team"]
+                    )
+                    if st.button(
+                        button_text,
+                        key=f"survivor_{fav_data['game_id']}_{fav_data['team']}",
+                        type=button_type,
+                        disabled=survivor_disabled,
+                        use_container_width=True,
+                    ):
+                        if survivor_selected:
+                            st.session_state.survivor_pick = None
+                        else:
+                            st.session_state.survivor_pick = fav_data["team"]
+                        st.rerun()
+
+            st.markdown("---")
+
+            # Underdog Section
+            st.markdown("### 🐶 Underdog Pool")
+            st.markdown("Pick ONE underdog (highest spread) for the week")
+
+            # Sort games by spread (most positive = biggest underdog)
+            underdogs = []
+            for game_data in games_with_spreads:
+                if game_data["spread"] is not None:
+                    game = game_data["game"]
+                    spread = game_data["spread"]
+                    game_id = game_data["game_id"]
+
+                    # Determine underdog (negative spread = home underdog, positive = away underdog)
+                    if spread < 0:
+                        underdog_team = game["home_team"]
+                        opponent_team = game["away_team"]
+                        underdog_spread = -spread  # Flip to positive
+                    else:
+                        underdog_team = game["away_team"]
+                        opponent_team = game["home_team"]
+                        underdog_spread = spread
+
+                    underdogs.append(
+                        {
+                            "team": underdog_team,
+                            "opponent": opponent_team,
+                            "spread": underdog_spread,
+                            "game_id": game_id,
+                            "game": game,
+                        }
+                    )
+
+            # Sort by spread (most positive first = biggest underdog)
+            underdogs.sort(key=lambda x: x["spread"], reverse=True)
+
+            # Display underdogs
+            for dog_data in underdogs:
+                underdog_selected = st.session_state.underdog_pick == dog_data["team"]
+                underdog_disabled = not picker or (
+                    st.session_state.underdog_pick is not None
+                    and st.session_state.underdog_pick != dog_data["team"]
+                )
+
+                col1, col2 = st.columns([4, 1])
+
+                with col1:
+                    team_logo = get_team_logo(dog_data["team"])
+
+                    if team_logo:
+                        col_logo, col_info = st.columns([1, 6])
+                        with col_logo:
+                            st.image(team_logo, width=35)
+                        with col_info:
+                            st.markdown(
+                                f"**{dog_data['team']}** (+{dog_data['spread']:.1f}) vs {dog_data['opponent']}"
+                            )
+                    else:
+                        st.markdown(
+                            f"**{dog_data['team']}** (+{dog_data['spread']:.1f}) vs {dog_data['opponent']}"
+                        )
+
+                with col2:
+                    button_type = "primary" if underdog_selected else "secondary"
+                    button_text = (
+                        f"🐶 {dog_data['team']}"
+                        if underdog_selected
+                        else dog_data["team"]
+                    )
+                    if st.button(
+                        button_text,
+                        key=f"underdog_{dog_data['game_id']}_{dog_data['team']}",
+                        type=button_type,
+                        disabled=underdog_disabled,
+                        use_container_width=True,
+                    ):
+                        if underdog_selected:
+                            st.session_state.underdog_pick = None
+                        else:
+                            st.session_state.underdog_pick = dog_data["team"]
+                        st.rerun()
+
+            st.markdown("---")
 
         # Show picks summary
         if (
@@ -1173,9 +1037,15 @@ if "games_data" in st.session_state:
         ) and picker:
             st.markdown("---")
             st.markdown("### 📋 Pick Summary")
-            picks_list = []
 
-            # Add regular/best bet picks
+            # Build structured picks list with opponent info
+            best_bets = []
+            regular_picks = []
+            mnf_pick_line = None
+            survivor_pick_line = None
+            underdog_pick_line = None
+
+            # Process regular/best bet picks
             for game_id, pick_data in st.session_state.picks.items():
                 if game_id in games_df.index:
                     game = games_df.loc[game_id]
@@ -1188,6 +1058,14 @@ if "games_data" in st.session_state:
                         team = pick_data.get("team_picked", "")
                         pick_type = pick_data.get("pick_type", "regular")
 
+                    # Determine opponent and location
+                    if team == game["away_team"]:
+                        opponent = game["home_team"]
+                        location = "at"
+                    else:
+                        opponent = game["away_team"]
+                        location = "vs"
+
                     # Show spread - flip for home teams
                     if pd.notna(game["spread_line"]):
                         base_spread = game["spread_line"]
@@ -1196,38 +1074,128 @@ if "games_data" in st.session_state:
                             display_spread = -base_spread
                         else:
                             display_spread = base_spread
-                        spread = f"{display_spread:+.1f}"
+                        spread = f"({display_spread:+.1f})"
                     else:
-                        spread = "N/A"
+                        spread = ""
 
-                    # Format pick with type indicator
+                    # Format: TEAM (SPREAD) at/vs OPPONENT
+                    pick_line = f"{team} {spread} {location} {opponent}"
+
+                    # Add emoji prefix for best bets
                     if pick_type == "best_bet":
-                        picks_list.append(f"• **{team}** ({spread}) 🌟 **BEST BET**")
+                        best_bets.append(f"⭐️ {pick_line}")
                     else:
-                        picks_list.append(f"• **{team}** ({spread})")
+                        regular_picks.append(pick_line)
 
-            # Add survivor pick
-            if st.session_state.survivor_pick:
-                picks_list.append(
-                    f"• **{st.session_state.survivor_pick}** 💀 **SURVIVOR**"
-                )
-
-            # Add underdog pick
-            if st.session_state.underdog_pick:
-                picks_list.append(
-                    f"• **{st.session_state.underdog_pick}** 🐶 **UNDERDOG**"
-                )
-
-            # Add MNF pick
+            # Process MNF pick
             if st.session_state.mnf_pick:
-                picks_list.append(
-                    f"• **{st.session_state.mnf_pick}** 🌙 **MONDAY NIGHT**"
-                )
+                # Find the MNF game to get opponent
+                for game_id, game in games_df.iterrows():
+                    if st.session_state.mnf_pick in [
+                        game["away_team"],
+                        game["home_team"],
+                    ]:
+                        team = st.session_state.mnf_pick
+                        if team == game["away_team"]:
+                            opponent = game["home_team"]
+                            location = "at"
+                        else:
+                            opponent = game["away_team"]
+                            location = "vs"
 
-            if picks_list:
-                # Display picks in a nice format
-                for pick in picks_list:
-                    st.markdown(pick)
+                        # Show spread
+                        if pd.notna(game["spread_line"]):
+                            base_spread = game["spread_line"]
+                            if team == game["home_team"]:
+                                display_spread = -base_spread
+                            else:
+                                display_spread = base_spread
+                            spread = f"({display_spread:+.1f})"
+                        else:
+                            spread = ""
+
+                        mnf_pick_line = f"🌙 {team} {spread} {location} {opponent}"
+                        break
+
+            # Process Survivor pick
+            if st.session_state.survivor_pick:
+                # Find the game to get opponent
+                for game_id, game in games_df.iterrows():
+                    if st.session_state.survivor_pick in [
+                        game["away_team"],
+                        game["home_team"],
+                    ]:
+                        team = st.session_state.survivor_pick
+                        if team == game["away_team"]:
+                            opponent = game["home_team"]
+                            location = "at"
+                        else:
+                            opponent = game["away_team"]
+                            location = "vs"
+
+                        # Show spread
+                        if pd.notna(game["spread_line"]):
+                            base_spread = game["spread_line"]
+                            if team == game["home_team"]:
+                                display_spread = -base_spread
+                            else:
+                                display_spread = base_spread
+                            spread = f"({display_spread:+.1f})"
+                        else:
+                            spread = ""
+
+                        survivor_pick_line = f"💀 {team} {spread} {location} {opponent}"
+                        break
+
+            # Process Underdog pick
+            if st.session_state.underdog_pick:
+                # Find the game to get opponent
+                for game_id, game in games_df.iterrows():
+                    if st.session_state.underdog_pick in [
+                        game["away_team"],
+                        game["home_team"],
+                    ]:
+                        team = st.session_state.underdog_pick
+                        if team == game["away_team"]:
+                            opponent = game["home_team"]
+                            location = "at"
+                        else:
+                            opponent = game["away_team"]
+                            location = "vs"
+
+                        # Show spread
+                        if pd.notna(game["spread_line"]):
+                            base_spread = game["spread_line"]
+                            if team == game["home_team"]:
+                                display_spread = -base_spread
+                            else:
+                                display_spread = base_spread
+                            spread = f"({display_spread:+.1f})"
+                        else:
+                            spread = ""
+
+                        underdog_pick_line = f"🐶 {team} {spread} {location} {opponent}"
+                        break
+
+            # Combine in order: Best Bets, Regular Picks, MNF, Survivor, Underdog
+            picks_display = []
+            picks_display.extend(best_bets)
+            picks_display.extend(regular_picks)
+            if mnf_pick_line:
+                picks_display.append(mnf_pick_line)
+            if survivor_pick_line:
+                picks_display.append(survivor_pick_line)
+            if underdog_pick_line:
+                picks_display.append(underdog_pick_line)
+
+            if picks_display:
+                # Create picks text with header
+                picks_header = f"{picker}'s Week {st.session_state.current_week} Picks"
+                picks_body = "\n".join(picks_display)
+                picks_text = f"{picks_header}\n\n{picks_body}"
+
+                # Display picks in a code block for easy copying
+                st.code(picks_text, language=None)
 
                 st.markdown("---")
 
@@ -1235,11 +1203,15 @@ if "games_data" in st.session_state:
                 col1, col2, col3 = st.columns([2, 1, 2])
 
                 with col1:
-                    if st.button(
+                    # Save button with clipboard copy
+                    save_button_clicked = st.button(
                         "💾 Save Picks",
                         type="primary",
-                        help="Save your picks to the database",
-                    ):
+                        help="Save your picks to the database and copy to clipboard",
+                        key="save_picks_btn",
+                    )
+
+                    if save_button_clicked:
                         if not picker:
                             st.error("⚠️ Please select a picker before submitting")
                         elif (
@@ -1366,6 +1338,19 @@ if "games_data" in st.session_state:
 
                             if result and not result.startswith("ERROR:"):
                                 st.success(f"✅ {result}")
+
+                                # Copy picks to clipboard using JavaScript
+                                clipboard_html = f"""
+                                <script>
+                                    navigator.clipboard.writeText(`{picks_text}`).then(function() {{
+                                        console.log('Picks copied to clipboard!');
+                                    }}, function(err) {{
+                                        console.error('Could not copy text: ', err);
+                                    }});
+                                </script>
+                                """
+                                st.markdown(clipboard_html, unsafe_allow_html=True)
+                                st.info("📋 Picks copied to clipboard!")
                             elif result and result.startswith("ERROR:"):
                                 st.error(
                                     f"❌ Failed to save picks: {result[7:]}"
