@@ -24,16 +24,36 @@ with col_controls:
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
     with col1:
+        # Use current_season from main page if available
+        default_season_index = len(list(range(2020, CUR_SEASON + 1))) - 1
+        if "current_season" in st.session_state:
+            try:
+                default_season_index = list(range(2020, CUR_SEASON + 1)).index(
+                    st.session_state.current_season
+                )
+            except ValueError:
+                pass
+
         season = st.selectbox(
             "Select Season",
             list(range(2020, CUR_SEASON + 1)),
-            index=len(list(range(2020, CUR_SEASON + 1))) - 1,
+            index=default_season_index,
             key="view_season",
         )
 
     with col2:
+        # Use current_week from main page if available
+        default_week_index = CUR_WEEK - 1
+        if "current_week" in st.session_state:
+            try:
+                default_week_index = list(range(1, 19)).index(
+                    st.session_state.current_week
+                )
+            except ValueError:
+                pass
+
         week = st.selectbox(
-            "Select Week", list(range(1, 19)), index=CUR_WEEK - 1, key="view_week"
+            "Select Week", list(range(1, 19)), index=default_week_index, key="view_week"
         )
 
     with col3:

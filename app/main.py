@@ -159,10 +159,61 @@ div.stButton > button[kind="primary"]:hover {
     border-color: #1e7e34 !important;
 }
 
-/* Save Picks button - make it green */
-div.stButton > button[kind="primary"]:has-text("💾 Save Picks") {
-    background-color: #28a745 !important;
-    border-color: #28a745 !important;
+/* Prevent column wrapping - force single row layout */
+.row-widget.stHorizontal {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+}
+
+/* Prevent individual columns from wrapping */
+[data-testid="column"] {
+    min-width: 0 !important;
+    flex-shrink: 1 !important;
+}
+
+/* Make team pick buttons more compact */
+div.stButton > button {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+}
+
+/* Make team pick buttons even smaller on narrow screens */
+@media (max-width: 900px) {
+    div.stButton > button {
+        padding: 0.2rem 0.35rem !important;
+        font-size: 0.7rem !important;
+    }
+}
+
+/* Make team pick buttons very small on very narrow screens */
+@media (max-width: 700px) {
+    div.stButton > button {
+        padding: 0.15rem 0.25rem !important;
+        font-size: 0.65rem !important;
+    }
+}
+
+/* Extra small screens */
+@media (max-width: 500px) {
+    div.stButton > button {
+        padding: 0.1rem 0.2rem !important;
+        font-size: 0.6rem !important;
+    }
+}
+
+/* Make line text smaller on narrow screens */
+@media (max-width: 700px) {
+    [data-testid="column"] p, [data-testid="column"] div {
+        font-size: 0.7rem !important;
+    }
+}
+
+@media (max-width: 500px) {
+    [data-testid="column"] p, [data-testid="column"] div {
+        font-size: 0.6rem !important;
+    }
 }
 
 /* Disabled buttons */
@@ -177,6 +228,28 @@ div.stButton > button:disabled:hover {
     background-color: #6c757d !important;
     border-color: #6c757d !important;
     color: #ffffff !important;
+}
+
+/* Progressive hiding of line information */
+/* First hide: Total (most expendable) */
+@media (max-width: 800px) {
+    .hide-on-medium {
+        display: none !important;
+    }
+}
+
+/* Second hide: Market spread (if pool spread exists) */
+@media (max-width: 650px) {
+    .hide-on-narrow {
+        display: none !important;
+    }
+}
+
+/* Third hide: Team logos (last resort) */
+@media (max-width: 500px) {
+    .team-logo {
+        display: none !important;
+    }
 }
 
 /* JavaScript to style best bet and MNF buttons */
@@ -646,98 +719,70 @@ if "games_data" in st.session_state:
                             else None
                         )
 
-                    # Create flexible mobile-responsive layout
-                    col1, col2, col3 = st.columns([3, 2, 3])
+                    # Create compact mobile-responsive layout: logo, button, lines, button, logo
+                    # Use smaller columns and fixed-width buttons
+                    cols = st.columns([0.5, 2, 1.5, 2, 0.5])
 
-                    with col1:
-                        # Away team button
-                        away_disabled = (
-                            (max_picks_reached and not away_selected)
-                            or home_selected
-                            or not picker
-                        )
-                        button_type = get_button_style(
-                            away_selected, away_pick_type, away_disabled
+                    # Away team (left side)
+                    away_disabled = (
+                        (max_picks_reached and not away_selected)
+                        or home_selected
+                        or not picker
+                    )
+                    button_type = get_button_style(
+                        away_selected, away_pick_type, away_disabled
+                    )
+
+                    # Add MNF emoji if this is MNF game
+                    if is_mnf:
+                        button_label = f"🌙 {game['away_team']}"
+                    else:
+                        button_label = get_button_label(
+                            game["away_team"], away_pick_type
                         )
 
-                        # Add MNF emoji if this is MNF game
-                        if is_mnf:
-                            button_label = f"🌙 {game['away_team']}"
-                        else:
-                            button_label = get_button_label(
-                                game["away_team"], away_pick_type
+                    away_logo = get_team_logo(game["away_team"])
+
+                    with cols[0]:
+                        # Away team logo (hidden on very small screens via CSS)
+                        if away_logo:
+                            st.markdown(
+                                f'<img src="{away_logo}" width="30" class="team-logo">',
+                                unsafe_allow_html=True,
                             )
 
-                        away_logo = get_team_logo(game["away_team"])
-
-                        # Mobile-responsive: logo and button on same line
-                        if away_logo:
-                            col_logo, col_button = st.columns([1, 4])
-                            with col_logo:
-                                st.image(away_logo, width=35)
-                            with col_button:
-                                if st.button(
-                                    button_label,
-                                    key=f"away_{game_id}",
-                                    type=button_type,
-                                    disabled=away_disabled,
-                                    use_container_width=True,
-                                ):
-                                    if is_mnf:
-                                        # MNF pick logic
-                                        if away_selected:
-                                            st.session_state.mnf_pick = None
-                                        else:
-                                            st.session_state.mnf_pick = game[
-                                                "away_team"
-                                            ]
-                                    else:
-                                        # Regular game pick logic
-                                        next_state = get_next_pick_state(
-                                            current_pick, game["away_team"]
-                                        )
-                                        if next_state is None:
-                                            # Remove the pick
-                                            if game_id in st.session_state.picks:
-                                                del st.session_state.picks[game_id]
-                                        else:
-                                            # Add spread info
-                                            next_state["spread"] = game.get(
-                                                "spread_line"
-                                            )
-                                            st.session_state.picks[game_id] = next_state
-                                    st.rerun()
-                        else:
-                            if st.button(
-                                button_label,
-                                key=f"away_{game_id}",
-                                type=button_type,
-                                disabled=away_disabled,
-                                use_container_width=True,
-                            ):
-                                if is_mnf:
-                                    # MNF pick logic
-                                    if away_selected:
-                                        st.session_state.mnf_pick = None
-                                    else:
-                                        st.session_state.mnf_pick = game["away_team"]
+                    with cols[1]:
+                        # Away team button
+                        if st.button(
+                            button_label,
+                            key=f"away_{game_id}",
+                            type=button_type,
+                            disabled=away_disabled,
+                            use_container_width=True,
+                        ):
+                            if is_mnf:
+                                # MNF pick logic
+                                if away_selected:
+                                    st.session_state.mnf_pick = None
                                 else:
-                                    # Regular game pick logic
-                                    next_state = get_next_pick_state(
-                                        current_pick, game["away_team"]
-                                    )
-                                    if next_state is None:
-                                        # Remove the pick
-                                        if game_id in st.session_state.picks:
-                                            del st.session_state.picks[game_id]
-                                    else:
-                                        # Add spread info
-                                        next_state["spread"] = game.get("spread_line")
-                                        st.session_state.picks[game_id] = next_state
-                                st.rerun()
+                                    st.session_state.mnf_pick = game["away_team"]
+                            else:
+                                # Regular game pick logic
+                                next_state = get_next_pick_state(
+                                    current_pick, game["away_team"]
+                                )
+                                if next_state is None:
+                                    # Remove the pick
+                                    if game_id in st.session_state.picks:
+                                        del st.session_state.picks[game_id]
+                                else:
+                                    # Add spread info
+                                    next_state["spread"] = game.get("spread_line")
+                                    st.session_state.picks[game_id] = next_state
+                            st.rerun()
 
-                    with col2:
-                        # Get line data for this game
+                    with cols[2]:
+                        # Lines in the middle
                         lines = st.session_state.get("lines_data", {}).get(game_id, {})
 
                         # Pool spread
@@ -767,97 +812,86 @@ if "games_data" in st.session_state:
                         else:
                             market_total_text = "N/A"
 
-                        # Display: Pool / Market / Total on one line with bold pool
-                        st.markdown(
-                            f"**{pool_text}** / {market_spread_text} / {market_total_text}"
+                        # Display lines with progressive hiding based on screen width
+                        # Build HTML with CSS classes for responsive hiding
+                        lines_html = (
+                            f'<div style="font-size: 0.875rem; white-space: nowrap;">'
                         )
 
-                    with col3:
+                        # Always show pool spread (bold)
+                        lines_html += f"<strong>{pool_text}</strong>"
+
+                        # Market spread - hide if pool is available and screen is narrow
+                        if pool_spread is not None:
+                            # Has pool spread - can hide market on narrow screens
+                            lines_html += f'<span class="hide-on-narrow"> / {market_spread_text}</span>'
+                        else:
+                            # No pool spread - always show market
+                            lines_html += f" / {market_spread_text}"
+
+                        # Total - hide first on narrow screens
+                        lines_html += f'<span class="hide-on-medium"> / {market_total_text}</span>'
+
+                        lines_html += "</div>"
+                        st.markdown(lines_html, unsafe_allow_html=True)
+
+                    # Home team (right side)
+                    home_disabled = (
+                        (max_picks_reached and not home_selected)
+                        or away_selected
+                        or not picker
+                    )
+                    button_type = get_button_style(
+                        home_selected, home_pick_type, home_disabled
+                    )
+
+                    # Add MNF emoji if this is MNF game
+                    if is_mnf:
+                        button_label = f"🌙 {game['home_team']}"
+                    else:
+                        button_label = get_button_label(
+                            game["home_team"], home_pick_type
+                        )
+
+                    home_logo = get_team_logo(game["home_team"])
+
+                    with cols[3]:
                         # Home team button
-                        home_disabled = (
-                            (max_picks_reached and not home_selected)
-                            or away_selected
-                            or not picker
-                        )
-                        button_type = get_button_style(
-                            home_selected, home_pick_type, home_disabled
-                        )
-
-                        # Add MNF emoji if this is MNF game
-                        if is_mnf:
-                            button_label = f"🌙 {game['home_team']}"
-                        else:
-                            button_label = get_button_label(
-                                game["home_team"], home_pick_type
-                            )
-
-                        home_logo = get_team_logo(game["home_team"])
-
-                        # Mobile-responsive: logo and button on same line
-                        if home_logo:
-                            col_logo, col_button = st.columns([1, 4])
-                            with col_logo:
-                                st.image(home_logo, width=35)
-                            with col_button:
-                                if st.button(
-                                    button_label,
-                                    key=f"home_{game_id}",
-                                    type=button_type,
-                                    disabled=home_disabled,
-                                    use_container_width=True,
-                                ):
-                                    if is_mnf:
-                                        # MNF pick logic
-                                        if home_selected:
-                                            st.session_state.mnf_pick = None
-                                        else:
-                                            st.session_state.mnf_pick = game[
-                                                "home_team"
-                                            ]
-                                    else:
-                                        # Regular game pick logic
-                                        next_state = get_next_pick_state(
-                                            current_pick, game["home_team"]
-                                        )
-                                        if next_state is None:
-                                            # Remove the pick
-                                            if game_id in st.session_state.picks:
-                                                del st.session_state.picks[game_id]
-                                        else:
-                                            # Add spread info
-                                            next_state["spread"] = game.get(
-                                                "spread_line"
-                                            )
-                                            st.session_state.picks[game_id] = next_state
-                                    st.rerun()
-                        else:
-                            if st.button(
-                                button_label,
-                                key=f"home_{game_id}",
-                                type=button_type,
-                                disabled=home_disabled,
-                                use_container_width=True,
-                            ):
-                                if is_mnf:
-                                    # MNF pick logic
-                                    if home_selected:
-                                        st.session_state.mnf_pick = None
-                                    else:
-                                        st.session_state.mnf_pick = game["home_team"]
+                        if st.button(
+                            button_label,
+                            key=f"home_{game_id}",
+                            type=button_type,
+                            disabled=home_disabled,
+                            use_container_width=True,
+                        ):
+                            if is_mnf:
+                                # MNF pick logic
+                                if home_selected:
+                                    st.session_state.mnf_pick = None
                                 else:
-                                    # Regular game pick logic
-                                    next_state = get_next_pick_state(
-                                        current_pick, game["home_team"]
-                                    )
-                                    if next_state is None:
-                                        # Remove the pick
-                                        if game_id in st.session_state.picks:
-                                            del st.session_state.picks[game_id]
-                                    else:
-                                        # Add spread info
-                                        next_state["spread"] = game.get("spread_line")
-                                        st.session_state.picks[game_id] = next_state
-                                st.rerun()
+                                    st.session_state.mnf_pick = game["home_team"]
+                            else:
+                                # Regular game pick logic
+                                next_state = get_next_pick_state(
+                                    current_pick, game["home_team"]
+                                )
+                                if next_state is None:
+                                    # Remove the pick
+                                    if game_id in st.session_state.picks:
+                                        del st.session_state.picks[game_id]
+                                else:
+                                    # Add spread info
+                                    next_state["spread"] = game.get("spread_line")
+                                    st.session_state.picks[game_id] = next_state
+                            st.rerun()
+
+                    with cols[4]:
+                        # Home team logo (hidden on very small screens via CSS)
+                        if home_logo:
+                            st.markdown(
+                                f'<img src="{home_logo}" width="30" class="team-logo">',
+                                unsafe_allow_html=True,
+                            )
 
                     # Use a thinner divider
                     st.markdown("---")
