@@ -13,7 +13,7 @@ from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.database import MarketLinesDatabase, PoolSpreadsDatabase
-from g_nfl.utils.web_app import get_team_logo
+from g_nfl.utils.web_app import create_game_id, get_team_logo
 
 st.set_page_config(page_title="Manage Pool Spreads - no-homers", layout="wide")
 
@@ -72,9 +72,9 @@ def get_games_with_lines(season: int, week: int) -> pd.DataFrame:
                 )
 
         games_df = pd.DataFrame(games_data)
-        # Use a composite index similar to nfl_data format
+        # Use create_game_id utility to ensure consistent format
         games_df.index = [
-            f"{season}_{week}_{row['away_team']}_{row['home_team']}"
+            create_game_id(season, week, row["away_team"], row["home_team"])
             for _, row in games_df.iterrows()
         ]
         games_source = "database"

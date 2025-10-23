@@ -329,6 +329,9 @@ class PoolSpreadsDatabase:
         Returns:
             Number of spreads saved
         """
+        # Import normalize function
+        from g_nfl.utils.web_app import normalize_game_id
+
         # If replace is True, delete existing spreads for this season/week
         if replace:
             self.client.table("pool_spreads").delete().eq("season", season).eq(
@@ -338,11 +341,13 @@ class PoolSpreadsDatabase:
         # Prepare spreads data for insertion
         spreads_data = []
         for game_id, spread in spreads.items():
+            # Normalize game_id to ensure zero-padded week format
+            normalized_id = normalize_game_id(game_id)
             spreads_data.append(
                 {
                     "season": season,
                     "week": week,
-                    "game_id": game_id,
+                    "game_id": normalized_id,
                     "spread": spread,
                     "created_at": datetime.utcnow().isoformat(),
                 }

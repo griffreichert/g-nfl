@@ -216,6 +216,27 @@ def get_pool_spreads(season: int, week: int) -> dict:
         return {}
 
 
+def create_game_id(season: int, week: int, away_team: str, home_team: str) -> str:
+    """Create a standardized game ID with zero-padded week format
+
+    Args:
+        season: NFL season year (e.g., 2025)
+        week: Week number (1-18)
+        away_team: Away team abbreviation (e.g., 'KC')
+        home_team: Home team abbreviation (e.g., 'LAC')
+
+    Returns:
+        Standardized game_id string (e.g., '2025_01_KC_LAC')
+
+    Example:
+        >>> create_game_id(2025, 1, 'KC', 'LAC')
+        '2025_01_KC_LAC'
+        >>> create_game_id(2025, 12, 'DAL', 'PHI')
+        '2025_12_DAL_PHI'
+    """
+    return f"{season}_{week:02d}_{away_team}_{home_team}"
+
+
 def normalize_game_id(game_id: str) -> str:
     """Normalize game ID to use zero-padded week format
 
