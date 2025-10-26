@@ -11,7 +11,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
-from g_nfl.utils.data import get_current_nfl_week
 from g_nfl.utils.web_app import get_picks_data, get_team_logo
 
 st.set_page_config(page_title="View Picks - no-homers", layout="wide")
@@ -21,31 +20,19 @@ st.title("🔍 View Picks by Week")
 # Add controls for selecting week and picker
 col_spacer1, col_controls, col_spacer2 = st.columns([2, 6, 2])
 
-# Get current NFL week
-try:
-    current_season, current_week = get_current_nfl_week()
-except Exception:
-    current_season = CUR_SEASON
-    current_week = CUR_WEEK
+# Hardcoded default week for deployment
+DEFAULT_WEEK = 8
 
 with col_controls:
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
     with col1:
-        # Use current_season from main page if available, otherwise use current NFL season
+        # Use current_season from main page if available
         default_season_index = len(list(range(2020, CUR_SEASON + 1))) - 1
         if "current_season" in st.session_state:
             try:
                 default_season_index = list(range(2020, CUR_SEASON + 1)).index(
                     st.session_state.current_season
-                )
-            except ValueError:
-                pass
-        else:
-            # Default to current NFL season
-            try:
-                default_season_index = list(range(2020, CUR_SEASON + 1)).index(
-                    current_season
                 )
             except ValueError:
                 pass
@@ -58,8 +45,8 @@ with col_controls:
         )
 
     with col2:
-        # Use current_week from main page if available, otherwise use current NFL week
-        default_week_index = current_week - 1
+        # Use current_week from main page if available, otherwise default to week 8
+        default_week_index = DEFAULT_WEEK - 1
         if "current_week" in st.session_state:
             try:
                 default_week_index = list(range(1, 19)).index(
