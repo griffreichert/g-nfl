@@ -138,6 +138,9 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
     # Get all unique pickers
     all_pickers = sorted(list(set(pick["picker"] for pick in picks_data)))
 
+    # Create a filtered list excluding "TEAM" for consensus calculations
+    consensus_pickers = [p for p in all_pickers if p != "TEAM"]
+
     # Separate picks by type
     regular_picks = [
         p for p in picks_data if p.get("pick_type") not in ["survivor", "underdog"]
@@ -246,13 +249,13 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
                 home_team = game["home_team"]
                 spread_line = game.get("spread_line", None)
 
-                # Calculate points for each team
+                # Calculate points for each team (excluding "TEAM" picks)
                 away_points = 0
                 home_points = 0
                 away_best_bets = 0
                 home_best_bets = 0
 
-                for picker in all_pickers:
+                for picker in consensus_pickers:
                     # Check away team picks
                     away_team_picks = [
                         p
@@ -381,7 +384,7 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
             # Display the regular picks table
             st.subheader("🏆 Picks by Game (Ranked by Consensus)")
             st.caption(
-                "Regular pick = 1 point, Best bet = 2 points | Consensus team shown first"
+                "Regular pick = 1 point, Best bet = 2 points | Consensus team shown first | TEAM picks excluded from consensus"
             )
 
             # Create DataFrame for easier display
@@ -431,7 +434,7 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
 
             # Display detailed picker table
             st.subheader("📋 Individual Picks by Game")
-            st.caption("✅ = Regular pick | ⭐ = Best bet")
+            st.caption("✅ = Regular pick | ⭐ = Best bet | Includes TEAM picks")
 
             # Build detailed picker data for DataFrame - show BOTH teams per game
             picker_table_data = []
@@ -586,10 +589,14 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
 
                         if has_best_bet:
                             row_data[picker] = "⭐"
-                            total_points += 2
+                            # Only count points for non-TEAM pickers
+                            if picker != "TEAM":
+                                total_points += 2
                         else:
                             row_data[picker] = "✅"
-                            total_points += 1
+                            # Only count points for non-TEAM pickers
+                            if picker != "TEAM":
+                                total_points += 1
                     else:
                         row_data[picker] = ""
 
@@ -612,7 +619,9 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
 
             # Display the regular picks table
             st.subheader("🏆 Team Picks Ranked by Points")
-            st.caption("Regular pick = 1 point (✅), Best bet = 2 points (⭐)")
+            st.caption(
+                "Regular pick = 1 point (✅), Best bet = 2 points (⭐) | TEAM picks excluded from points"
+            )
 
             # Add header row
             header_cols = st.columns([0.5, 2] + [1] * len(all_pickers))

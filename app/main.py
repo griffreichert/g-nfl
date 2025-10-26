@@ -366,7 +366,7 @@ with col2:
 with col3:
     picker = st.selectbox(
         "Picker",
-        [None] + ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "Jacko"],
+        [None] + ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "bModel"],
         index=0,
         format_func=lambda x: "👤 Choose your name..." if x is None else f"👤 {x}",
     )
