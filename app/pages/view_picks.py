@@ -310,17 +310,18 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
                     is_consensus_home = None
 
                 # Format game matchup with consensus team first
+                # Note: spread_line from database is the AWAY team spread
+                # Negative = away team favored, Positive = home team favored
                 if consensus_team == "EVEN":
                     # If even, use traditional away at home format
                     if spread_line is not None:
-                        # Spread line is for home team, so flip sign for away team
-                        away_spread = -spread_line
-                        if away_spread >= 0:
-                            matchup = (
-                                f"{away_team} (+{abs(away_spread)}) at {home_team}"
-                            )
+                        # Spread is already for away team, use as-is
+                        if spread_line > 0:
+                            matchup = f"{away_team} (+{spread_line}) at {home_team}"
+                        elif spread_line < 0:
+                            matchup = f"{away_team} ({spread_line}) at {home_team}"
                         else:
-                            matchup = f"{away_team} ({away_spread}) at {home_team}"
+                            matchup = f"{away_team} at {home_team}"
                     else:
                         matchup = f"{away_team} at {home_team}"
                 else:
@@ -329,31 +330,35 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
                         # Home team is consensus - use "vs"
                         other_team = away_team
                         if spread_line is not None:
-                            # Spread line is for home team (consensus team)
-                            if spread_line >= 0:
+                            # Spread is for away team, flip for home team
+                            home_spread = -spread_line
+                            if home_spread > 0:
                                 matchup = (
-                                    f"{consensus_team} (+{spread_line}) vs {other_team}"
+                                    f"{consensus_team} (+{home_spread}) vs {other_team}"
+                                )
+                            elif home_spread < 0:
+                                matchup = (
+                                    f"{consensus_team} ({home_spread}) vs {other_team}"
                                 )
                             else:
-                                matchup = (
-                                    f"{consensus_team} ({spread_line}) vs {other_team}"
-                                )
+                                matchup = f"{consensus_team} vs {other_team}"
                         else:
                             matchup = f"{consensus_team} vs {other_team}"
                     else:
                         # Away team is consensus - use "at"
                         other_team = home_team
                         if spread_line is not None:
-                            # Spread line is for home team, flip for away team (consensus)
-                            away_spread = -spread_line
-                            if away_spread >= 0:
+                            # Spread is already for away team, use as-is
+                            if spread_line > 0:
                                 matchup = (
-                                    f"{consensus_team} (+{away_spread}) at {other_team}"
+                                    f"{consensus_team} (+{spread_line}) at {other_team}"
+                                )
+                            elif spread_line < 0:
+                                matchup = (
+                                    f"{consensus_team} ({spread_line}) at {other_team}"
                                 )
                             else:
-                                matchup = (
-                                    f"{consensus_team} ({away_spread}) at {other_team}"
-                                )
+                                matchup = f"{consensus_team} at {other_team}"
                         else:
                             matchup = f"{consensus_team} at {other_team}"
 
@@ -441,33 +446,42 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
                 )
 
                 # Format the team column based on consensus team
+                # spread_line is AWAY team spread (negative = away favored)
                 if game["consensus_team"] == "EVEN":
                     # Use traditional away at home format
                     if spread_line is not None:
-                        away_spread = -spread_line
-                        if away_spread >= 0:
-                            team_display = f"{away_team} (+{abs(away_spread)})"
+                        # Spread is already for away team, use as-is
+                        if spread_line > 0:
+                            team_display = f"{away_team} (+{spread_line})"
+                        elif spread_line < 0:
+                            team_display = f"{away_team} ({spread_line})"
                         else:
-                            team_display = f"{away_team} ({away_spread})"
+                            team_display = f"{away_team}"
                     else:
                         team_display = f"{away_team}"
                 elif is_consensus_home:
                     # Home team is consensus
                     if spread_line is not None:
-                        if spread_line >= 0:
-                            team_display = f"{home_team} (+{spread_line})"
+                        # Spread is for away team, flip for home team
+                        home_spread = -spread_line
+                        if home_spread > 0:
+                            team_display = f"{home_team} (+{home_spread})"
+                        elif home_spread < 0:
+                            team_display = f"{home_team} ({home_spread})"
                         else:
-                            team_display = f"{home_team} ({spread_line})"
+                            team_display = f"{home_team}"
                     else:
                         team_display = f"{home_team}"
                 else:
                     # Away team is consensus
                     if spread_line is not None:
-                        away_spread = -spread_line
-                        if away_spread >= 0:
-                            team_display = f"{away_team} (+{away_spread})"
+                        # Spread is already for away team, use as-is
+                        if spread_line > 0:
+                            team_display = f"{away_team} (+{spread_line})"
+                        elif spread_line < 0:
+                            team_display = f"{away_team} ({spread_line})"
                         else:
-                            team_display = f"{away_team} ({away_spread})"
+                            team_display = f"{away_team}"
                     else:
                         team_display = f"{away_team}"
 
