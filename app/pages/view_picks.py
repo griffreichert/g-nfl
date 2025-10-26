@@ -11,6 +11,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
+from g_nfl.utils.database import PicksDatabase
+from g_nfl.utils.teams import standardize_teams
 from g_nfl.utils.web_app import get_picks_data, get_team_logo
 
 st.set_page_config(page_title="View Picks - no-homers", layout="wide")
@@ -76,10 +78,46 @@ if load_picks_button or "picks_data" not in st.session_state:
             st.session_state.current_view_season = season
             st.session_state.current_view_week = week
 
-            # Also load games data for spread information
+            # Load pool spreads from database instead of nfl_data_py
             try:
-                games_df = get_week_spreads(week, season)
-                st.session_state.games_data_view = games_df
+                db = PicksDatabase()
+                # Direct query to pool_spreads table
+                query = (
+                    db.client.table("pool_spreads")
+                    .select("*")
+                    .eq("season", season)
+                    .eq("week", week)
+                )
+                result = query.execute()
+                pool_spreads = result.data
+
+                # Convert pool spreads to DataFrame with game info
+                if pool_spreads:
+                    games_data = []
+                    for spread_entry in pool_spreads:
+                        game_id = spread_entry["game_id"]
+                        # Parse game_id format: 2024_08_CHI_WAS
+                        parts = game_id.split("_")
+                        if len(parts) >= 4:
+                            _, _, away_team, home_team = (
+                                parts[0],
+                                parts[1],
+                                parts[2],
+                                parts[3],
+                            )
+                            games_data.append(
+                                {
+                                    "game_id": game_id,
+                                    "away_team": away_team,
+                                    "home_team": home_team,
+                                    "spread_line": spread_entry.get("spread"),
+                                }
+                            )
+
+                    games_df = pd.DataFrame(games_data)
+                    st.session_state.games_data_view = games_df
+                else:
+                    st.session_state.games_data_view = pd.DataFrame()
             except Exception as e:
                 st.warning(f"Could not load games data: {e}")
                 st.session_state.games_data_view = pd.DataFrame()
@@ -203,6 +241,7 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
             game_data = []
 
             for _, game in games_df.iterrows():
+                # Get team names from game data (already standardized in database)
                 away_team = game["away_team"]
                 home_team = game["home_team"]
                 spread_line = game.get("spread_line", None)
