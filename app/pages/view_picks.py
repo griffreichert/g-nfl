@@ -433,7 +433,7 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
             st.subheader("📋 Individual Picks by Game")
             st.caption("✅ = Regular pick | ⭐ = Best bet")
 
-            # Build detailed picker data for DataFrame
+            # Build detailed picker data for DataFrame - show BOTH teams per game
             picker_table_data = []
             for game in game_data:
                 away_team = game["away_team"]
@@ -445,75 +445,101 @@ if "picks_data" in st.session_state and st.session_state.picks_data:
                     else None
                 )
 
-                # Format the team column based on consensus team
-                # spread_line is AWAY team spread (negative = away favored)
-                if game["consensus_team"] == "EVEN":
-                    # Use traditional away at home format
-                    if spread_line is not None:
-                        # Spread is already for away team, use as-is
+                # Determine which team to show first (consensus team first, or away if EVEN)
+                if game["consensus_team"] == "EVEN" or not is_consensus_home:
+                    first_team = away_team
+                    second_team = home_team
+                    first_is_away = True
+                    second_is_away = False
+                else:
+                    first_team = home_team
+                    second_team = away_team
+                    first_is_away = False
+                    second_is_away = True
+
+                # Create row for first team
+                if spread_line is not None:
+                    if first_is_away:
+                        # Away team spread
                         if spread_line > 0:
-                            team_display = f"{away_team} (+{spread_line})"
+                            first_team_display = f"{first_team} (+{spread_line})"
                         elif spread_line < 0:
-                            team_display = f"{away_team} ({spread_line})"
+                            first_team_display = f"{first_team} ({spread_line})"
                         else:
-                            team_display = f"{away_team}"
+                            first_team_display = f"{first_team}"
                     else:
-                        team_display = f"{away_team}"
-                elif is_consensus_home:
-                    # Home team is consensus
-                    if spread_line is not None:
-                        # Spread is for away team, flip for home team
+                        # Home team, flip spread
                         home_spread = -spread_line
                         if home_spread > 0:
-                            team_display = f"{home_team} (+{home_spread})"
+                            first_team_display = f"{first_team} (+{home_spread})"
                         elif home_spread < 0:
-                            team_display = f"{home_team} ({home_spread})"
+                            first_team_display = f"{first_team} ({home_spread})"
                         else:
-                            team_display = f"{home_team}"
-                    else:
-                        team_display = f"{home_team}"
+                            first_team_display = f"{first_team}"
                 else:
-                    # Away team is consensus
-                    if spread_line is not None:
-                        # Spread is already for away team, use as-is
-                        if spread_line > 0:
-                            team_display = f"{away_team} (+{spread_line})"
-                        elif spread_line < 0:
-                            team_display = f"{away_team} ({spread_line})"
-                        else:
-                            team_display = f"{away_team}"
-                    else:
-                        team_display = f"{away_team}"
+                    first_team_display = f"{first_team}"
 
-                row_data = {"Team": team_display}
-
+                first_row = {"Team": first_team_display}
+                first_team_has_picks = False
                 for picker in all_pickers:
-                    # Check picks for both teams
-                    away_picks = [
+                    team_picks = [
                         p
                         for p in regular_picks
-                        if p["team_picked"] == away_team and p["picker"] == picker
+                        if p["team_picked"] == first_team and p["picker"] == picker
                     ]
-                    home_picks = [
-                        p
-                        for p in regular_picks
-                        if p["team_picked"] == home_team and p["picker"] == picker
-                    ]
-
-                    if away_picks:
+                    if team_picks:
                         has_best_bet = any(
-                            pick.get("pick_type") == "best_bet" for pick in away_picks
+                            pick.get("pick_type") == "best_bet" for pick in team_picks
                         )
-                        row_data[picker] = "⭐" if has_best_bet else "✅"
-                    elif home_picks:
-                        has_best_bet = any(
-                            pick.get("pick_type") == "best_bet" for pick in home_picks
-                        )
-                        row_data[picker] = "⭐" if has_best_bet else "✅"
+                        first_row[picker] = "⭐" if has_best_bet else "✅"
+                        first_team_has_picks = True
                     else:
-                        row_data[picker] = "—"
+                        first_row[picker] = "—"
+                # Only add row if someone picked this team
+                if first_team_has_picks:
+                    picker_table_data.append(first_row)
 
-                picker_table_data.append(row_data)
+                # Create row for second team
+                if spread_line is not None:
+                    if second_is_away:
+                        # Away team spread
+                        if spread_line > 0:
+                            second_team_display = f"{second_team} (+{spread_line})"
+                        elif spread_line < 0:
+                            second_team_display = f"{second_team} ({spread_line})"
+                        else:
+                            second_team_display = f"{second_team}"
+                    else:
+                        # Home team, flip spread
+                        home_spread = -spread_line
+                        if home_spread > 0:
+                            second_team_display = f"{second_team} (+{home_spread})"
+                        elif home_spread < 0:
+                            second_team_display = f"{second_team} ({home_spread})"
+                        else:
+                            second_team_display = f"{second_team}"
+                else:
+                    second_team_display = f"{second_team}"
+
+                second_row = {"Team": second_team_display}
+                second_team_has_picks = False
+                for picker in all_pickers:
+                    team_picks = [
+                        p
+                        for p in regular_picks
+                        if p["team_picked"] == second_team and p["picker"] == picker
+                    ]
+                    if team_picks:
+                        has_best_bet = any(
+                            pick.get("pick_type") == "best_bet" for pick in team_picks
+                        )
+                        second_row[picker] = "⭐" if has_best_bet else "✅"
+                        second_team_has_picks = True
+                    else:
+                        second_row[picker] = "—"
+                # Only add row if someone picked this team
+                if second_team_has_picks:
+                    picker_table_data.append(second_row)
 
             # Create DataFrame for picker table
             picker_df = pd.DataFrame(picker_table_data)
