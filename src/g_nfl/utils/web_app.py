@@ -1,8 +1,6 @@
 import os
 from typing import Optional
 
-from PIL import Image
-
 from .database import MarketLinesDatabase, PicksDatabase, PoolSpreadsDatabase
 
 
