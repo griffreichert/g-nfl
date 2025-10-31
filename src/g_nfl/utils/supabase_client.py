@@ -3,11 +3,16 @@
 import os
 from typing import Optional
 
-from dotenv import load_dotenv
 from supabase import Client, create_client
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (if available)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # dotenv not installed - likely in Streamlit Cloud where env vars are set via secrets
+    pass
 
 
 class SupabaseClient:
