@@ -1,4 +1,4 @@
-CUR_WEEK = 2
+CUR_WEEK = 9
 CUR_SEASON = 2025
 
 HFA = 1.5
