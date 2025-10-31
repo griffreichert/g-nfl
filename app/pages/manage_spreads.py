@@ -1,6 +1,5 @@
 import os
 import sys
-from typing import Dict, Optional
 
 import pandas as pd
 import streamlit as st
@@ -10,7 +9,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 from g_nfl import CUR_WEEK
-from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.database import MarketLinesDatabase, PoolSpreadsDatabase
 from g_nfl.utils.web_app import create_game_id, get_team_logo
@@ -34,8 +32,33 @@ with col_controls:
         )
 
     with col2:
+        # Get available weeks from database for the selected season
+        try:
+            market_db = MarketLinesDatabase()
+            available_weeks = market_db.get_available_weeks(season)
+            max_week = market_db.get_max_week_for_season(season)
+
+            if available_weeks:
+                # Use available weeks from database
+                week_options = available_weeks
+                # Set default to max week if it exists, otherwise first available week
+                if max_week and max_week in available_weeks:
+                    default_week_index = available_weeks.index(max_week)
+                else:
+                    default_week_index = (
+                        len(available_weeks) - 1
+                    )  # Last week in available list
+            else:
+                # Fallback to full range if no data in database
+                week_options = list(range(1, 19))
+                default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
+        except Exception as e:
+            # Fallback to full range if database access fails
+            week_options = list(range(1, 19))
+            default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
+
         week = st.selectbox(
-            "Select Week", list(range(1, 19)), index=CUR_WEEK - 1, key="manage_week"
+            "Select Week", week_options, index=default_week_index, key="manage_week"
         )
 
     with col3:

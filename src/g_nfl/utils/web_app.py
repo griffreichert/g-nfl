@@ -1,4 +1,3 @@
-import os
 from typing import Optional
 
 from .database import MarketLinesDatabase, PicksDatabase, PoolSpreadsDatabase
