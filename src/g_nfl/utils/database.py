@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import os
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from supabase.client import Client
+if TYPE_CHECKING:
+    from supabase.client import Client
 
 from .supabase_client import get_supabase
 

@@ -1,10 +1,14 @@
 """Supabase client configuration for GNFL project"""
 
+from __future__ import annotations
+
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from supabase import create_client
-from supabase.client import Client
+
+if TYPE_CHECKING:
+    from supabase.client import Client
 
 # Load environment variables from .env file (if available)
 try:
