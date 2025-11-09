@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from supabase import Client
+from supabase.client import Client
 
 from .supabase_client import get_supabase
 

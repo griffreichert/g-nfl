@@ -3,7 +3,8 @@
 import os
 from typing import Optional
 
-from supabase import Client, create_client
+from supabase import create_client
+from supabase.client import Client
 
 # Load environment variables from .env file (if available)
 try:
