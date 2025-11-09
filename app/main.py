@@ -62,10 +62,11 @@ if "picks" in st.session_state:
     st.session_state.picks = cleaned_picks
 
 
-def get_next_pick_state(current_pick, team_name):
+def get_next_pick_state(current_pick, team_name, current_picks):
     """Get the next state when clicking a team button
 
     States cycle: unselected -> regular -> best_bet -> unselected
+    Only allows ONE best bet at a time.
     """
     if not current_pick or current_pick.get("team_picked") != team_name:
         # First click: select as regular
@@ -73,8 +74,19 @@ def get_next_pick_state(current_pick, team_name):
 
     current_type = current_pick.get("pick_type", "regular")
     if current_type == "regular":
-        # Second click: upgrade to best bet
-        return {"team_picked": team_name, "pick_type": "best_bet"}
+        # Second click: upgrade to best bet (only if no other best bets exist)
+        # Count existing best bets
+        best_bet_count = sum(
+            1
+            for pick in current_picks.values()
+            if isinstance(pick, dict) and pick.get("pick_type") == "best_bet"
+        )
+        # Only allow upgrade if there are no other best bets
+        if best_bet_count == 0:
+            return {"team_picked": team_name, "pick_type": "best_bet"}
+        else:
+            # Can't upgrade - already have a best bet
+            return {"team_picked": team_name, "pick_type": "regular"}
     elif current_type == "best_bet":
         # Third click: unselect
         return None
@@ -366,7 +378,8 @@ with col2:
 with col3:
     picker = st.selectbox(
         "Picker",
-        [None] + ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "bModel"],
+        [None]
+        + ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "bModel", "gModel"],
         index=0,
         format_func=lambda x: "👤 Choose your name..." if x is None else f"👤 {x}",
     )
@@ -769,7 +782,9 @@ if "games_data" in st.session_state:
                             else:
                                 # Regular game pick logic
                                 next_state = get_next_pick_state(
-                                    current_pick, game["away_team"]
+                                    current_pick,
+                                    game["away_team"],
+                                    st.session_state.picks,
                                 )
                                 if next_state is None:
                                     # Remove the pick
@@ -873,7 +888,9 @@ if "games_data" in st.session_state:
                             else:
                                 # Regular game pick logic
                                 next_state = get_next_pick_state(
-                                    current_pick, game["home_team"]
+                                    current_pick,
+                                    game["home_team"],
+                                    st.session_state.picks,
                                 )
                                 if next_state is None:
                                     # Remove the pick
