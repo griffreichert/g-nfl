@@ -951,10 +951,12 @@ if "games_data" in st.session_state:
             # Display favorites
             for fav_data in favorites:
                 survivor_selected = st.session_state.survivor_pick == fav_data["team"]
-                survivor_disabled = not picker or (
-                    st.session_state.survivor_pick is not None
-                    and st.session_state.survivor_pick != fav_data["team"]
-                )
+
+                # Hide row if a different team is selected
+                if st.session_state.survivor_pick is not None and not survivor_selected:
+                    continue
+
+                survivor_disabled = not picker
 
                 col1, col2 = st.columns([4, 1])
 
@@ -1034,10 +1036,12 @@ if "games_data" in st.session_state:
             # Display underdogs
             for dog_data in underdogs:
                 underdog_selected = st.session_state.underdog_pick == dog_data["team"]
-                underdog_disabled = not picker or (
-                    st.session_state.underdog_pick is not None
-                    and st.session_state.underdog_pick != dog_data["team"]
-                )
+
+                # Hide row if a different team is selected
+                if st.session_state.underdog_pick is not None and not underdog_selected:
+                    continue
+
+                underdog_disabled = not picker
 
                 col1, col2 = st.columns([4, 1])
 
