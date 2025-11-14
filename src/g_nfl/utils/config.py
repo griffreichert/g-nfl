@@ -20,7 +20,7 @@ SURVIVOR_USED_TEAMS = [
     "SEA",
     "GB",
     "IND",
-    "LAR",
+    "LA",
     "DET",
     "ARI",
     "DEN",
