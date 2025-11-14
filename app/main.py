@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from g_nfl import CUR_WEEK
 from g_nfl.modelling.utils import get_week_spreads
-from g_nfl.utils.config import CUR_SEASON
+from g_nfl.utils.config import CUR_SEASON, SURVIVOR_USED_TEAMS
 from g_nfl.utils.web_app import (
     get_all_lines_data,
     get_team_logo,
@@ -917,6 +917,13 @@ if "games_data" in st.session_state:
             st.markdown("### 💀 Survivor Pool")
             st.markdown("Pick ONE favorite (lowest spread) for the week")
 
+            # Get used teams (shared list for everyone)
+            used_teams = SURVIVOR_USED_TEAMS
+
+            # Show used teams if any exist
+            if used_teams:
+                st.info(f"🚫 Already used: {', '.join(sorted(used_teams))}")
+
             # Sort games by spread (most negative = biggest favorite)
             favorites = []
             for game_data in games_with_spreads:
@@ -934,6 +941,10 @@ if "games_data" in st.session_state:
                         favorite_team = game["home_team"]
                         opponent_team = game["away_team"]
                         favorite_spread = -spread
+
+                    # Skip teams that have already been used for survivor picks
+                    if favorite_team in used_teams:
+                        continue
 
                     favorites.append(
                         {
