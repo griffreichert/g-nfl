@@ -1,0 +1,53 @@
+# Deployment
+
+```
+frontend  →  Vercel   (web/ — React/Vite, auto-deploy from main)
+backend   →  Render   (FastAPI, free tier — cold starts acceptable)
+                ↓
+            Supabase  (PostgreSQL, existing project)
+```
+
+## Backend (Render)
+
+Configured via `render.yaml` (blueprint). One-time setup:
+
+1. Render dashboard → New → Blueprint → connect this repo
+2. Set secret env vars when prompted:
+   - `SUPABASE_URL` — Supabase project URL
+   - `SUPABASE_PUBLISHABLE_KEY` — Supabase publishable key (`sb_publishable_...`;
+     legacy `SUPABASE_ANON_KEY` also supported)
+   - `CORS_ORIGINS` — comma-separated, e.g. `https://<your-app>.vercel.app`
+3. Deploys automatically on push to `main`
+
+`requirements.txt` is generated from `uv.lock` (core deps only, no analysis/notebook
+tooling) — regenerate after dependency changes:
+
+```bash
+make deploy-prep
+```
+
+## Frontend (Vercel)
+
+1. Vercel dashboard → New Project → import this repo
+2. Set **Root Directory** to `web/`
+3. Framework preset: Vite (build `npm run build`, output `dist/`)
+4. Env var: `VITE_API_URL` — the Render backend URL, e.g. `https://g-nfl-api.onrender.com`
+5. Auto-deploys on push to `main`
+
+## Local development
+
+```bash
+make api   # FastAPI on :8000
+make web   # Vite dev server on :5173 (proxies /api to :8000)
+```
+
+Backend reads `SUPABASE_URL` / `SUPABASE_ANON_KEY` from `.env` (via python-dotenv).
+
+## Notes
+
+- Render free tier sleeps after inactivity — first request after idle takes ~30s.
+  Upgrade to Starter ($7/mo) if cold starts become annoying.
+- No auth yet: `picker` is passed explicitly by the frontend. When auth lands,
+  replace the picker param with session identity in `src/g_nfl/api/main.py`.
+- The Streamlit app (`app/`) still works (`make run`) and stays until the new
+  frontend reaches parity.
