@@ -2,11 +2,16 @@ from datetime import datetime, timedelta
 
 import nfl_data_py as nfl
 
-# df.columns = flatten_grouped_cols(df.columns)
-flatten_grouped_cols = lambda cols: list(map("_".join, cols))
-coach_lambda = lambda row: (
-    row["home_coach"] if row["posteam"] == row["home_team"] else row["away_coach"]
-)
+
+def flatten_grouped_cols(cols) -> list[str]:
+    # df.columns = flatten_grouped_cols(df.columns)
+    return list(map("_".join, cols))
+
+
+def coach_lambda(row):
+    return (
+        row["home_coach"] if row["posteam"] == row["home_team"] else row["away_coach"]
+    )
 
 
 def get_current_nfl_week(reference_date: datetime = None) -> tuple[int, int]:

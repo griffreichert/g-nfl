@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, Union
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,7 +8,6 @@ from adjustText import adjust_text
 from matplotlib.offsetbox import AnnotationBbox
 
 from g_nfl.utils.logos import get_team_logo
-from g_nfl.utils.paths import LOGO_PATH
 from g_nfl.visualisation import colors
 
 """ Resources I found helpful
@@ -26,15 +25,15 @@ def plot_scatter(
     marker_size: str = "",
     add_marker_label: bool = False,
     alpha: float = 0.85,
-    title: Union[str, None] = None,
-    ax_labels: Tuple[str, str] = ("", ""),
+    title: str | None = None,
+    ax_labels: tuple[str, str] = ("", ""),
     mean_reference: bool = True,
     zero_reference: bool = False,
     best_fit: bool = False,
-    logo_size: Union[int, None] = None,
+    logo_size: int | None = None,
     flip_x: bool = False,
     flip_y: bool = False,
-    custom_style: Union[dict, None] = None,
+    custom_style: dict | None = None,
     max_marker_size=800,
 ) -> None:
     # handle team columns
@@ -170,8 +169,8 @@ def plot_team_scatter(
     data: pd.DataFrame,
     x: str,
     y: str,
-    title: Union[str, None] = None,
-    ax_labels: Tuple[str, str] = ("", ""),
+    title: str | None = None,
+    ax_labels: tuple[str, str] = ("", ""),
     mean_reference: bool = True,
     zero_reference: bool = True,
     flip_def: bool = False,
@@ -191,7 +190,9 @@ def plot_team_scatter(
     plt.rcParams["figure.autolayout"] = True
     fig, ax = plt.subplots()
 
-    for xi, yi, team in zip(data[x].values, data[y].values, data["team"].values):
+    for xi, yi, team in zip(
+        data[x].values, data[y].values, data["team"].values, strict=False
+    ):
         ab = AnnotationBbox(get_team_logo(team, alpha=alpha), (xi, yi), frameon=False)
         ax.add_artist(ab)
 
@@ -242,8 +243,8 @@ def plot_bar(
     data: pd.DataFrame,
     x: str,
     y: str,
-    title: Union[str, None] = None,
-    ax_labels: Tuple[str, str] = ("", ""),
+    title: str | None = None,
+    ax_labels: tuple[str, str] = ("", ""),
     citation: bool = True,
     dark_mode: bool = True,
 ) -> None:

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from .database import MarketLinesDatabase, PicksDatabase, PoolSpreadsDatabase
 
 
@@ -13,7 +11,7 @@ def get_team_logo(team_name):
     return f"https://a.espncdn.com/i/teamlogos/nfl/500/{team_lower}.png"
 
 
-def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optional[str]:
+def save_picks_data(season: int, week: int, picks: dict, picker: str) -> str | None:
     """Save picks data to Supabase database
 
     Args:
@@ -40,14 +38,12 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         for unique_key, pick_data in picks.items():
             # Handle special pick prefixes (survivor_, underdog_, mnf_) vs regular game_id keys
             if unique_key.startswith(("survivor_", "underdog_", "mnf_")):
-                # Extract actual game_id from pick_data for special picks
-                actual_game_id = pick_data.get("game_id")
+                # Special picks carry their game_id inside pick_data
                 pick_type = pick_data.get("pick_type", "regular")
                 # Use the original unique_key as the transformed key for special picks
                 transformed_key = unique_key
             else:
                 # Regular pick - key is the game_id, just pass through
-                actual_game_id = unique_key
                 pick_type = (
                     pick_data.get("pick_type", "regular")
                     if isinstance(pick_data, dict)
@@ -71,7 +67,7 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         print(f"DEBUG: Transformed picks for database: {transformed_picks}")
 
         db = PicksDatabase()
-        print(f"DEBUG: PicksDatabase created successfully")
+        print("DEBUG: PicksDatabase created successfully")
 
         picks_saved = db.save_picks(season, week, transformed_picks, picker)
         print(f"DEBUG: save_picks returned: {picks_saved}")
@@ -90,7 +86,7 @@ def save_picks_data(season: int, week: int, picks: dict, picker: str) -> Optiona
         return f"ERROR: {error_type}: {str(e)}"
 
 
-def get_picks_data(season: int, week: int, picker: Optional[str] = None):
+def get_picks_data(season: int, week: int, picker: str | None = None):
     """Retrieve picks data from Supabase database
 
     Args:

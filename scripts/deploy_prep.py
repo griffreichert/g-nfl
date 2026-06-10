@@ -17,7 +17,7 @@ def main():
     # Generate requirements.txt from poetry
     print("📦 Generating requirements.txt from poetry dependencies...")
     try:
-        result = subprocess.run(
+        subprocess.run(
             [
                 "poetry",
                 "export",

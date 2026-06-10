@@ -1,10 +1,11 @@
-from typing import List, Literal, Tuple
+from typing import Literal
 
 import pandas as pd
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
 
-success_rate_lambda = lambda x: 1 if x > 0 else 0
+
+def success_rate_lambda(x) -> int:
+    return 1 if x > 0 else 0
+
 
 snapshot_metrics = [
     "epa_play",
@@ -93,7 +94,7 @@ def calculate_epa_metrics(
 
 def dual_epa_metrics(
     data: pd.DataFrame, percentile: bool = True
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """_summary_
 
     Parameters
@@ -114,7 +115,7 @@ def dual_epa_metrics(
 def metric_over_expectation(
     data: pd.DataFrame,
     y_col: str,
-    x_cols: List[str],
+    x_cols: list[str],
     summary: bool = True,
     binary: bool = False,
 ) -> pd.DataFrame:

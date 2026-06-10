@@ -52,7 +52,7 @@ with col_controls:
                 # Fallback to full range if no data in database
                 week_options = list(range(1, 19))
                 default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
-        except Exception as e:
+        except Exception:
             # Fallback to full range if database access fails
             week_options = list(range(1, 19))
             default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
@@ -265,7 +265,7 @@ elif (
     st.markdown("---")
     st.subheader("📝 How to Load Market Lines")
     st.markdown(
-        """
+        f"""
     To manage pool spreads, you first need market line data. Run this command locally:
 
     ```bash
@@ -276,9 +276,7 @@ elif (
     ```bash
     python scripts/update_market_lines.py --season {season} --weeks 1-18
     ```
-    """.format(
-            season=season, week=week
-        )
+    """
     )
 
 else:

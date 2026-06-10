@@ -27,7 +27,7 @@ def create_tables():
 
     sql_file_path = os.path.join(os.path.dirname(__file__), "database_schema.sql")
     try:
-        with open(sql_file_path, "r") as f:
+        with open(sql_file_path) as f:
             sql_content = f.read()
         print("=" * 60)
         print(sql_content)
@@ -47,18 +47,18 @@ def check_existing_tables():
         print("Checking existing tables...")
 
         try:
-            market_result = client.table("market_lines").select("id").limit(1).execute()
+            client.table("market_lines").select("id").limit(1).execute()
             print("✅ market_lines table exists")
             market_exists = True
-        except:
+        except Exception:
             print("❌ market_lines table does not exist")
             market_exists = False
 
         try:
-            pool_result = client.table("pool_spreads").select("id").limit(1).execute()
+            client.table("pool_spreads").select("id").limit(1).execute()
             print("✅ pool_spreads table exists")
             pool_exists = True
-        except:
+        except Exception:
             print("❌ pool_spreads table does not exist")
             pool_exists = False
 
@@ -92,7 +92,7 @@ def main():
         if market_exists and pool_exists:
             print("\n✅ All required tables already exist!")
         else:
-            print(f"\n⚠️  Missing tables detected. Run without --check to create them.")
+            print("\n⚠️  Missing tables detected. Run without --check to create them.")
         return
 
     # Check if tables exist (unless forced)

@@ -5,14 +5,18 @@ try:
 except ImportError:
     NFL_DATA_AVAILABLE = False
 
-import math
 
 import pandas as pd
 
 from g_nfl import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
 
-predict_home_score = lambda row: AVG_POINTS + row.home_off - row.away_def + HFA / 2
-predict_away_score = lambda row: AVG_POINTS + row.away_off - row.home_def - HFA / 2
+
+def predict_home_score(row) -> float:
+    return AVG_POINTS + row.home_off - row.away_def + HFA / 2
+
+
+def predict_away_score(row) -> float:
+    return AVG_POINTS + row.away_off - row.home_def - HFA / 2
 
 
 def percentile_to_spread(percentile: float, stdev: float = SPREAD_STDEV) -> float:
@@ -52,7 +56,7 @@ def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
         )
         schedule_df["game_order"] = schedule_df["game_order"] + 1
         return schedule_df
-    except Exception as e:
+    except Exception:
         # Fallback to sample data if API fails
         return create_sample_schedule_data(week)
 

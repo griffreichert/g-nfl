@@ -1,7 +1,5 @@
-import nfl_data_py as nfl
 import pandas as pd
 
-from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.connections import load_service_account
 
 # Load the service acount from the google_config.json file

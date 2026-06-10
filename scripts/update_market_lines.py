@@ -6,7 +6,6 @@ This should be run locally where nfl_data_py is available.
 
 import os
 import sys
-from typing import Any, Dict
 
 # Add the project root to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -60,7 +59,7 @@ def fetch_and_store_market_lines(season: int, week: int) -> bool:
             1 for line in lines.values() if line.get("total") is not None
         )
 
-        print(f"Summary:")
+        print("Summary:")
         print(f"  - Games with spreads: {spreads_count}")
         print(f"  - Games with totals: {totals_count}")
 

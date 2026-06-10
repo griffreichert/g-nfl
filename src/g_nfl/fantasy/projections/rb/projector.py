@@ -1,5 +1,4 @@
 import warnings
-from datetime import datetime, timedelta
 
 import nfl_data_py as nfl
 import numpy as np
@@ -269,7 +268,7 @@ class RBFantasyProjector:
         print(f"\nTop RB Plays for Week {target_week}:")
         print(top_plays.head(10).to_string(index=False))
 
-        print(f"\nHigh-Confidence Plays (>60% team touch share):")
+        print("\nHigh-Confidence Plays (>60% team touch share):")
         high_conf = top_plays[top_plays["confidence"] == "High"]
         print(high_conf.to_string(index=False))
 
