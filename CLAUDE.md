@@ -51,14 +51,25 @@ This is an NFL betting and fantasy football analysis project that combines data 
 
 **Environment Setup**:
 ```bash
-poetry install          # Install dependencies
-poetry shell           # Activate virtual environment
+uv sync                # Install all dependencies (core + dev + analysis groups)
+```
+
+**Running the apps**:
+```bash
+make api               # FastAPI backend (src/g_nfl/api/) on :8000
+make web               # React frontend (web/) on :5173, proxies /api to :8000
+make run               # Legacy Streamlit app
 ```
 
 **Data Analysis**:
 ```bash
-jupyter lab            # Start Jupyter for notebook analysis
-python src/fantasy/projections/rb/projector.py  # Run RB projections
+uv run jupyter lab     # Start Jupyter for notebook analysis
+```
+
+**Linting**:
+```bash
+make lint              # ruff check
+make format            # ruff format + autofix
 ```
 
 **Key Constants** (src/utils/config.py):

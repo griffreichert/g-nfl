@@ -11,6 +11,9 @@ DEFAULT_WIN_PROB = 0.05
 EXPLOSIVE_RUN_THRESHOLD = 10
 EXPLOSIVE_PASS_THRESHOLD = 15
 
+# Pickers in the no-homers pool
+PICKERS = ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "bModel", "gModel"]
+
 # Survivor pool used teams - teams that have already been picked and cannot be used again
 # Update this list each week after making survivor picks
 SURVIVOR_USED_TEAMS = [

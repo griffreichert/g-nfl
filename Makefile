@@ -1,16 +1,18 @@
-.PHONY: help install dev run deploy-prep clean lint test
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit
 
 # Default target
 help:
 	@echo "🏈 NFL Picks App - Available Commands"
 	@echo ""
 	@echo "📦 Setup & Development:"
-	@echo "  install       Install dependencies with poetry"
+	@echo "  install       Install dependencies with uv"
 	@echo "  dev           Install dev dependencies and setup pre-commit"
 	@echo "  run           Run the Streamlit app locally"
+	@echo "  api           Run the FastAPI backend locally"
+	@echo "  web           Run the React frontend dev server"
 	@echo ""
 	@echo "🚀 Deployment:"
-	@echo "  deploy-prep   Prepare app for deployment (generate requirements.txt)"
+	@echo "  deploy-prep   Generate requirements.txt for Render"
 	@echo ""
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
@@ -18,54 +20,53 @@ help:
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean         Clean up generated files"
-	@echo "  lint          Run code linting"
+	@echo "  lint          Run ruff linting"
+	@echo "  format        Run ruff formatting"
 	@echo "  test          Run tests (if any)"
 
 # Setup & Development
 install:
 	@echo "📦 Installing dependencies..."
-	poetry install
+	uv sync
 
 dev: install
 	@echo "🛠️  Setting up development environment..."
-	poetry run pre-commit install || echo "Pre-commit not configured"
+	uv run pre-commit install || echo "Pre-commit not configured"
 
 run:
 	@echo "🏃 Running Streamlit app..."
-	poetry run streamlit run app/main.py
+	uv run streamlit run app/main.py
+
+api:
+	@echo "⚡ Running FastAPI backend..."
+	uv run uvicorn g_nfl.api.main:app --reload --port 8000
+
+web:
+	@echo "⚛️  Running React frontend..."
+	cd web && npm run dev
 
 # Deployment
 deploy-prep:
-	@echo "🚀 Preparing for deployment..."
-	@echo "✅ Using streamlit-compatible requirements.txt (already created)"
-	@echo ""
-	@echo "📝 Next steps for Streamlit Cloud:"
-	@echo "1. Commit and push to GitHub"
-	@echo "2. Go to https://share.streamlit.io/"
-	@echo "3. Set main file: app/main.py"
-	@echo "4. Add environment variables:"
-	@echo "   - SUPABASE_URL"
-	@echo "   - SUPABASE_KEY"
-	@echo ""
-	@echo "ℹ️  Note: Using minimal requirements.txt without nfl_data_py"
-	@echo "   Full poetry requirements available in requirements_full.txt"
+	@echo "🚀 Generating requirements.txt for Render..."
+	uv export --no-default-groups --no-hashes --no-emit-project -o requirements.txt
+	@echo "✅ requirements.txt updated"
 
 # Data Management
 update-lines:
 	@echo "📊 Updating market lines for week 1..."
-	poetry run python scripts/update_market_lines.py --season 2025 --week 1
+	uv run python scripts/update_market_lines.py --season 2025 --week 1
 
 update-lines-all:
 	@echo "📊 Updating market lines for all weeks..."
-	poetry run python scripts/update_market_lines.py --season 2025 --weeks 1-18
+	uv run python scripts/update_market_lines.py --season 2025 --weeks 1-18
 
 verify-db:
 	@echo "🔍 Verifying database tables..."
-	poetry run python scripts/verify_tables.py
+	uv run python scripts/verify_tables.py
 
 verify-db-test:
 	@echo "🧪 Testing database operations..."
-	poetry run python scripts/verify_tables.py --test
+	uv run python scripts/verify_tables.py --test
 
 # Maintenance
 clean:
@@ -73,22 +74,25 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
-	rm -f requirements.txt
 
 lint:
 	@echo "🔍 Running linting..."
-	poetry run ruff check . || echo "Ruff not configured"
-	poetry run black --check . || echo "Black not configured"
+	uv run ruff check .
+
+format:
+	@echo "🪄 Formatting code..."
+	uv run ruff format .
+	uv run ruff check --fix .
 
 test:
 	@echo "🧪 Running tests..."
-	poetry run pytest || echo "No tests found"
+	uv run pytest || echo "No tests found"
 
 # Development shortcuts
 jupyter:
 	@echo "📓 Starting Jupyter Lab..."
-	poetry run jupyter lab
+	uv run jupyter lab
 
 streamlit:
 	@echo "🎈 Running Streamlit app..."
-	poetry run streamlit run app/main.py
+	uv run streamlit run app/main.py

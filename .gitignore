@@ -12,6 +12,16 @@ data/
 bin/
 *.zip
 *.json
+
+# private notes (symlink)
+notes
+
+# web frontend
+node_modules/
+web/dist/
+!web/**/*.json
+!vercel.json
+!render.yaml
 # ---- DEFAULT ----
 
 # Byte-compiled / optimized / DLL files

@@ -10,14 +10,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from g_nfl import CUR_WEEK
-from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON, SURVIVOR_USED_TEAMS
-from g_nfl.utils.web_app import (
-    get_all_lines_data,
-    get_team_logo,
-    load_existing_picks,
-    save_picks_data,
-)
+from g_nfl.utils.web_app import get_all_lines_data, get_team_logo, save_picks_data
 
 
 def run_app():
@@ -368,7 +362,7 @@ with col2:
             # Fallback to full range if no data in database
             week_options = list(range(1, 19))
             default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
-    except Exception as e:
+    except Exception:
         # Fallback to full range if database access fails
         week_options = list(range(1, 19))
         default_week_index = CUR_WEEK - 1 if CUR_WEEK <= 18 else 0
@@ -455,7 +449,9 @@ if load_button or "games_data" not in st.session_state:
                 from g_nfl.utils.database import MarketLinesDatabase
 
                 supabase_url = os.getenv("SUPABASE_URL")
-                supabase_key = os.getenv("SUPABASE_ANON_KEY")
+                supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv(
+                    "SUPABASE_ANON_KEY"
+                )
 
                 # Try streamlit secrets as fallback
                 if not supabase_url or not supabase_key:
@@ -463,9 +459,12 @@ if load_button or "games_data" not in st.session_state:
                         if not supabase_url:
                             supabase_url = st.secrets["SUPABASE_URL"]
                         if not supabase_key:
-                            supabase_key = st.secrets["SUPABASE_ANON_KEY"]
+                            supabase_key = (
+                                st.secrets.get("SUPABASE_PUBLISHABLE_KEY")
+                                or st.secrets["SUPABASE_ANON_KEY"]
+                            )
                         st.info("✅ Found credentials in Streamlit secrets")
-                    except:
+                    except Exception:
                         st.error("❌ Missing environment variables and secrets")
                         st.markdown(
                             """
@@ -488,15 +487,13 @@ if load_button or "games_data" not in st.session_state:
             if not market_lines:
                 st.error(f"❌ No market data found for Week {week}, Season {season}")
                 st.markdown(
-                    """
+                    f"""
                 **To fix this:**
                 1. Run locally: `python scripts/update_market_lines.py --season {season} --week {week}`
                 2. Or try a different week that has data
 
                 **Note:** This app requires market data to be pre-loaded into the database for deployment.
-                """.format(
-                        season=season, week=week
-                    )
+                """
                 )
                 st.stop()
 
@@ -830,7 +827,7 @@ if "games_data" in st.session_state:
                         # Display lines with progressive hiding based on screen width
                         # Build HTML with CSS classes for responsive hiding
                         lines_html = (
-                            f'<div style="font-size: 0.875rem; white-space: nowrap;">'
+                            '<div style="font-size: 0.875rem; white-space: nowrap;">'
                         )
 
                         # Always show pool spread (bold)
@@ -1156,7 +1153,7 @@ if "games_data" in st.session_state:
             # Process MNF pick
             if st.session_state.mnf_pick:
                 # Find the MNF game to get opponent
-                for game_id, game in games_df.iterrows():
+                for _game_id, game in games_df.iterrows():
                     if st.session_state.mnf_pick in [
                         game["away_team"],
                         game["home_team"],
@@ -1186,7 +1183,7 @@ if "games_data" in st.session_state:
             # Process Survivor pick
             if st.session_state.survivor_pick:
                 # Find the game to get opponent
-                for game_id, game in games_df.iterrows():
+                for _game_id, game in games_df.iterrows():
                     if st.session_state.survivor_pick in [
                         game["away_team"],
                         game["home_team"],
@@ -1216,7 +1213,7 @@ if "games_data" in st.session_state:
             # Process Underdog pick
             if st.session_state.underdog_pick:
                 # Find the game to get opponent
-                for game_id, game in games_df.iterrows():
+                for _game_id, game in games_df.iterrows():
                     if st.session_state.underdog_pick in [
                         game["away_team"],
                         game["home_team"],

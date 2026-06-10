@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from supabase import create_client
 
@@ -23,9 +23,9 @@ except ImportError:
 class SupabaseClient:
     """Singleton Supabase client manager"""
 
-    _instance: Optional[Client] = None
-    _url: Optional[str] = None
-    _key: Optional[str] = None
+    _instance: Client | None = None
+    _url: str | None = None
+    _key: str | None = None
 
     @classmethod
     def get_client(cls) -> Client:
@@ -70,18 +70,27 @@ class SupabaseClient:
 
     @classmethod
     def _get_key(cls) -> str:
-        """Get Supabase anon key from environment variables"""
+        """Get Supabase API key from environment variables
+
+        Checks in order: SUPABASE_PUBLISHABLE_KEY (new-style, sb_publishable_...),
+        SUPABASE_ANON_KEY (legacy), SUPABASE_SECRET_KEY (server-side, bypasses RLS).
+        """
         if cls._key:
             return cls._key
 
-        # Try SUPABASE_ANON_KEY first
-        key = os.getenv("SUPABASE_ANON_KEY")
-        if key:
-            return key
+        for var in (
+            "SUPABASE_PUBLISHABLE_KEY",
+            "SUPABASE_ANON_KEY",
+            "SUPABASE_SECRET_KEY",
+        ):
+            key = os.getenv(var)
+            if key:
+                return key
 
         raise ValueError(
-            "Supabase anon key not found. Please set SUPABASE_ANON_KEY environment variable.\n"
-            "You can find this in your Supabase dashboard under Settings > API"
+            "Supabase API key not found. Set SUPABASE_PUBLISHABLE_KEY (or legacy "
+            "SUPABASE_ANON_KEY) in your environment.\n"
+            "You can find this in your Supabase dashboard under Settings > API Keys"
         )
 
     @classmethod
