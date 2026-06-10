@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from supabase.client import Client
@@ -21,7 +20,7 @@ class PicksDatabase:
         self,
         season: int,
         week: int,
-        picks: Dict[str, Dict[str, any]],
+        picks: dict[str, dict[str, any]],
         picker: str,
         replace: bool = True,
     ) -> int:
@@ -89,7 +88,7 @@ class PicksDatabase:
             print(f"DEBUG: Total picks to insert: {len(picks_data)}")
 
             # Insert picks
-            print(f"DEBUG: Attempting to insert picks into 'picks' table")
+            print("DEBUG: Attempting to insert picks into 'picks' table")
             result = self.client.table("picks").insert(picks_data).execute()
             print(f"DEBUG: Insert result: {result}")
 
@@ -103,8 +102,8 @@ class PicksDatabase:
             raise  # Re-raise the exception so it can be caught by the calling function
 
     def get_picks(
-        self, season: int, week: int, picker: Optional[str] = None
-    ) -> List[Dict]:
+        self, season: int, week: int, picker: str | None = None
+    ) -> list[dict]:
         """Retrieve picks from Supabase
 
         Args:
@@ -127,7 +126,7 @@ class PicksDatabase:
 
         return result.data
 
-    def get_all_picks(self, limit: Optional[int] = None) -> List[Dict]:
+    def get_all_picks(self, limit: int | None = None) -> list[dict]:
         """Get all picks with optional limit
 
         Args:
@@ -165,7 +164,7 @@ class PicksDatabase:
         )
         return len(result.data) if result.data else 0
 
-    def get_database_stats(self) -> Dict:
+    def get_database_stats(self) -> dict:
         """Get database statistics
 
         Returns:
@@ -214,7 +213,7 @@ class MarketLinesDatabase:
         self,
         season: int,
         week: int,
-        lines: Dict[str, Dict[str, float]],
+        lines: dict[str, dict[str, float]],
         replace: bool = True,
     ) -> int:
         """Save market lines to Supabase
@@ -250,11 +249,11 @@ class MarketLinesDatabase:
 
         # Insert lines
         if lines_data:
-            result = self.client.table("market_lines").insert(lines_data).execute()
+            self.client.table("market_lines").insert(lines_data).execute()
             return len(lines_data)
         return 0
 
-    def get_market_lines(self, season: int, week: int) -> List[Dict]:
+    def get_market_lines(self, season: int, week: int) -> list[dict]:
         """Retrieve market lines from Supabase
 
         Args:
@@ -274,7 +273,7 @@ class MarketLinesDatabase:
         result = query.execute()
         return result.data
 
-    def get_available_weeks(self, season: int) -> List[int]:
+    def get_available_weeks(self, season: int) -> list[int]:
         """Get all weeks that have market lines data for a given season
 
         Args:
@@ -294,7 +293,7 @@ class MarketLinesDatabase:
         weeks = list(set(row["week"] for row in result.data if row["week"]))
         return sorted(weeks)
 
-    def get_max_week_for_season(self, season: int) -> Optional[int]:
+    def get_max_week_for_season(self, season: int) -> int | None:
         """Get the maximum week number that has market lines data for a given season
 
         Args:
@@ -318,7 +317,7 @@ class PoolSpreadsDatabase:
         self,
         season: int,
         week: int,
-        spreads: Dict[str, float],
+        spreads: dict[str, float],
         replace: bool = True,
     ) -> int:
         """Save pool spreads to Supabase
@@ -358,11 +357,11 @@ class PoolSpreadsDatabase:
 
         # Insert spreads
         if spreads_data:
-            result = self.client.table("pool_spreads").insert(spreads_data).execute()
+            self.client.table("pool_spreads").insert(spreads_data).execute()
             return len(spreads_data)
         return 0
 
-    def get_pool_spreads(self, season: int, week: int) -> List[Dict]:
+    def get_pool_spreads(self, season: int, week: int) -> list[dict]:
         """Retrieve pool spreads from Supabase
 
         Args:

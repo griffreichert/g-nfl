@@ -1,6 +1,4 @@
 import warnings
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
 
 import nfl_data_py as nfl
 import numpy as np
@@ -9,7 +7,6 @@ import pandas as pd
 from g_nfl.utils.config import (
     CUR_SEASON,
     DEFAULT_WIN_PROB,
-    EXPLOSIVE_PASS_THRESHOLD,
     EXPLOSIVE_RUN_THRESHOLD,
 )
 
@@ -32,7 +29,7 @@ class PBPRBFantasyProjector:
         self.defensive_stats = None
 
     def load_data(
-        self, weeks_filter: Optional[List[int]] = None, min_wp: float = DEFAULT_WIN_PROB
+        self, weeks_filter: list[int] | None = None, min_wp: float = DEFAULT_WIN_PROB
     ):
         """Load play-by-play data and extract RB-specific information"""
         print("Loading play-by-play data...")
@@ -439,7 +436,7 @@ class PBPRBFantasyProjector:
 
         return receiving_stats
 
-    def project_weekly_fantasy(self, week_num: int, filters: Optional[Dict] = None):
+    def project_weekly_fantasy(self, week_num: int, filters: dict | None = None):
         """Project fantasy points for a specific week with advanced filtering"""
         if self.rb_stats is None:
             raise ValueError("Must load data first!")
@@ -563,7 +560,7 @@ class PBPRBFantasyProjector:
         return team_pace / league_avg_pace
 
     def get_top_plays(
-        self, week_num: int, min_projection: float = 8.0, filters: Optional[Dict] = None
+        self, week_num: int, min_projection: float = 8.0, filters: dict | None = None
     ):
         """Get recommended RB plays with advanced filtering"""
         projections = self.project_weekly_fantasy(week_num, filters)
@@ -672,8 +669,8 @@ class PBPRBFantasyProjector:
     def run_full_analysis(
         self,
         target_week: int,
-        weeks_filter: Optional[List[int]] = None,
-        filters: Optional[Dict] = None,
+        weeks_filter: list[int] | None = None,
+        filters: dict | None = None,
     ):
         """Run complete PBP-based analysis pipeline"""
         print(f"Running PBP RB Fantasy Analysis for Week {target_week}")
@@ -693,7 +690,7 @@ class PBPRBFantasyProjector:
         else:
             print("No players meet the criteria")
 
-        print(f"\nHigh-Confidence Plays (>60% team touch share):")
+        print("\nHigh-Confidence Plays (>60% team touch share):")
         high_conf = top_plays[top_plays["confidence"] == "High"]
         if not high_conf.empty:
             print(high_conf.to_string(index=False))

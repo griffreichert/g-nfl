@@ -8,11 +8,8 @@ import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
-from g_nfl import CUR_WEEK
-from g_nfl.modelling.utils import get_week_spreads
 from g_nfl.utils.config import CUR_SEASON
 from g_nfl.utils.database import PicksDatabase
-from g_nfl.utils.teams import standardize_teams
 from g_nfl.utils.web_app import get_picks_data, get_team_logo
 
 st.set_page_config(page_title="View Picks - no-homers", layout="wide")

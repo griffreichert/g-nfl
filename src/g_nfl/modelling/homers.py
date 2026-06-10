@@ -106,7 +106,7 @@ def orchestrate_power_ratings_to_picks(
     confidence_pick_formulas = []
     confidence_rank_formulas = []
     n = len(gtl)
-    for index, row in gtl.iterrows():
+    for index, _row in gtl.iterrows():
         i = int(index) + 2
         adj_difference_formulas.append(
             f"={col_char_mappings['adj_line']}{i}-{col_char_mappings['spread_line']}{i}"
@@ -115,13 +115,13 @@ def orchestrate_power_ratings_to_picks(
             f"=IF({col_char_mappings['adj_difference']}{i}>0,{col_char_mappings['home_team']}{i}, {col_char_mappings['away_team']}{i})"
         )
         adj_rank_formulas.append(
-            f"=RANK(ABS({col_char_mappings['adj_difference']}{i}), ARRAYFORMULA(ABS(${col_char_mappings['adj_difference']}$2:${col_char_mappings['adj_difference']}${n+1})))"
+            f"=RANK(ABS({col_char_mappings['adj_difference']}{i}), ARRAYFORMULA(ABS(${col_char_mappings['adj_difference']}$2:${col_char_mappings['adj_difference']}${n + 1})))"
         )
         confidence_pick_formulas.append(
             f"=IF({col_char_mappings['adj_line']}{i}>0,{col_char_mappings['home_team']}{i}, {col_char_mappings['away_team']}{i})"
         )
         confidence_rank_formulas.append(
-            f"=RANK(ABS({col_char_mappings['pred_line']}{i}), ARRAYFORMULA(ABS(${col_char_mappings['pred_line']}$2:${col_char_mappings['pred_line']}${n+1})), 1)"
+            f"=RANK(ABS({col_char_mappings['pred_line']}{i}), ARRAYFORMULA(ABS(${col_char_mappings['pred_line']}$2:${col_char_mappings['pred_line']}${n + 1})), 1)"
         )
     gtl["adj_difference"] = adj_difference_formulas
     gtl["adj_pick"] = adj_pick_formulas
