@@ -76,6 +76,7 @@ The `notes/` folder is the source of truth for in-flight, multi-session work. Us
 - Issue branches merge into `dev` (via PR)
 - `dev` merges into `main` for releases
 - **Never commit or merge directly to `dev` or `main`** — always go through an issue branch
+- **Claude does not push or open PRs** — commit locally only; Griffin manages `git push` and PR creation himself
 
 **Commits**:
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `chore:`, `docs:`, etc.
