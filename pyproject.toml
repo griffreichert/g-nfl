@@ -1,45 +1,74 @@
-[tool.poetry]
+[project]
 name = "g-nfl"
 version = "0.1.0"
 description = "The cleveland browns can stay irrational longer than i can stay solvent"
-authors = ["Griffin Reichert <griffin.reichert@gmail.com>"]
+authors = [{ name = "Griffin Reichert", email = "griffin.reichert@gmail.com" }]
 readme = "README.md"
-packages = [{ include = "g_nfl", from = 'src' }]
+requires-python = ">=3.11,<3.13"
+# Core deps — everything the deployed API + Streamlit app need.
+# Analysis/notebook tooling lives in the `analysis` dependency group.
+dependencies = [
+    "numpy==1.26",
+    "requests>=2.32.3,<3",
+    "streamlit>=1.47.1,<2",
+    "tabulate>=0.9.0,<0.10",
+    "supabase>=2.0.0,<3",
+    "psycopg>=3.2.9,<4",
+    "python-dotenv>=1.0.0,<2",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<3.13"
-numpy = "1.26"
-nfl-data-py = "^0.3.1"
-bs4 = "^0.0.2"
-selenium = "^4.22.0"
-scikit-learn = "^1.5.1"
-plotly = "^5.22.0"
-jupyter = "^1.0.0"
-jupyter-black = "^0.3.4"
-requests = "^2.32.3"
-ipykernel = "^6.29.5"
-gspread = "^6.1.2"
-pre-commit = "^3.7.1"
-matplotlib = "^3.9.0"
-tqdm = "^4.66.5"
-adjusttext = "^1.2.0"
-statsmodels = "^0.14.2"
-xgboost = "^2.1.1"
-joblib = "^1.4.2"
-lxml = "^5.3.0"
-streamlit = "^1.47.1"
-tabulate = "^0.9.0"
-supabase = "^2.0.0"
-psycopg = "^3.2.9"
-python-dotenv = "^1.0.0"
-watchdog = "^6.0.0"
-nflreadpy = "^0.1.4"
-poetry-plugin-export = "^1.9.0"
-
-
-[tool.poetry.scripts]
+[project.scripts]
 app = "app.main:run_app"
 
+[dependency-groups]
+dev = ["ruff>=0.8.0", "pre-commit>=3.7.1,<4", "watchdog>=6.0.0,<7"]
+analysis = [
+    "nfl-data-py>=0.3.1,<0.4",
+    "nflreadpy>=0.1.4,<0.2",
+    "bs4>=0.0.2",
+    "selenium>=4.22.0,<5",
+    "scikit-learn>=1.5.1,<2",
+    "plotly>=5.22.0,<6",
+    "jupyter>=1.0.0,<2",
+    "jupyter-black>=0.3.4,<0.4",
+    "ipykernel>=6.29.5,<7",
+    "gspread>=6.1.2,<7",
+    "matplotlib>=3.9.0,<4",
+    "tqdm>=4.66.5,<5",
+    "adjusttext>=1.2.0,<2",
+    "statsmodels>=0.14.2,<0.15",
+    "xgboost>=2.1.1,<3",
+    "joblib>=1.4.2,<2",
+    "lxml>=5.3.0,<6",
+]
+
+[tool.uv]
+# local `uv sync` installs everything; deploys use `uv export --no-default-groups`
+default-groups = ["dev", "analysis"]
+
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/g_nfl", "app"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+extend-exclude = ["src/g_nfl/archive", "notebooks"]
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line length handled by formatter
+]
