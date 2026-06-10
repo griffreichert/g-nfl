@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "The cleveland browns can stay irrational longer than i can stay solvent"
 authors = [{ name = "Griffin Reichert", email = "griffin.reichert@gmail.com" }]
 readme = "README.md"
+# <3.13: nfl-data-py pins numpy<2 and pandas<2, neither of which support Python 3.13.
+# Revisit when nfl-data-py (or a replacement like nflreadpy) drops those pins.
 requires-python = ">=3.11,<3.13"
 # Core deps — everything the deployed API + Streamlit app need.
 # Analysis/notebook tooling lives in the `analysis` dependency group.

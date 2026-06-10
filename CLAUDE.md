@@ -8,6 +8,28 @@ This is an NFL betting and fantasy football analysis project that combines data 
 
 **Philosophy**: "The Cleveland Browns can stay irrational longer than I can stay solvent"
 
+## Task Tracking & Session Continuity (`notes/`)
+
+The `notes/` folder is the source of truth for in-flight, multi-session work. Use it to resume tasks across sessions.
+
+**At the start of a session** (before starting any non-trivial task):
+1. List `notes/` and read any note relevant to the current task
+2. If a note exists for the task, resume from its "Status" / remaining-work section rather than re-planning from scratch
+
+**During work on any multi-session or multi-step task**:
+- Maintain one markdown file per task in `notes/`, named after the task (kebab-case, e.g. `deployment-refactor.md`)
+- Use frontmatter:
+  ```markdown
+  ---
+  author: claude
+  date: YYYY-MM-DD
+  ---
+  ```
+- Track tasks at a **high level**: goal, current state, key decisions made (and why), and remaining steps. Do not log every edit — capture enough that a fresh session can pick up where this one left off.
+- Update the note **before ending a session** or whenever a major milestone or decision lands (mark completed steps, record what's next)
+
+**When a task is fully complete**: mark the note as done at the top (or summarize the outcome) so future sessions know it's closed.
+
 ## Key Architecture Components
 
 ### Data Pipeline
@@ -17,12 +39,12 @@ This is an NFL betting and fantasy football analysis project that combines data 
 
 ### Core Modules
 
-**Power Ratings Engine** (`src/modelling/`):
+**Power Ratings Engine** (`src/g_nfl/modelling/`):
 - `homers.py`: Multi-picker power rating system with Google Sheets integration
 - `utils.py`: Core betting utilities including spread prediction and line conversion
 - `metrics.py`: Advanced NFL metrics and success rate calculations
 
-**Data Processing** (`src/utils/`):
+**Data Processing** (`src/g_nfl/utils/`):
 - `config.py`: Global constants (current season, HFA, thresholds)
 - `teams.py`: Team name standardization across data sources
 - `odds.py`: Betting odds and line manipulation
@@ -43,16 +65,31 @@ This is an NFL betting and fantasy football analysis project that combines data 
 5. Output ranked picks with confidence levels
 
 **Fantasy Projections**:
-- RB projection system in `src/fantasy/projections/rb/projector.py`
+- RB projection system in `src/g_nfl/fantasy/projections/rb/projector.py`
 - Usage-based projections incorporating team pace, touch share, and matchup data
 - Confidence scoring based on role security and historical performance
+
+## Git Workflow
+
+**Branch strategy**:
+- Work happens on **issue branches**, named with the issue number prefix (e.g. `6-deployment-refactor-fastapi-backend`)
+- Issue branches merge into `dev` (via PR)
+- `dev` merges into `main` for releases
+- **Never commit or merge directly to `dev` or `main`** — always go through an issue branch
+
+**Commits**:
+- Follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `chore:`, `docs:`, etc.
+- Include the issue number in the commit message, e.g. `feat(api): add picks endpoint (#12)`
 
 ## Development Commands
 
 **Environment Setup**:
 ```bash
 uv sync                # Install all dependencies (core + dev + analysis groups)
+cp .env.example .env   # Then fill in Supabase keys (dashboard → Settings → API Keys)
 ```
+
+**Python version**: pinned to `>=3.11,<3.13`. Python 3.13 is blocked because `nfl-data-py` pins `numpy<2` and `pandas<2`, neither of which support 3.13. Revisit when that changes (or if `nflreadpy` fully replaces it).
 
 **Running the apps**:
 ```bash
@@ -72,11 +109,31 @@ make lint              # ruff check
 make format            # ruff format + autofix
 ```
 
-**Key Constants** (src/utils/config.py):
-- `CUR_SEASON = 2024`: Current NFL season
+**Data Management**:
+```bash
+make update-lines      # Update market lines for current week
+make verify-db         # Verify database tables exist
+```
+
+**Key Constants** (`src/g_nfl/utils/config.py` — always check this file for current values rather than trusting docs):
+- `CUR_SEASON`: Current NFL season
 - `HFA = 1.3`: Home field advantage in points
 - `AVG_POINTS = 21.5`: League average team points per game
 - `SPREAD_STDEV = 11.5`: Standard deviation for spread calculations
+
+## Deployment
+
+- **Backend**: FastAPI on Render (`render.yaml`); build installs from `requirements.txt`, which is generated from `uv.lock` via `make deploy-prep` — regenerate it whenever core deps change
+- **Frontend**: React app (`web/`) on Vercel
+- Full details in `DEPLOYMENT.md`
+
+## Related Docs
+
+- `DEPLOYMENT.md` — Render/Vercel deployment setup and steps
+- `DATA.md` — data sources and schema notes
+- `RESOURCES.md` — external links and references
+- `TODO.md` — long-term project roadmap (phased plan)
+- `notes/` — in-flight task tracking (see Task Tracking section above)
 
 ## Data Integration Notes
 
