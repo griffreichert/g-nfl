@@ -1,0 +1,269 @@
+"""Tests for g_nfl.ml.features (#9): play features, team-week aggregates,
+windows, the game matrix, anti-leakage, and the feature-set registry."""
+
+import polars as pl
+import pytest
+from polars.testing import assert_frame_equal, assert_series_equal
+
+from g_nfl.ml.features import build_features
+from g_nfl.ml.features.matrix import META_COLS, build_game_matrix
+from g_nfl.ml.features.plays import (
+    HAVOC_COLS,
+    ID_COLS,
+    PLAY_FEATURE_COLS,
+    add_play_features,
+    filter_plays,
+    play_features,
+)
+from g_nfl.ml.features.registry import get_feature_set
+from g_nfl.ml.features.team_week import team_week_stats
+from g_nfl.ml.features.windows import add_windows
+from g_nfl.utils.config import DEFAULT_WIN_PROB
+
+# ---- pipeline stages built once from the pbp fixture ----
+
+
+@pytest.fixture(scope="module")
+def filtered(pbp_sample: pl.DataFrame) -> pl.DataFrame:
+    return filter_plays(pbp_sample)
+
+
+@pytest.fixture(scope="module")
+def feats(filtered: pl.DataFrame) -> pl.DataFrame:
+    return add_play_features(filtered)
+
+
+@pytest.fixture(scope="module")
+def plays(pbp_sample: pl.DataFrame) -> pl.DataFrame:
+    return play_features(pbp_sample)
+
+
+@pytest.fixture(scope="module")
+def weekly(plays: pl.DataFrame) -> pl.DataFrame:
+    return team_week_stats(plays)
+
+
+@pytest.fixture(scope="module")
+def reg_schedule(schedule_sample: pl.DataFrame) -> pl.DataFrame:
+    return schedule_sample.filter(pl.col("game_type") == "REG")
+
+
+@pytest.fixture(scope="module")
+def windowed(weekly: pl.DataFrame, reg_schedule: pl.DataFrame) -> pl.DataFrame:
+    return add_windows(weekly, reg_schedule)
+
+
+@pytest.fixture(scope="module")
+def matrix(windowed: pl.DataFrame, reg_schedule: pl.DataFrame) -> pl.DataFrame:
+    return build_game_matrix(windowed, reg_schedule)
+
+
+# ---- plays ----
+
+
+def test_filter_plays(pbp_sample: pl.DataFrame, filtered: pl.DataFrame):
+    assert 0 < filtered.height < pbp_sample.height
+    assert set(filtered["play_type"].unique()) <= {"run", "pass"}
+    assert filtered["season_type"].unique().to_list() == ["REG"]
+    assert filtered["wp"].min() >= DEFAULT_WIN_PROB
+    assert filtered["wp"].max() <= 1 - DEFAULT_WIN_PROB
+
+
+def test_havoc_flags_disruptive_plays(feats: pl.DataFrame):
+    sacks = feats.filter(pl.col("sack") == 1)
+    assert sacks.height > 0
+    assert sacks["havoc"].all()
+
+    clean = feats.filter(pl.all_horizontal([pl.col(c) == 0 for c in HAVOC_COLS]))
+    assert clean.height > 0
+    assert not clean["havoc"].any()
+
+
+def test_pass_rush_yards_split(feats: pl.DataFrame):
+    passes = feats.filter(pl.col("pass_attempt") == 1)
+    assert (passes["pass_yards"] == passes["yards_gained"]).all()
+    non_passes = feats.filter(pl.col("pass_attempt") == 0)
+    assert non_passes["pass_yards"].null_count() == non_passes.height
+
+    rushes = feats.filter(pl.col("rush_attempt") == 1)
+    assert (rushes["rush_yards"] == rushes["yards_gained"]).all()
+
+
+def test_explosive_play_thresholds(feats: pl.DataFrame):
+    explosive_pass = feats.filter(pl.col("explosive_pass"))
+    assert explosive_pass.height > 0
+    assert (explosive_pass["yards_gained"] >= 15).all()
+    assert (explosive_pass["play_type"] == "pass").all()
+
+    explosive_rush = feats.filter(pl.col("explosive_rush"))
+    assert explosive_rush.height > 0
+    assert (explosive_rush["yards_gained"] >= 10).all()
+    assert (explosive_rush["play_type"] == "run").all()
+
+    assert (
+        feats["explosive_play"] == (feats["explosive_pass"] | feats["explosive_rush"])
+    ).all()
+
+
+def test_rate_columns_rescaled(filtered: pl.DataFrame, feats: pl.DataFrame):
+    assert_series_equal(feats["cpoe"], filtered["cpoe"] / 100)
+    assert_series_equal(feats["pass_oe"], filtered["pass_oe"] / 100)
+    assert feats["cpoe"].abs().max() <= 1.0
+
+
+def test_play_features_columns(plays: pl.DataFrame):
+    assert plays.columns == ID_COLS + PLAY_FEATURE_COLS
+
+
+# ---- team_week ----
+
+
+def test_team_week_offense_aggregates(plays: pl.DataFrame, weekly: pl.DataFrame):
+    kc_w1 = plays.filter((pl.col("posteam") == "KC") & (pl.col("week") == 1))
+    row = weekly.filter((pl.col("team") == "KC") & (pl.col("week") == 1))
+    assert row.height == 1
+    assert row["plays"][0] == kc_w1.height
+    assert row["epa"][0] == pytest.approx(kc_w1["epa"].sum())
+    assert row["epa_mean"][0] == pytest.approx(kc_w1["epa"].mean())
+
+
+def test_team_week_defense_mirrors_opponent_offense(
+    weekly: pl.DataFrame, reg_schedule: pl.DataFrame
+):
+    game = reg_schedule.filter(
+        (pl.col("week") == 1)
+        & ((pl.col("home_team") == "KC") | (pl.col("away_team") == "KC"))
+    )
+    home, away = game["home_team"][0], game["away_team"][0]
+    opponent = away if home == "KC" else home
+
+    kc_def_epa = weekly.filter((pl.col("team") == "KC") & (pl.col("week") == 1))[
+        "epa_def"
+    ][0]
+    opp_off_epa = weekly.filter((pl.col("team") == opponent) & (pl.col("week") == 1))[
+        "epa"
+    ][0]
+    assert kc_def_epa == pytest.approx(opp_off_epa)
+
+
+def test_team_week_one_row_per_team_week(weekly: pl.DataFrame):
+    keys = weekly.select("team", "season", "week")
+    assert keys.height == keys.unique().height
+
+
+# ---- windows ----
+
+
+def test_rolling_and_season_sums(weekly: pl.DataFrame, windowed: pl.DataFrame):
+    kc = weekly.filter(pl.col("team") == "KC").sort("week")
+    assert kc["week"].to_list() == [1, 2, 3, 4, 5]
+
+    kc_w5 = windowed.filter((pl.col("team") == "KC") & (pl.col("week") == 5))
+    assert kc_w5["epa_last_4w"][0] == pytest.approx(
+        kc.filter(pl.col("week") > 1)["epa"].sum()
+    )
+    assert kc_w5["epa_season"][0] == pytest.approx(kc["epa"].sum())
+
+
+def test_windows_full_team_week_grid(windowed: pl.DataFrame, weekly: pl.DataFrame):
+    n_teams = weekly["team"].n_unique()
+    assert windowed.height == n_teams * 5  # every team gets all 5 fixture weeks
+
+
+def test_forward_fill_on_bye_weeks():
+    # team misses week 3; windowed stats must carry week 2 forward
+    weekly = pl.DataFrame(
+        {
+            "team": ["AAA"] * 3,
+            "season": [2023] * 3,
+            "week": [1, 2, 4],
+            "epa": [1.0, 2.0, 4.0],
+        }
+    )
+    schedule = pl.DataFrame({"season": [2023] * 4, "week": [1, 2, 3, 4]})
+    windowed = add_windows(weekly, schedule, rolling_weeks=2)
+
+    bye = windowed.filter(pl.col("week") == 3)
+    assert bye["epa_season"][0] == pytest.approx(3.0)
+    assert bye["epa_last_2w"][0] == pytest.approx(3.0)
+    assert bye["epa"][0] is None  # raw weekly stat stays null on the bye
+
+    week4 = windowed.filter(pl.col("week") == 4)
+    assert week4["epa_season"][0] == pytest.approx(7.0)
+    # rolling window spans games played, skipping the bye: weeks 2 + 4
+    assert week4["epa_last_2w"][0] == pytest.approx(6.0)
+
+
+# ---- matrix ----
+
+
+def test_matrix_meta_and_shape(matrix: pl.DataFrame, reg_schedule: pl.DataFrame):
+    assert matrix.height == reg_schedule.height
+    assert set(META_COLS) <= set(matrix.columns)
+    # no stats exist before week 1, so week-1 games have null features
+    week1 = matrix.filter(pl.col("week") == 1)
+    assert week1["home_epa_season"].null_count() == week1.height
+
+
+def test_matrix_uses_previous_week_stats(matrix: pl.DataFrame, windowed: pl.DataFrame):
+    game = matrix.filter(pl.col("week") == 5).head(1)
+    home = game["home_team"][0]
+    expected = windowed.filter((pl.col("team") == home) & (pl.col("week") == 4))
+    assert game["home_epa_season"][0] == pytest.approx(expected["epa_season"][0])
+    assert game["home_epa_last_4w"][0] == pytest.approx(expected["epa_last_4w"][0])
+
+
+def test_matrix_min_week(windowed: pl.DataFrame, reg_schedule: pl.DataFrame):
+    trimmed = build_game_matrix(windowed, reg_schedule, min_week=4)
+    assert trimmed["week"].min() >= 4
+    assert trimmed.height < reg_schedule.height
+
+
+# ---- anti-leakage ----
+
+
+def test_future_weeks_do_not_leak(
+    pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    """Perturb week-5 plays; features for games through week 5 (built from
+    weeks <= 4 via the 1-week lag) must be identical."""
+    perturbed = pbp_sample.with_columns(
+        pl.when(pl.col("week") == 5)
+        .then(pl.col("epa") * 100 + 7)
+        .otherwise(pl.col("epa"))
+        .alias("epa"),
+        pl.when(pl.col("week") == 5)
+        .then(pl.col("yards_gained") + 50)
+        .otherwise(pl.col("yards_gained"))
+        .alias("yards_gained"),
+    )
+
+    # sanity: the perturbation changes week-5 weekly stats but not earlier weeks
+    weekly_base = team_week_stats(play_features(pbp_sample))
+    weekly_pert = team_week_stats(play_features(perturbed))
+    assert not weekly_pert.filter(pl.col("week") == 5).equals(
+        weekly_base.filter(pl.col("week") == 5)
+    )
+    assert_frame_equal(
+        weekly_pert.filter(pl.col("week") < 5),
+        weekly_base.filter(pl.col("week") < 5),
+    )
+
+    base = build_features(pbp_sample, schedule_sample)
+    pert = build_features(perturbed, schedule_sample)
+    assert_frame_equal(base.sort("game_id"), pert.sort("game_id"))
+
+
+# ---- registry ----
+
+
+def test_v1_team_feature_set(matrix: pl.DataFrame):
+    feature_cols = get_feature_set("v1_team").columns(matrix)
+    assert feature_cols
+    assert set(feature_cols).isdisjoint(META_COLS)
+    assert set(feature_cols) | set(META_COLS) == set(matrix.columns)
+
+
+def test_unknown_feature_set_raises():
+    with pytest.raises(KeyError, match="unknown feature set"):
+        get_feature_set("nope")
