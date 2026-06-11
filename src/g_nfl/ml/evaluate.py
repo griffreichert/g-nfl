@@ -48,6 +48,8 @@ BREAK_EVEN = 110 / 210
 DEFAULT_MIN_TRAIN_GAMES = 200
 # notebook swept the pick cutoff k over 1..20; 0 = bet every game
 DEFAULT_EDGE_THRESHOLDS = tuple(range(0, 21))
+# report performance of each week's n most confident picks, n = 1..5
+DEFAULT_TOP_N = 5
 
 
 def walk_forward_predictions(
@@ -111,52 +113,97 @@ def regression_metrics(preds: pl.DataFrame) -> dict[str, float]:
     }
 
 
+def _score_picks(preds: pl.DataFrame) -> pl.DataFrame:
+    """Add edge / push / win columns; drop edge == 0 (no side to bet)."""
+    return (
+        preds.with_columns(
+            edge=pl.col("pred") - pl.col("spread_line"),
+            home_margin_vs_spread=pl.col("result") - pl.col("spread_line"),
+        )
+        .with_columns(
+            push=pl.col("home_margin_vs_spread") == 0,
+            # bet home when edge > 0, away when edge < 0; win when the
+            # actual margin lands on the same side of the spread
+            win=(pl.col("edge") * pl.col("home_margin_vs_spread")) > 0,
+        )
+        .filter(pl.col("edge") != 0)
+    )
+
+
+def _record_row(bets: pl.DataFrame) -> dict[str, Any]:
+    """W/L/P, ATS% and ROI for a set of bets. Pushes return the stake:
+    excluded from ATS%, counted as 0 profit in ROI."""
+    wins = bets.filter(pl.col("win") & ~pl.col("push")).height
+    pushes = bets.filter(pl.col("push")).height
+    losses = bets.height - wins - pushes
+    decided = wins + losses
+    profit = wins * WIN_PROFIT - losses
+    return {
+        "n_bets": bets.height,
+        "wins": wins,
+        "losses": losses,
+        "pushes": pushes,
+        "ats_pct": wins / decided if decided else None,
+        "vs_break_even": wins / decided - BREAK_EVEN if decided else None,
+        "roi": profit / bets.height if bets.height else None,
+    }
+
+
 def betting_metrics(
     preds: pl.DataFrame,
     edge_thresholds: tuple[int, ...] = DEFAULT_EDGE_THRESHOLDS,
 ) -> pl.DataFrame:
-    """ATS record and ROI per edge threshold.
-
-    A game is bet when |pred - spread_line| >= threshold (and != 0: no
-    edge, no bet). Pushes return the stake: excluded from ATS%, counted
-    as 0 profit in ROI. ROI is profit per unit staked at -110.
-    """
-    scored = preds.with_columns(
-        edge=pl.col("pred") - pl.col("spread_line"),
-        home_margin_vs_spread=pl.col("result") - pl.col("spread_line"),
-    ).with_columns(
-        push=pl.col("home_margin_vs_spread") == 0,
-        # bet home when edge > 0, away when edge < 0; win when the
-        # actual margin lands on the same side of the spread
-        win=(pl.col("edge") * pl.col("home_margin_vs_spread")) > 0,
-    )
-
-    rows = []
-    for k in edge_thresholds:
-        bets = scored.filter((pl.col("edge").abs() >= k) & (pl.col("edge") != 0))
-        wins = bets.filter(pl.col("win") & ~pl.col("push")).height
-        pushes = bets.filter(pl.col("push")).height
-        losses = bets.height - wins - pushes
-        decided = wins + losses
-        profit = wins * WIN_PROFIT - losses
-        rows.append(
+    """ATS record and ROI per edge threshold: bet every game where
+    |pred - spread_line| >= threshold. ROI is profit per unit staked
+    at -110."""
+    scored = _score_picks(preds)
+    return pl.DataFrame(
+        [
             {
                 "edge_threshold": k,
-                "n_bets": bets.height,
-                "wins": wins,
-                "losses": losses,
-                "pushes": pushes,
-                "ats_pct": wins / decided if decided else None,
-                "vs_break_even": wins / decided - BREAK_EVEN if decided else None,
-                "roi": profit / bets.height if bets.height else None,
+                **_record_row(scored.filter(pl.col("edge").abs() >= k)),
             }
-        )
-    return pl.DataFrame(rows)
+            for k in edge_thresholds
+        ]
+    )
+
+
+def top_n_metrics(preds: pl.DataFrame, max_n: int = DEFAULT_TOP_N) -> pl.DataFrame:
+    """ATS record and ROI betting only each week's n highest-confidence
+    picks (largest |pred - spread_line|), for n = 1..max_n.
+
+    Mirrors how the picks are actually played: a fixed number of bets
+    per week rather than a fixed edge cutoff.
+    """
+    ranked = _score_picks(preds).with_columns(
+        confidence_rank=pl.col("edge")
+        .abs()
+        .rank("ordinal", descending=True)
+        .over("season", "week")
+    )
+    return pl.DataFrame(
+        [
+            {
+                "top_n": n,
+                **_record_row(ranked.filter(pl.col("confidence_rank") <= n)),
+            }
+            for n in range(1, max_n + 1)
+        ]
+    )
+
+
+def _record_cells(r: dict[str, Any]) -> str:
+    """`W-L-P | ATS% | vs break-even | ROI` markdown cells for a record row."""
+    ats = f"{r['ats_pct']:.1%}" if r["ats_pct"] is not None else "-"
+    vbe = f"{r['vs_break_even']:+.1%}" if r["vs_break_even"] is not None else "-"
+    roi = f"{r['roi']:+.1%}" if r["roi"] is not None else "-"
+    return f"{r['wins']}-{r['losses']}-{r['pushes']} | {ats} | {vbe} | {roi} |"
 
 
 def format_report(
     preds: pl.DataFrame,
     sweep: pl.DataFrame,
+    top_n: pl.DataFrame,
     reg: dict[str, float],
     config: dict[str, Any],
 ) -> str:
@@ -184,13 +231,18 @@ def format_report(
         "|--:|-----:|------:|-----:|--------------:|----:|",
     ]
     for r in sweep.iter_rows(named=True):
-        ats = f"{r['ats_pct']:.1%}" if r["ats_pct"] is not None else "-"
-        vbe = f"{r['vs_break_even']:+.1%}" if r["vs_break_even"] is not None else "-"
-        roi = f"{r['roi']:+.1%}" if r["roi"] is not None else "-"
-        lines.append(
-            f"| {r['edge_threshold']} | {r['n_bets']} | "
-            f"{r['wins']}-{r['losses']}-{r['pushes']} | {ats} | {vbe} | {roi} |"
-        )
+        lines.append(f"| {r['edge_threshold']} | {r['n_bets']} | {_record_cells(r)}")
+    lines += [
+        "",
+        "## Top-n confidence picks per week",
+        "",
+        "Each week, bet only the n games with the largest |model - market|.",
+        "",
+        "| n/week | bets | W-L-P | ATS% | vs break-even | ROI |",
+        "|-------:|-----:|------:|-----:|--------------:|----:|",
+    ]
+    for r in top_n.iter_rows(named=True):
+        lines.append(f"| {r['top_n']} | {r['n_bets']} | {_record_cells(r)}")
     return "\n".join(lines) + "\n"
 
 
@@ -221,6 +273,7 @@ def backtest(
     report = format_report(
         preds,
         betting_metrics(preds, edge_thresholds),
+        top_n_metrics(preds),
         regression_metrics(preds),
         config={
             "feature_set": fs.name,

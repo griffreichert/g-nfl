@@ -151,6 +151,47 @@ def test_betting_metrics_empty_threshold_bucket():
     assert row["ats_pct"] is None and row["roi"] is None
 
 
+def test_top_n_metrics_ranks_within_each_week():
+    # two weeks; per-week confidence order differs from global order
+    preds = pl.DataFrame(
+        {
+            "season": [2023] * 6,
+            "week": [1, 1, 1, 2, 2, 2],
+            #                    week 1            |        week 2
+            # edges:    +5 (win), +2 (loss), -1 (win) | -8 (loss), +3 (win), +1 (push)
+            "pred": [6.0, 3.0, -2.0, -10.0, 4.0, 2.0],
+            "spread_line": [1.0, 1.0, -1.0, -2.0, 1.0, 1.0],
+            "result": [9.0, -1.0, -3.0, 5.0, 7.0, 1.0],
+        }
+    )
+    top = eval_mod.top_n_metrics(preds, max_n=2)
+
+    n1 = top.filter(pl.col("top_n") == 1).row(0, named=True)
+    # top pick each week: +5 edge (win) and -8 edge (loss)
+    assert (n1["n_bets"], n1["wins"], n1["losses"], n1["pushes"]) == (2, 1, 1, 0)
+
+    n2 = top.filter(pl.col("top_n") == 2).row(0, named=True)
+    # adds +2 (loss) and +3 (win)
+    assert (n2["n_bets"], n2["wins"], n2["losses"], n2["pushes"]) == (4, 2, 2, 0)
+    assert n2["ats_pct"] == 0.5
+
+
+def test_top_n_metrics_counts_pushes_and_short_weeks():
+    # only 2 bettable games in the week; n=3 must not invent bets
+    preds = _preds_frame(
+        [
+            (4.0, 1.0, 1.0),  # edge +3 -> push
+            (-3.0, -1.0, -4.0),  # edge -2 -> win
+        ]
+    ).with_columns(week=pl.lit(1))
+    top = eval_mod.top_n_metrics(preds, max_n=3)
+    n3 = top.filter(pl.col("top_n") == 3).row(0, named=True)
+    assert (n3["n_bets"], n3["wins"], n3["losses"], n3["pushes"]) == (2, 1, 0, 1)
+    # push excluded from ATS%, included in ROI stake
+    assert n3["ats_pct"] == 1.0
+    assert n3["roi"] == pytest.approx((100 / 110) / 2)
+
+
 def test_regression_metrics_known_values():
     preds = _preds_frame([(3.0, 0.0, 0.0), (-1.0, 2.0, 3.0)])
     reg = eval_mod.regression_metrics(preds)
@@ -188,3 +229,4 @@ def test_backtest_cli_end_to_end(
     assert "# Spread model walk-forward backtest" in report
     assert "| 20 |" in report  # full default sweep rendered
     assert "Break-even ATS%: 52.38%" in report
+    assert "## Top-n confidence picks per week" in report
