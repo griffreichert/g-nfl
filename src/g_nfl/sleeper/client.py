@@ -1,9 +1,10 @@
 """Read-only client for the Sleeper public API (https://docs.sleeper.com).
 
-No auth required; Sleeper asks for < 1000 calls/min. The public API is
-**read-only**: pulling leagues/rosters/matchups/players works, but
-roster moves (add/drop, lineups) go through Sleeper's private GraphQL
-API, which is undocumented and needs an app auth token — out of scope.
+No auth required; Sleeper asks for < 1000 calls/min. This integration
+is **read-only by design**: code pulls league state and produces
+analysis/recommendations, Griffin applies any moves in the app himself.
+(The public API can't write anyway; roster moves go through Sleeper's
+private GraphQL API — undocumented, and deliberately not used here.)
 
 The full NFL players blob is ~5MB and Sleeper asks that it be fetched
 at most once per day, so it's cached on disk with a TTL.
@@ -26,6 +27,13 @@ PLAYERS_TTL_SECONDS = 24 * 3600
 
 # fantasy-relevant positions for free-agent scans
 SKILL_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
+
+USERNAME = "griffreichert"
+# Griffin's leagues (both 10-team superflex half-PPR dynasty)
+KNOWN_LEAGUES = {
+    "dudes_rock": "1317107661950443520",  # Dudes Rock Dynasty
+    "money_manziel": "1313641406052446208",  # Money Manziel Memorial Dynasty
+}
 
 
 class SleeperClient:
