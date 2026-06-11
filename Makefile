@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train
 
 # Default target
 help:
@@ -17,6 +17,9 @@ help:
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
 	@echo "  verify-db     Verify database tables exist"
+	@echo ""
+	@echo "🤖 ML:"
+	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean         Clean up generated files"
@@ -67,6 +70,11 @@ verify-db:
 verify-db-test:
 	@echo "🧪 Testing database operations..."
 	uv run python scripts/verify_tables.py --test
+
+# ML
+train:
+	@echo "🏋️  Training spread model..."
+	uv run python -m g_nfl.ml.train $(ARGS)
 
 # Maintenance
 clean:
