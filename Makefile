@@ -16,6 +16,7 @@ help:
 	@echo ""
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
+	@echo "  update-results Update final game results (for standings)"
 	@echo "  verify-db     Verify database tables exist"
 	@echo ""
 	@echo "🤖 ML:"
@@ -62,6 +63,10 @@ update-lines:
 update-lines-all:
 	@echo "📊 Updating market lines for all weeks..."
 	uv run python scripts/update_market_lines.py --season 2025 --weeks 1-18
+
+update-results:
+	@echo "🏁 Updating game results..."
+	uv run python scripts/update_results.py $(ARGS)
 
 verify-db:
 	@echo "🔍 Verifying database tables..."

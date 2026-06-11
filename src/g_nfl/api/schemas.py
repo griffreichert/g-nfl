@@ -54,6 +54,37 @@ class SavePicksResponse(BaseModel):
     saved: int
 
 
+class Record(BaseModel):
+    wins: int
+    losses: int
+    pushes: int
+    pending: int
+    win_pct: float | None
+
+
+class WeeklyRecord(Record):
+    week: int
+    units: float
+    cum_units: float
+    cum_win_pct: float | None
+
+
+class PickerStanding(BaseModel):
+    picker: str
+    ats: Record
+    units: float
+    by_type: dict[str, Record]
+    no_spread: int
+    weekly: list[WeeklyRecord]
+
+
+class StandingsResponse(BaseModel):
+    season: int
+    break_even_pct: float
+    graded_through_week: int | None
+    standings: list[PickerStanding]
+
+
 class PoolSpreadUpdate(BaseModel):
     season: int
     week: int

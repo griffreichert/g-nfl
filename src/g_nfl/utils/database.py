@@ -126,6 +126,11 @@ class PicksDatabase:
 
         return result.data
 
+    def get_season_picks(self, season: int) -> list[dict]:
+        """All picks for a season, every picker and week."""
+        result = self.client.table("picks").select("*").eq("season", season).execute()
+        return result.data
+
     def get_all_picks(self, limit: int | None = None) -> list[dict]:
         """Get all picks with optional limit
 
@@ -200,6 +205,37 @@ class PicksDatabase:
             "season_range": season_range,
             "week_range": week_range,
         }
+
+
+class GameResultsDatabase:
+    """Supabase database handler for final game results.
+
+    Populated locally by scripts/update_results.py (nflverse data isn't
+    available to the deployed API); read by the standings endpoint.
+    """
+
+    def __init__(self):
+        """Initialize Supabase client"""
+        self.client: Client = get_supabase()
+
+    def save_results(self, results: list[dict]) -> int:
+        """Upsert result rows keyed by game_id.
+
+        Each row: game_id, season, week, away_team, home_team,
+        away_score, home_score, result (home margin).
+        """
+        if not results:
+            return 0
+        rows = [{**r, "updated_at": datetime.utcnow().isoformat()} for r in results]
+        self.client.table("game_results").upsert(rows, on_conflict="game_id").execute()
+        return len(rows)
+
+    def get_results(self, season: int) -> list[dict]:
+        """All result rows for a season."""
+        result = (
+            self.client.table("game_results").select("*").eq("season", season).execute()
+        )
+        return result.data
 
 
 class MarketLinesDatabase:
