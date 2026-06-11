@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo ""
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
+	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean         Clean up generated files"
@@ -75,6 +76,10 @@ verify-db-test:
 train:
 	@echo "🏋️  Training spread model..."
 	uv run python -m g_nfl.ml.train $(ARGS)
+
+backtest:
+	@echo "📈 Running walk-forward backtest..."
+	uv run python -m g_nfl.ml.evaluate $(ARGS)
 
 # Maintenance
 clean:
