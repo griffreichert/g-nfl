@@ -17,6 +17,8 @@ help:
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
 	@echo "  verify-db     Verify database tables exist"
+	@echo "  load-pool     Load pool standings workbook (ARGS=\"<xlsx> --season 2025\")"
+	@echo "  pool-report   Pool pick-trend report (ARGS=\"<xlsx> --season 2025\")"
 	@echo ""
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
@@ -66,6 +68,14 @@ update-lines-all:
 verify-db:
 	@echo "🔍 Verifying database tables..."
 	uv run python scripts/verify_tables.py
+
+load-pool:
+	@echo "🏊 Loading pool picks workbook into Supabase..."
+	uv run python scripts/load_pool_picks.py $(ARGS)
+
+pool-report:
+	@echo "📈 Pool pick-trend report..."
+	uv run python -m g_nfl.pool.analysis $(ARGS)
 
 verify-db-test:
 	@echo "🧪 Testing database operations..."
