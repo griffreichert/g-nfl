@@ -34,3 +34,34 @@ export interface PickRecord extends Pick {
   season: number
   week: number
 }
+
+export interface RecordStats {
+  wins: number
+  losses: number
+  pushes: number
+  pending: number
+  win_pct: number | null
+}
+
+export interface WeeklyRecord extends RecordStats {
+  week: number
+  units: number
+  cum_units: number
+  cum_win_pct: number | null
+}
+
+export interface PickerStanding {
+  picker: string
+  ats: RecordStats
+  units: number
+  by_type: Record<string, RecordStats>
+  no_spread: number
+  weekly: WeeklyRecord[]
+}
+
+export interface StandingsResponse {
+  season: number
+  break_even_pct: number
+  graded_through_week: number | null
+  standings: PickerStanding[]
+}

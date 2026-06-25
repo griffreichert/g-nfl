@@ -2,10 +2,12 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import MakePicks from './pages/MakePicks'
 import ViewPicks from './pages/ViewPicks'
 import ManageSpreads from './pages/ManageSpreads'
+import Standings from './pages/Standings'
 
 const tabs = [
   { to: '/picks', label: '🎯 Make Picks' },
   { to: '/view', label: '🔍 View Picks' },
+  { to: '/standings', label: '🏆 Standings' },
   { to: '/spreads', label: '⚙️ Spreads' },
 ]
 
@@ -33,6 +35,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/picks" replace />} />
           <Route path="/picks" element={<MakePicks />} />
           <Route path="/view" element={<ViewPicks />} />
+          <Route path="/standings" element={<Standings />} />
           <Route path="/spreads" element={<ManageSpreads />} />
         </Routes>
       </main>

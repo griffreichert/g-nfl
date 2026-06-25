@@ -11,8 +11,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from g_nfl import CUR_SEASON, CUR_WEEK
+from g_nfl.picks.grading import BREAK_EVEN, picker_standings
 from g_nfl.utils.config import PICKERS, SURVIVOR_USED_TEAMS
 from g_nfl.utils.database import (
+    GameResultsDatabase,
     MarketLinesDatabase,
     PicksDatabase,
     PoolSpreadsDatabase,
@@ -27,6 +29,7 @@ from .schemas import (
     PoolSpreadUpdateResponse,
     SavePicksRequest,
     SavePicksResponse,
+    StandingsResponse,
     WeeksResponse,
 )
 
@@ -155,6 +158,35 @@ def save_picks(req: SavePicksRequest):
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
+
+
+@app.get("/api/standings", response_model=StandingsResponse)
+def get_standings(season: int):
+    """Picker performance for a season: ATS records, units at -110,
+    per-pick-type breakdowns, and weekly cumulative trend.
+
+    Grades picks against the game_results table (populated locally by
+    scripts/update_results.py); games without a result are pending.
+    """
+    picks = PicksDatabase().get_season_picks(season)
+    if not picks:
+        raise HTTPException(404, f"No picks for season {season}")
+    for p in picks:
+        p["game_id"] = normalize_game_id(p["game_id"])
+
+    result_rows = GameResultsDatabase().get_results(season)
+    results = {
+        normalize_game_id(r["game_id"]): r["result"]
+        for r in result_rows
+        if r["result"] is not None
+    }
+    graded_weeks = [r["week"] for r in result_rows if r["result"] is not None]
+    return StandingsResponse(
+        season=season,
+        break_even_pct=BREAK_EVEN,
+        graded_through_week=max(graded_weeks) if graded_weeks else None,
+        standings=picker_standings(picks, results),
+    )
 
 
 @app.put("/api/pool-spreads", response_model=PoolSpreadUpdateResponse)
