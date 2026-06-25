@@ -202,6 +202,55 @@ class PicksDatabase:
         }
 
 
+class PoolPicksDatabase:
+    """Supabase database handler for every pool member's weekly picks (#20)"""
+
+    def __init__(self):
+        """Initialize Supabase client"""
+        self.client: Client = get_supabase()
+
+    def save_picks(self, picks: list[dict]) -> int:
+        """Upsert parsed pool picks (rows from g_nfl.pool.parse_workbook).
+
+        Conflicts on (season, week, picker, slot) update in place, so
+        re-loading a workbook refreshes results without duplicating rows.
+
+        Returns:
+            Number of picks saved
+        """
+        if not picks:
+            return 0
+        rows = [
+            {
+                "season": p["season"],
+                "week": p["week"],
+                "week_label": p["week_label"],
+                "picker": p["picker"],
+                "slot": p["slot"],
+                "pick_type": p["pick_type"],
+                "team_picked": p["team_picked"],
+                "spread": p["spread"],
+                "game_id": p["game_id"],
+                "result": p["result"],
+            }
+            for p in picks
+        ]
+        # batch to stay under request size limits
+        for i in range(0, len(rows), 500):
+            self.client.table("pool_picks").upsert(
+                rows[i : i + 500], on_conflict="season,week,picker,slot"
+            ).execute()
+        return len(rows)
+
+    def get_picks(self, season: int, week: int | None = None) -> list[dict]:
+        """Retrieve pool picks for a season (optionally one week)."""
+        query = self.client.table("pool_picks").select("*").eq("season", season)
+        if week is not None:
+            query = query.eq("week", week)
+        result = query.order("week").execute()
+        return result.data
+
+
 class MarketLinesDatabase:
     """Supabase database handler for storing market spread and total lines"""
 
