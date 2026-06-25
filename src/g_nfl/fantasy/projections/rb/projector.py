@@ -1,6 +1,6 @@
 import warnings
 
-import nfl_data_py as nfl
+import nflreadpy as nfl
 import numpy as np
 import pandas as pd
 
@@ -16,22 +16,14 @@ class RBFantasyProjector:
         self.ros_projections = None
 
     def load_data(self):
-        """Load all necessary data from nfl_data_py"""
+        """Load all necessary data from nflreadpy"""
         print("Loading player stats...")
-        # Get current season player stats
-        all_stats = nfl.import_seasonal_data([self.current_season])
-
-        print("Loading roster data for positions...")
-        # Get roster data to identify positions
-        rosters = nfl.import_seasonal_rosters([self.current_season])
-
-        # Merge stats with roster data to get positions
-        player_data = pd.merge(
-            all_stats,
-            rosters[["player_id", "position", "player_name", "team"]],
-            on="player_id",
-            how="left",
-        )
+        # ponytail: .to_pandas() — entire class is pandas; porting out of scope for this migration
+        # load_player_stats(summary_level='reg') already includes position, player_name, recent_team
+        # so the old import_seasonal_rosters merge is no longer needed
+        player_data = nfl.load_player_stats(
+            seasons=[self.current_season], summary_level="reg"
+        ).to_pandas()
 
         print(f"Available positions: {player_data['position'].unique()}")
 
@@ -50,17 +42,12 @@ class RBFantasyProjector:
             if col in self.rb_stats.columns:
                 self.rb_stats[col] = self.rb_stats[col].fillna(0)
 
-        # Add recent_team column (using 'team' from roster data)
-        self.rb_stats["recent_team"] = self.rb_stats["team"]
-
         print("Loading team stats...")
-        # Get team-level data for pace and game environment
-        pbp_data = nfl.import_pbp_data([self.current_season])
+        pbp_data = nfl.load_pbp(seasons=[self.current_season]).to_pandas()
         self.team_stats = self._calculate_team_metrics(pbp_data)
 
         print("Loading schedules...")
-        # Get remaining schedule
-        self.schedules = nfl.import_schedules([self.current_season])
+        self.schedules = nfl.load_schedules(seasons=[self.current_season]).to_pandas()
 
         print("Data loading complete!")
 

@@ -94,9 +94,13 @@ multidict==6.7.1
     # via yarl
 narwhals==2.22.1
     # via altair
-numpy==1.26.0
+numpy==2.4.6 ; python_full_version < '3.12'
     # via
-    #   g-nfl
+    #   pandas
+    #   pydeck
+    #   streamlit
+numpy==2.5.0 ; python_full_version >= '3.12'
+    # via
     #   pandas
     #   pydeck
     #   streamlit
@@ -105,7 +109,7 @@ packaging==26.2
     #   altair
     #   deprecation
     #   streamlit
-pandas==1.5.3
+pandas==3.0.3
     # via streamlit
 pillow==12.2.0
     # via streamlit
@@ -142,8 +146,6 @@ python-dotenv==1.2.2
     #   uvicorn
 python-multipart==0.0.32
     # via streamlit
-pytz==2026.2
-    # via pandas
 pyyaml==6.0.3
     # via uvicorn
 realtime==2.31.0
@@ -203,8 +205,10 @@ typing-inspection==0.4.2
     # via
     #   fastapi
     #   pydantic
-tzdata==2026.2 ; sys_platform == 'win32'
-    # via psycopg
+tzdata==2026.2 ; sys_platform == 'emscripten' or sys_platform == 'win32'
+    # via
+    #   pandas
+    #   psycopg
 urllib3==2.7.0
     # via requests
 uvicorn==0.49.0

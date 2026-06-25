@@ -5,7 +5,8 @@ repos:
         name: jupyter-nb-clear-output
         files: \.ipynb$
         stages: [commit]
-        language: system
+        language: python
+        additional_dependencies: [jupyter, nbconvert]
         entry: jupyter nbconvert --ClearOutputPreprocessor.enabled=True --inplace
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

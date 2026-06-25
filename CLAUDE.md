@@ -90,7 +90,7 @@ uv sync                # Install all dependencies (core + dev + analysis groups)
 cp .env.example .env   # Then fill in Supabase keys (dashboard → Settings → API Keys)
 ```
 
-**Python version**: pinned to `>=3.11,<3.13`. Python 3.13 is blocked because `nfl-data-py` pins `numpy<2` and `pandas<2`, neither of which support 3.13. Revisit when that changes (or if `nflreadpy` fully replaces it).
+**Python version**: `>=3.11` (3.13 supported). `nfl-data-py` was the blocker (pinned `numpy<2`/`pandas<2`); it has been replaced by `nflreadpy` (#23).
 
 **Running the apps**:
 ```bash
