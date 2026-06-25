@@ -20,6 +20,12 @@ def _fetch(dataset: str, season: int) -> pl.DataFrame:
         return nfl.load_pbp(seasons=[season])
     if dataset == "schedule":
         return nfl.load_schedules(seasons=[season])
+    if dataset == "injuries":
+        return nfl.load_injuries(seasons=[season])
+    if dataset == "rosters_weekly":
+        return nfl.load_rosters_weekly(seasons=[season])
+    if dataset == "snap_counts":
+        return nfl.load_snap_counts(seasons=[season])
     raise ValueError(f"unknown dataset {dataset!r}")
 
 
@@ -55,5 +61,48 @@ def load_schedule(
     """Schedules (with results and market lines) for the given seasons."""
     return pl.concat(
         [_load_cached("schedule", s, Path(cache_dir), refresh) for s in seasons],
+        how="vertical_relaxed",
+    )
+
+
+def load_injuries(
+    seasons: list[int],
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> pl.DataFrame:
+    """Weekly injury reports (game status + practice status), 2009+.
+
+    One row per player-team-week on the report; players not listed are
+    healthy. Key columns: gsis_id, team, week, position, report_status
+    (Out/Doubtful/Questionable, null = listed but no game designation),
+    practice_status.
+    """
+    return pl.concat(
+        [_load_cached("injuries", s, Path(cache_dir), refresh) for s in seasons],
+        how="vertical_relaxed",
+    )
+
+
+def load_rosters_weekly(
+    seasons: list[int],
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> pl.DataFrame:
+    """Weekly roster snapshots; `status` catches IR/PUP stints (RES,
+    INA, ...) that drop off the injury report."""
+    return pl.concat(
+        [_load_cached("rosters_weekly", s, Path(cache_dir), refresh) for s in seasons],
+        how="vertical_relaxed",
+    )
+
+
+def load_snap_counts(
+    seasons: list[int],
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> pl.DataFrame:
+    """Per-game snap counts (realized workload; pfr player ids)."""
+    return pl.concat(
+        [_load_cached("snap_counts", s, Path(cache_dir), refresh) for s in seasons],
         how="vertical_relaxed",
     )
