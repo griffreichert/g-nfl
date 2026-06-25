@@ -116,6 +116,17 @@ make update-lines      # Update market lines for current week
 make verify-db         # Verify database tables exist
 ```
 
+**ML training & evaluation** (`src/g_nfl/ml/`):
+```bash
+make train ARGS="--seasons 2023 2024"                 # Train spread model, artifact in data/ml_models/
+make backtest ARGS="--output data/ml_reports/x.md"    # Walk-forward backtest with betting metrics
+```
+
+**Backtest report policy** — do NOT commit generated report files to git:
+- Full reports are scratch: write them to `data/ml_reports/` (gitignored), regenerable from code
+- `reports/BASELINES.md` is the one tracked file: a curated table of benchmark models (date, git SHA, feature set, headline metrics). Append a row **only** when a model becomes the new number to beat — not for every experiment
+- Full run history belongs in MLflow once #12 lands; markdown in git is not an experiment tracker
+
 **Key Constants** (`src/g_nfl/utils/config.py` — always check this file for current values rather than trusting docs):
 - `CUR_SEASON`: Current NFL season
 - `HFA = 1.3`: Home field advantage in points
