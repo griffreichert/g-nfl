@@ -81,8 +81,9 @@ The `notes/` folder is the source of truth for in-flight, multi-session work. Us
 - Work happens on **issue branches**, named with the issue number prefix (e.g. `6-deployment-refactor-fastapi-backend`)
 - Issue branches merge into `dev` (via PR)
 - `dev` merges into `main` for releases
-- **Never commit or merge directly to `dev` or `main`** — always go through an issue branch
-- **Claude does not push or open PRs** — commit locally only; Griffin manages `git push` and PR creation himself
+- **Never commit directly to `dev` or `main`** — always go through an issue branch
+- **Claude may handle git when asked** — push, open PRs, and merge issue branches into `dev` are fine on request. Otherwise commit locally only.
+- **Merging to `main` is Griffin's alone** — Claude never merges (or PRs) into `main`, even if asked
 
 **Commits**:
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `chore:`, `docs:`, etc.
