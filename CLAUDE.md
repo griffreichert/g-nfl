@@ -8,6 +8,12 @@ This is an NFL betting and fantasy football analysis project that combines data 
 
 **Philosophy**: "The Cleveland Browns can stay irrational longer than I can stay solvent"
 
+> **Pool scoring is the north star.** The model and analysis exist to assist
+> **Team Reichert's** weekly picks in the Cville 16 pool. Always keep the pool
+> format in mind — slots (Best Bet 2pts, 5× Regular 1pt, MNF, Underdog, Survivor)
+> and that ATS picks grade against the **pool spread**, not the market line.
+> Full format: **`notes/SCORING.md`** (read it before any pool/model pick work).
+
 ## Task Tracking & Session Continuity (`notes/`)
 
 The `notes/` folder is the source of truth for in-flight, multi-session work. Use it to resume tasks across sessions.
@@ -90,7 +96,7 @@ uv sync                # Install all dependencies (core + dev + analysis groups)
 cp .env.example .env   # Then fill in Supabase keys (dashboard → Settings → API Keys)
 ```
 
-**Python version**: pinned to `>=3.11,<3.13`. Python 3.13 is blocked because `nfl-data-py` pins `numpy<2` and `pandas<2`, neither of which support 3.13. Revisit when that changes (or if `nflreadpy` fully replaces it).
+**Python version**: `>=3.11` (3.13 supported). `nfl-data-py` was the blocker (pinned `numpy<2`/`pandas<2`); it has been replaced by `nflreadpy` (#23).
 
 **Running the apps**:
 ```bash
@@ -145,7 +151,18 @@ make backtest ARGS="--output data/ml_reports/x.md"    # Walk-forward backtest wi
 - `DATA.md` — data sources and schema notes
 - `RESOURCES.md` — external links and references
 - `TODO.md` — long-term project roadmap (phased plan)
+- `notes/SCORING.md` — Cville 16 pool format & scoring (the north star for model/pick work)
 - `notes/` — in-flight task tracking (see Task Tracking section above)
+
+## Code Conventions
+
+**Prefer polars over pandas.** New data code uses polars; Griffin is deliberately
+leveling up polars. Keep DataFrames in polars end-to-end and only `.to_pandas()` at a
+hard boundary where a consumer genuinely requires it (and prefer porting that consumer).
+
+**Data loading: `nflreadpy`, not `nfl_data_py`.** `nfl_data_py` is deprecated by nflverse
+and is being removed (see #23). Use `nflreadpy` loaders (`load_schedules`, `load_pbp`,
+`load_teams`, `load_player_stats`, `load_rosters`, …) — they return polars natively.
 
 ## Data Integration Notes
 

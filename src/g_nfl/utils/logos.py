@@ -1,7 +1,7 @@
 import os
 import urllib.request
 
-import nfl_data_py as nfl
+import nflreadpy as nfl
 import numpy as np
 from matplotlib.offsetbox import OffsetImage
 from PIL import Image
@@ -22,10 +22,10 @@ def fetch_logos():
     if not os.path.exists(LOGO_PATH):
         print("fetching team logos...")
         os.makedirs(LOGO_PATH, exist_ok=True)
-        logos = nfl.import_team_desc()[["team_abbr", "team_logo_espn"]]
+        logos = nfl.load_teams().select(["team_abbr", "team_logo_espn"])
 
         # get the logos for each team and store them to tif files in the logo path directory "<team>.tif"
-        for _, team, logo_url in logos.itertuples():
+        for team, logo_url in logos.iter_rows():
             urllib.request.urlretrieve(logo_url, LOGO_PATH / f"{team}.tif")
         print("successfully retrieved logos")
 
