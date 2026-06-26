@@ -1,6 +1,6 @@
 import warnings
 
-import nfl_data_py as nfl
+import nflreadpy as nfl
 import numpy as np
 import pandas as pd
 
@@ -33,14 +33,15 @@ class PBPRBFantasyProjector:
     ):
         """Load play-by-play data and extract RB-specific information"""
         print("Loading play-by-play data...")
-        self.pbp_data = nfl.import_pbp_data([self.current_season])
+        # ponytail: .to_pandas() — entire class is pandas; porting out of scope for this migration
+        self.pbp_data = nfl.load_pbp(seasons=[self.current_season]).to_pandas()
 
         if weeks_filter:
             self.pbp_data = self.pbp_data[self.pbp_data["week"].isin(weeks_filter)]
             print(f"Filtered to weeks: {weeks_filter}")
 
         print("Loading schedules...")
-        self.schedules = nfl.import_schedules([self.current_season])
+        self.schedules = nfl.load_schedules(seasons=[self.current_season]).to_pandas()
 
         print("Processing RB plays...")
         self._process_rb_plays(min_wp)

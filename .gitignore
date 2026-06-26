@@ -155,3 +155,7 @@ dmypy.json
 
 
 .DS_Store
+
+# MLflow local tracking (#12) — sqlite backend + artifact store, regenerable
+mlflow.db
+mlruns/

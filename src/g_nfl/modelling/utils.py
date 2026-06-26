@@ -1,11 +1,4 @@
-try:
-    import nfl_data_py as nfl
-
-    NFL_DATA_AVAILABLE = True
-except ImportError:
-    NFL_DATA_AVAILABLE = False
-
-
+import nflreadpy as nfl
 import pandas as pd
 
 from g_nfl import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
@@ -30,12 +23,9 @@ def percentile_to_spread(percentile: float, stdev: float = SPREAD_STDEV) -> floa
 
 
 def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
-    if not NFL_DATA_AVAILABLE:
-        # Return sample data if nfl_data_py is not available
-        return create_sample_schedule_data(week)
-
     try:
-        schedule_df = nfl.import_schedules([season])
+        # ponytail: .to_pandas() here — callers (guess_the_lines*) are deep pandas; porting the whole modelling pipeline to polars is out of scope for this migration
+        schedule_df = nfl.load_schedules(seasons=[season]).to_pandas()
         schedule_df = (
             schedule_df[
                 [
@@ -62,7 +52,7 @@ def get_week_spreads(week: int, season: int = CUR_SEASON) -> pd.DataFrame:
 
 
 def create_sample_schedule_data(week: int) -> pd.DataFrame:
-    """Create sample NFL schedule data for testing when nfl_data_py is not available"""
+    """Create sample NFL schedule data for testing when schedule API fails"""
     sample_games = [
         {
             "game_id": f"2024_0{week}_BUF_MIA",

@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest mlflow-ui
 
 # Default target
 help:
@@ -16,10 +16,15 @@ help:
 	@echo ""
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
+	@echo "  update-results Update final game results (for standings)"
 	@echo "  verify-db     Verify database tables exist"
+	@echo "  load-pool     Load pool standings workbook (ARGS=\"<xlsx> --season 2025\")"
+	@echo "  pool-report   Pool pick-trend report (ARGS=\"<xlsx> --season 2025\")"
 	@echo ""
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
+	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
+	@echo "  mlflow-ui     Open MLflow UI at http://localhost:5000"
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean         Clean up generated files"
@@ -63,9 +68,21 @@ update-lines-all:
 	@echo "📊 Updating market lines for all weeks..."
 	uv run python scripts/update_market_lines.py --season 2025 --weeks 1-18
 
+update-results:
+	@echo "🏁 Updating game results..."
+	uv run python scripts/update_results.py $(ARGS)
+
 verify-db:
 	@echo "🔍 Verifying database tables..."
 	uv run python scripts/verify_tables.py
+
+load-pool:
+	@echo "🏊 Loading pool picks workbook into Supabase..."
+	uv run python scripts/load_pool_picks.py $(ARGS)
+
+pool-report:
+	@echo "📈 Pool pick-trend report..."
+	uv run python -m g_nfl.pool.analysis $(ARGS)
 
 verify-db-test:
 	@echo "🧪 Testing database operations..."
@@ -75,6 +92,14 @@ verify-db-test:
 train:
 	@echo "🏋️  Training spread model..."
 	uv run python -m g_nfl.ml.train $(ARGS)
+
+backtest:
+	@echo "📈 Running walk-forward backtest..."
+	uv run python -m g_nfl.ml.evaluate $(ARGS)
+
+mlflow-ui:
+	@echo "📊 Opening MLflow UI at http://localhost:5000 ..."
+	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 # Maintenance
 clean:
