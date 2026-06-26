@@ -31,7 +31,7 @@ from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_pbp, load_schedule
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
-from g_nfl.ml.models.spread import SpreadModel
+from g_nfl.ml.models.spread import DEFAULT_PARAMS, SpreadModel
 from g_nfl.ml.train import (
     DEFAULT_MIN_WEEK,
     DEFAULT_SEASONS,
@@ -302,10 +302,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--refresh", action="store_true", help="refetch source data, ignore cache"
     )
+    parser.add_argument(
+        "--no-mlflow", action="store_true", help="skip MLflow logging (offline/CI)"
+    )
     args = parser.parse_args(argv)
 
     params = load_params_config(args.config) if args.config else None
-    _, report = backtest(
+    preds, report = backtest(
         args.seasons,
         args.feature_set,
         params,
@@ -319,6 +322,63 @@ def main(argv: list[str] | None = None) -> None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(report)
         print(f"report written to {args.output}")
+
+    if not args.no_mlflow:
+        import mlflow
+
+        from g_nfl.ml.tracking import setup_mlflow
+
+        # ponytail: per-fold nested runs skipped — we compare model versions,
+        # not weekly folds; add nested runs if per-fold drilldown is ever needed
+        setup_mlflow()
+        run_name = f"backtest-{datetime.now(UTC):%Y%m%d-%H%M%S}"
+        resolved_params = params if params is not None else DEFAULT_PARAMS
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_params(
+                {
+                    "run_type": "backtest",
+                    "feature_set": args.feature_set,
+                    "seasons": str(args.seasons),
+                    "min_week": args.min_week,
+                    "rolling_weeks": args.rolling_weeks,
+                    "min_train_games": args.min_train_games,
+                    **resolved_params,
+                }
+            )
+            reg = regression_metrics(preds)
+            mlflow.log_metrics(
+                {
+                    "rmse": reg["rmse"],
+                    "mae": reg["mae"],
+                    "market_rmse": reg["market_rmse"],
+                }
+            )
+            bm = betting_metrics(preds)
+            bettable = bm.filter((pl.col("n_bets") > 0) & pl.col("roi").is_not_null())
+            if bettable.height > 0:
+                best = bettable.sort("roi", descending=True).row(0, named=True)
+                mlflow.log_metrics(
+                    {
+                        "best_roi": best["roi"],
+                        "best_roi_edge_k": best["edge_threshold"],
+                        "best_roi_ats_pct": best["ats_pct"],
+                    }
+                )
+            bet_all_rows = bm.filter(pl.col("edge_threshold") == 0)
+            if bet_all_rows.height > 0:
+                bet_all = bet_all_rows.row(0, named=True)
+                if bet_all["ats_pct"] is not None:
+                    mlflow.log_metric("bet_all_ats_pct", bet_all["ats_pct"])
+                if bet_all["roi"] is not None:
+                    mlflow.log_metric("bet_all_roi", bet_all["roi"])
+            tn = top_n_metrics(preds)
+            for n in [1, 3, 5]:
+                row = tn.filter(pl.col("top_n") == n).row(0, named=True)
+                if row["ats_pct"] is not None:
+                    mlflow.log_metric(f"top{n}_ats_pct", row["ats_pct"])
+                if row["roi"] is not None:
+                    mlflow.log_metric(f"top{n}_roi", row["roi"])
+            mlflow.log_text(report, "report.md")
 
 
 if __name__ == "__main__":

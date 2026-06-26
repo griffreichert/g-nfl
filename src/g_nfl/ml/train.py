@@ -19,7 +19,12 @@ from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_pbp, load_schedule
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
-from g_nfl.ml.models.spread import DEFAULT_PARAMS, SpreadModel, save_artifact
+from g_nfl.ml.models.spread import (
+    DEFAULT_PARAMS,
+    SpreadModel,
+    load_artifact,
+    save_artifact,
+)
 
 # drop early-season games where windowed stats are still thin (notebook used 4)
 DEFAULT_MIN_WEEK = 4
@@ -92,6 +97,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--refresh", action="store_true", help="refetch source data, ignore cache"
     )
+    parser.add_argument(
+        "--no-mlflow", action="store_true", help="skip MLflow logging (offline/CI)"
+    )
     args = parser.parse_args(argv)
 
     params = load_params_config(args.config) if args.config else None
@@ -105,6 +113,34 @@ def main(argv: list[str] | None = None) -> None:
         refresh=args.refresh,
     )
     print(f"saved model artifact to {artifact_dir}")
+
+    if not args.no_mlflow:
+        import mlflow
+        import mlflow.xgboost
+
+        from g_nfl.ml.tracking import REGISTERED_MODEL, setup_mlflow
+
+        setup_mlflow()
+        model, meta = load_artifact(artifact_dir)
+        run_name = f"train-{meta['trained_at'][:16].replace(':', '-')}"
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_params(
+                {
+                    "run_type": "train",
+                    "feature_set": meta["feature_set"],
+                    "seasons": str(meta["seasons"]),
+                    "min_week": meta["min_week"],
+                    "rolling_weeks": meta["rolling_weeks"],
+                    "n_games": meta["n_games"],
+                    **meta["params"],
+                }
+            )
+            mlflow.log_artifacts(str(artifact_dir))
+            mlflow.xgboost.log_model(
+                model._model,
+                artifact_path="model",
+                registered_model_name=REGISTERED_MODEL,
+            )
 
 
 if __name__ == "__main__":

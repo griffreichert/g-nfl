@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest mlflow-ui
 
 # Default target
 help:
@@ -24,6 +24,7 @@ help:
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
+	@echo "  mlflow-ui     Open MLflow UI at http://localhost:5000"
 	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean         Clean up generated files"
@@ -95,6 +96,10 @@ train:
 backtest:
 	@echo "📈 Running walk-forward backtest..."
 	uv run python -m g_nfl.ml.evaluate $(ARGS)
+
+mlflow-ui:
+	@echo "📊 Opening MLflow UI at http://localhost:5000 ..."
+	uv run mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 
 # Maintenance
 clean:
