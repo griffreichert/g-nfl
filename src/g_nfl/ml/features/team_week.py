@@ -2,7 +2,7 @@
 
 import polars as pl
 
-from g_nfl.ml.features.plays import PLAY_FEATURE_COLS
+from g_nfl.ml.features.plays import EPA_SPLIT_COLS, PLAY_FEATURE_COLS
 
 # volume stats summed per team-week; rates/negatives are mean-only
 SUM_COLS = [
@@ -26,12 +26,15 @@ def team_week_stats(plays: pl.DataFrame) -> pl.DataFrame:
     """One row per team/season/week with offense and defense aggregates.
 
     Offense stats are aggregated over the team's plays as posteam,
-    defense stats (suffix ``_def``) over its plays as defteam.
+    defense stats (suffix ``_def``) over its plays as defteam. EPA split
+    cols (`EPA_SPLIT_COLS`) are aggregated mean-only when present (the
+    L2 ``epa_splits`` toggle adds them upstream in `play_features`).
     """
+    mean_cols = MEAN_COLS + [c for c in EPA_SPLIT_COLS if c in plays.columns]
     agg_exprs = (
         [pl.len().alias("plays")]
         + [pl.col(c).sum() for c in SUM_COLS]
-        + [pl.col(c).mean().alias(f"{c}_mean") for c in MEAN_COLS]
+        + [pl.col(c).mean().alias(f"{c}_mean") for c in mean_cols]
     )
     weekly_off = plays.group_by(["season", "week", "posteam"]).agg(agg_exprs)
     weekly_def = plays.group_by(["season", "week", "defteam"]).agg(agg_exprs)

@@ -41,6 +41,13 @@ PLAY_FEATURE_COLS = [
     "havoc",
 ]
 
+# L2 (#22): EPA split by play type / down. Mean-only per team-week (off
+# + def via the posteam/defteam join), so a team gets pass / rush /
+# early-down EPA both generated and allowed. Behind the `epa_splits`
+# toggle; null on non-matching plays so the team-week mean is over the
+# relevant plays only.
+EPA_SPLIT_COLS = ["pass_epa", "rush_epa", "early_down_epa"]
+
 
 def filter_plays(
     pbp: pl.DataFrame, wp_filter: float = DEFAULT_WIN_PROB
@@ -96,14 +103,32 @@ def add_play_features(
                 & (pl.col("play_type") == "run")
             )
         ).alias("explosive_play"),
+        # EPA split by play type / down (null where it doesn't apply, so
+        # the team-week mean averages only the relevant plays)
+        pl.when(pl.col("pass_attempt") == 1)
+        .then(pl.col("epa"))
+        .otherwise(None)
+        .alias("pass_epa"),
+        pl.when(pl.col("rush_attempt") == 1)
+        .then(pl.col("epa"))
+        .otherwise(None)
+        .alias("rush_epa"),
+        pl.when(pl.col("down").is_in([1, 2]))
+        .then(pl.col("epa"))
+        .otherwise(None)
+        .alias("early_down_epa"),
     )
 
 
 def play_features(
     pbp: pl.DataFrame,
     wp_filter: float = DEFAULT_WIN_PROB,
+    epa_splits: bool = False,
 ) -> pl.DataFrame:
-    """Filter raw pbp and return id + play-level feature columns only."""
-    return add_play_features(filter_plays(pbp, wp_filter)).select(
-        ID_COLS + PLAY_FEATURE_COLS
-    )
+    """Filter raw pbp and return id + play-level feature columns only.
+
+    ``epa_splits`` adds the L2 EPA-by-play-type/down columns
+    (`EPA_SPLIT_COLS`); off by default so L1 is unchanged.
+    """
+    cols = PLAY_FEATURE_COLS + (EPA_SPLIT_COLS if epa_splits else [])
+    return add_play_features(filter_plays(pbp, wp_filter)).select(ID_COLS + cols)

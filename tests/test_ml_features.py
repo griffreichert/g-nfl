@@ -8,6 +8,7 @@ from polars.testing import assert_frame_equal, assert_series_equal
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.matrix import META_COLS, build_game_matrix
 from g_nfl.ml.features.plays import (
+    EPA_SPLIT_COLS,
     HAVOC_COLS,
     ID_COLS,
     PLAY_FEATURE_COLS,
@@ -115,6 +116,23 @@ def test_play_features_columns(plays: pl.DataFrame):
     assert plays.columns == ID_COLS + PLAY_FEATURE_COLS
 
 
+def test_epa_splits_toggle(pbp_sample: pl.DataFrame):
+    base = play_features(pbp_sample)
+    assert not any("pass_epa" == c for c in base.columns)
+
+    split = play_features(pbp_sample, epa_splits=True)
+    assert split.columns == ID_COLS + PLAY_FEATURE_COLS + EPA_SPLIT_COLS
+    assert split.filter(pl.col("pass_epa").is_not_null()).height > 0
+    assert split.filter(pl.col("rush_epa").is_not_null()).height > 0
+    # a play is pass_epa or rush_epa, never both
+    assert (
+        split.filter(
+            pl.col("pass_epa").is_not_null() & pl.col("rush_epa").is_not_null()
+        ).height
+        == 0
+    )
+
+
 # ---- team_week ----
 
 
@@ -194,6 +212,45 @@ def test_forward_fill_on_bye_weeks():
     assert week4["epa_last_2w"][0] == pytest.approx(6.0)
 
 
+# ---- windows: L2 time decay ----
+
+
+def test_decay_emits_ewm_drops_volume(weekly: pl.DataFrame, reg_schedule: pl.DataFrame):
+    decayed = add_windows(weekly, reg_schedule, half_life=3.0)
+    stat_cols = [c for c in decayed.columns if c not in ("team", "season", "week")]
+    assert stat_cols  # something came through
+    assert all(c.endswith("_ewm") for c in stat_cols)
+    # only rate (_mean) stats survive; raw volume sums are gone
+    assert all("_mean" in c for c in stat_cols)
+    assert "epa_mean_ewm" in stat_cols
+    assert "epa_ewm" not in stat_cols  # the raw volume sum was dropped
+
+
+def test_decay_first_game_equals_raw(weekly: pl.DataFrame, reg_schedule: pl.DataFrame):
+    # EWMA of a single observation is that observation
+    decayed = add_windows(weekly, reg_schedule, half_life=3.0)
+    kc_w1_raw = weekly.filter((pl.col("team") == "KC") & (pl.col("week") == 1))
+    kc_w1_ewm = decayed.filter((pl.col("team") == "KC") & (pl.col("week") == 1))
+    assert kc_w1_ewm["epa_mean_ewm"][0] == pytest.approx(kc_w1_raw["epa_mean"][0])
+
+
+def test_decay_forward_fills_byes():
+    weekly = pl.DataFrame(
+        {
+            "team": ["AAA"] * 3,
+            "season": [2023] * 3,
+            "week": [1, 2, 4],
+            "epa_mean": [1.0, 2.0, 4.0],
+        }
+    )
+    schedule = pl.DataFrame({"season": [2023] * 4, "week": [1, 2, 3, 4]})
+    decayed = add_windows(weekly, schedule, half_life=2.0)
+    bye = decayed.filter(pl.col("week") == 3)
+    wk2 = decayed.filter(pl.col("week") == 2)
+    # bye carries week 2's ewm forward unchanged
+    assert bye["epa_mean_ewm"][0] == pytest.approx(wk2["epa_mean_ewm"][0])
+
+
 # ---- matrix ----
 
 
@@ -252,6 +309,16 @@ def test_future_weeks_do_not_leak(
     base = build_features(pbp_sample, schedule_sample)
     pert = build_features(perturbed, schedule_sample)
     assert_frame_equal(base.sort("game_id"), pert.sort("game_id"))
+
+    # decay mode must be leak-safe too (same 1-week lag)
+    base_d = build_features(pbp_sample, schedule_sample, half_life=3.0)
+    pert_d = build_features(perturbed, schedule_sample, half_life=3.0)
+    assert_frame_equal(base_d.sort("game_id"), pert_d.sort("game_id"))
+
+    # epa-splits mode too
+    base_e = build_features(pbp_sample, schedule_sample, epa_splits=True)
+    pert_e = build_features(perturbed, schedule_sample, epa_splits=True)
+    assert_frame_equal(base_e.sort("game_id"), pert_e.sort("game_id"))
 
 
 # ---- registry ----
