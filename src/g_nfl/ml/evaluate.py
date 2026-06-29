@@ -257,6 +257,7 @@ def backtest(
     edge_thresholds: tuple[int, ...] = DEFAULT_EDGE_THRESHOLDS,
     half_life: float | None = None,
     epa_splits: bool = False,
+    carryover_k: float | None = None,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -271,6 +272,7 @@ def backtest(
         min_week=min_week,
         half_life=half_life,
         epa_splits=epa_splits,
+        carryover_k=carryover_k,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -290,6 +292,7 @@ def backtest(
             "min_train_games": min_train_games,
             "half_life": half_life,
             "epa_splits": epa_splits,
+            "carryover_k": carryover_k,
         },
     )
     return preds, report
@@ -317,6 +320,12 @@ def main(argv: list[str] | None = None) -> None:
         help="add L2 pass/rush/early-down EPA features",
     )
     parser.add_argument(
+        "--carryover-k",
+        type=float,
+        default=None,
+        help="L2 prior-season carryover, pseudo-games of prior (omit = off)",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -337,6 +346,7 @@ def main(argv: list[str] | None = None) -> None:
         min_train_games=args.min_train_games,
         half_life=args.half_life,
         epa_splits=args.epa_splits,
+        carryover_k=args.carryover_k,
         refresh=args.refresh,
     )
     print(report)
@@ -366,6 +376,7 @@ def main(argv: list[str] | None = None) -> None:
                     "min_train_games": args.min_train_games,
                     "half_life": args.half_life,
                     "epa_splits": args.epa_splits,
+                    "carryover_k": args.carryover_k,
                     **resolved_params,
                 }
             )
