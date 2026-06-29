@@ -260,12 +260,23 @@ def backtest(
     carryover_k: float | None = None,
     with_injuries: bool = False,
     schedule_ctx: bool = False,
+    qb_ctx: bool = False,
+    qb_history: int = 3,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
     """Full backtest: load data, walk forward, score; returns the
-    per-game predictions and the markdown report."""
-    pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
+    per-game predictions and the markdown report.
+
+    ``qb_ctx`` loads ``qb_history`` extra contiguous seasons of pbp before
+    the earliest eval season to warm the per-QB EWMA; the matrix rows stay
+    eval-season only (schedule is loaded for ``seasons`` alone), so the
+    training set is identical to the baseline — a clean A/B.
+    """
+    pbp_seasons = (
+        list(range(min(seasons) - qb_history, max(seasons) + 1)) if qb_ctx else seasons
+    )
+    pbp = load_pbp(pbp_seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     injuries = (
         load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
@@ -282,6 +293,7 @@ def backtest(
         carryover_k=carryover_k,
         injuries=injuries,
         schedule_ctx=schedule_ctx,
+        qb_ctx=qb_ctx,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -304,6 +316,7 @@ def backtest(
             "carryover_k": carryover_k,
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
+            "qb_ctx": qb_ctx,
         },
     )
     return preds, report
@@ -347,6 +360,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L3 schedule context: rest, short-week/off-bye, day, division",
     )
     parser.add_argument(
+        "--qb",
+        action="store_true",
+        help="L4 starting-QB player-grain features (lagged EWMA + volume)",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -370,6 +388,7 @@ def main(argv: list[str] | None = None) -> None:
         carryover_k=args.carryover_k,
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
+        qb_ctx=args.qb,
         refresh=args.refresh,
     )
     print(report)
@@ -402,6 +421,7 @@ def main(argv: list[str] | None = None) -> None:
                     "carryover_k": args.carryover_k,
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
+                    "qb_ctx": args.qb,
                     **resolved_params,
                 }
             )
