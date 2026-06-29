@@ -19,6 +19,7 @@ from g_nfl.ml.features.plays import play_features
 from g_nfl.ml.features.qb import add_qb_context
 from g_nfl.ml.features.team_week import team_week_stats
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS, add_windows
+from g_nfl.ml.odds import add_ml_odds
 from g_nfl.utils.config import DEFAULT_WIN_PROB
 
 
@@ -36,6 +37,7 @@ def build_features(
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
     snaps: pl.DataFrame | None = None,
+    ml_odds: bool = False,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -53,6 +55,8 @@ def build_features(
     carry prior-season lookback to warm the EWMA.
     ``snaps`` (L4) joins each team's lagged O-line continuity index
     (see `continuity.add_continuity`); None leaves the matrix unchanged.
+    ``ml_odds`` (L4) attaches the moneyline-implied spread + its divergence
+    from the posted line (see `odds.add_ml_odds`); market data, no lag.
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -80,4 +84,6 @@ def build_features(
         matrix = add_qb_context(matrix, pbp)
     if snaps is not None:
         matrix = add_continuity(matrix, snaps)
+    if ml_odds:
+        matrix = add_ml_odds(matrix, reg_schedule)
     return matrix

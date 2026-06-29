@@ -269,6 +269,7 @@ def backtest(
     qb_ctx: bool = False,
     qb_history: int = 3,
     continuity: bool = False,
+    ml_odds: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -307,6 +308,7 @@ def backtest(
         schedule_ctx=schedule_ctx,
         qb_ctx=qb_ctx,
         snaps=snaps,
+        ml_odds=ml_odds,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -331,6 +333,7 @@ def backtest(
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
             "continuity": continuity,
+            "ml_odds": ml_odds,
         },
     )
     return preds, report
@@ -384,6 +387,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 O-line continuity index (lagged season-to-date lineup stability)",
     )
     parser.add_argument(
+        "--ml-odds",
+        action="store_true",
+        help="L4 moneyline-implied spread + divergence from posted line",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -409,6 +417,7 @@ def main(argv: list[str] | None = None) -> None:
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
         continuity=args.continuity,
+        ml_odds=args.ml_odds,
         refresh=args.refresh,
     )
     print(report)
@@ -443,6 +452,7 @@ def main(argv: list[str] | None = None) -> None:
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
                     "continuity": args.continuity,
+                    "ml_odds": args.ml_odds,
                     **resolved_params,
                 }
             )
