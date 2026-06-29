@@ -1,7 +1,7 @@
 import nflreadpy as nfl
 import pandas as pd
 
-from g_nfl import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
+from g_nfl.utils.config import AVG_POINTS, CUR_SEASON, HFA, SPREAD_STDEV
 
 
 def predict_home_score(row) -> float:

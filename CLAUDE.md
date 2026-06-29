@@ -136,9 +136,9 @@ make backtest ARGS="--output data/ml_reports/x.md"    # Walk-forward backtest wi
 
 **Key Constants** (`src/g_nfl/utils/config.py` — always check this file for current values rather than trusting docs):
 - `CUR_SEASON`: Current NFL season
-- `HFA = 1.3`: Home field advantage in points
+- `HFA = 1.5`: Home field advantage in points
 - `AVG_POINTS = 21.5`: League average team points per game
-- `SPREAD_STDEV = 11.5`: Standard deviation for spread calculations
+- `SPREAD_STDEV = 13.5`: Std of home margin (realized ~14, ~13.3 trimmed)
 
 ## Deployment
 

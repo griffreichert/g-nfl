@@ -10,9 +10,8 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl import CUR_SEASON, CUR_WEEK
 from g_nfl.picks.grading import BREAK_EVEN, picker_standings
-from g_nfl.utils.config import PICKERS, SURVIVOR_USED_TEAMS
+from g_nfl.utils.config import CUR_SEASON, CUR_WEEK, PICKERS, SURVIVOR_USED_TEAMS
 from g_nfl.utils.database import (
     GameResultsDatabase,
     MarketLinesDatabase,
