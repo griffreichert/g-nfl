@@ -27,7 +27,13 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_injuries, load_pbp, load_schedule
+from g_nfl.ml.data import (
+    DEFAULT_CACHE_DIR,
+    load_injuries,
+    load_pbp,
+    load_schedule,
+    load_snap_counts,
+)
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
@@ -262,6 +268,7 @@ def backtest(
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
     qb_history: int = 3,
+    continuity: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -283,6 +290,11 @@ def backtest(
         if with_injuries
         else None
     )
+    snaps = (
+        load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh)
+        if continuity
+        else None
+    )
     matrix = build_features(
         pbp,
         schedule,
@@ -294,6 +306,7 @@ def backtest(
         injuries=injuries,
         schedule_ctx=schedule_ctx,
         qb_ctx=qb_ctx,
+        snaps=snaps,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -317,6 +330,7 @@ def backtest(
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
+            "continuity": continuity,
         },
     )
     return preds, report
@@ -365,6 +379,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 starting-QB player-grain features (lagged EWMA + volume)",
     )
     parser.add_argument(
+        "--continuity",
+        action="store_true",
+        help="L4 O-line continuity index (lagged season-to-date lineup stability)",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -389,6 +408,7 @@ def main(argv: list[str] | None = None) -> None:
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
+        continuity=args.continuity,
         refresh=args.refresh,
     )
     print(report)
@@ -422,6 +442,7 @@ def main(argv: list[str] | None = None) -> None:
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
+                    "continuity": args.continuity,
                     **resolved_params,
                 }
             )

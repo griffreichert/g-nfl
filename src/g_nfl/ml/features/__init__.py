@@ -12,6 +12,7 @@ Modules:
 import polars as pl
 
 from g_nfl.ml.features.context import add_schedule_context
+from g_nfl.ml.features.continuity import add_continuity
 from g_nfl.ml.features.injuries import add_injuries
 from g_nfl.ml.features.matrix import build_game_matrix
 from g_nfl.ml.features.plays import play_features
@@ -34,6 +35,7 @@ def build_features(
     injuries: pl.DataFrame | None = None,
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
+    snaps: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -49,6 +51,8 @@ def build_features(
     ``qb_ctx`` (L4) attaches each team's starting-QB lagged EWMA/volume
     keyed on the player (see `qb.add_qb_context`); requires ``pbp`` to
     carry prior-season lookback to warm the EWMA.
+    ``snaps`` (L4) joins each team's lagged O-line continuity index
+    (see `continuity.add_continuity`); None leaves the matrix unchanged.
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -74,4 +78,6 @@ def build_features(
         matrix = add_schedule_context(matrix, reg_schedule)
     if qb_ctx:
         matrix = add_qb_context(matrix, pbp)
+    if snaps is not None:
+        matrix = add_continuity(matrix, snaps)
     return matrix
