@@ -7,11 +7,11 @@ from g_nfl.ml.features.injuries import team_week_injuries
 
 
 def _report(rows: list[tuple[str, int, str, str, str | None]]) -> pl.DataFrame:
-    """(team, week, position, report_status, season_type) rows."""
+    """(team, week, position, report_status, game_type) rows."""
     return pl.DataFrame(
         {
             "season": [2025] * len(rows),
-            "season_type": [r[4] or "REG" for r in rows],
+            "game_type": [r[4] or "REG" for r in rows],
             "team": [r[0] for r in rows],
             "week": [r[1] for r in rows],
             "position": [r[2] for r in rows],

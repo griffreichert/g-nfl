@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_pbp, load_schedule
+from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_injuries, load_pbp, load_schedule
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
@@ -258,6 +258,7 @@ def backtest(
     half_life: float | None = None,
     epa_splits: bool = False,
     carryover_k: float | None = None,
+    with_injuries: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -265,6 +266,11 @@ def backtest(
     per-game predictions and the markdown report."""
     pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
+    injuries = (
+        load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
+        if with_injuries
+        else None
+    )
     matrix = build_features(
         pbp,
         schedule,
@@ -273,6 +279,7 @@ def backtest(
         half_life=half_life,
         epa_splits=epa_splits,
         carryover_k=carryover_k,
+        injuries=injuries,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -293,6 +300,7 @@ def backtest(
             "half_life": half_life,
             "epa_splits": epa_splits,
             "carryover_k": carryover_k,
+            "with_injuries": with_injuries,
         },
     )
     return preds, report
@@ -326,6 +334,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L2 prior-season carryover, pseudo-games of prior (omit = off)",
     )
     parser.add_argument(
+        "--injuries",
+        action="store_true",
+        help="L3 team-week injury burden features (no lag)",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -347,6 +360,7 @@ def main(argv: list[str] | None = None) -> None:
         half_life=args.half_life,
         epa_splits=args.epa_splits,
         carryover_k=args.carryover_k,
+        with_injuries=args.injuries,
         refresh=args.refresh,
     )
     print(report)
@@ -377,6 +391,7 @@ def main(argv: list[str] | None = None) -> None:
                     "half_life": args.half_life,
                     "epa_splits": args.epa_splits,
                     "carryover_k": args.carryover_k,
+                    "with_injuries": args.injuries,
                     **resolved_params,
                 }
             )
