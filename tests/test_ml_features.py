@@ -422,6 +422,36 @@ def test_injuries_join_own_week_no_lag(
         assert r[f"{side}_inj_qb_out"] == 0
 
 
+# ---- L3 schedule context ----
+
+
+def test_schedule_context_cols_and_values(
+    pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    base = build_features(pbp_sample, schedule_sample)
+    out = build_features(pbp_sample, schedule_sample, schedule_ctx=True)
+
+    assert set(out.columns) - set(base.columns) == {
+        "rest_diff",
+        "home_off_bye",
+        "away_off_bye",
+        "home_short_week",
+        "away_short_week",
+        "thursday",
+        "monday",
+        "div_game",
+    }
+    assert out.height == base.height  # join on game_id drops nothing
+
+    reg = schedule_sample.filter(pl.col("game_type") == "REG").select(
+        "game_id", "home_rest", "away_rest"
+    )
+    chk = out.join(reg, on="game_id").with_columns(
+        exp=pl.col("home_rest") - pl.col("away_rest")
+    )
+    assert (chk["rest_diff"] == chk["exp"]).all()
+
+
 # ---- registry ----
 
 

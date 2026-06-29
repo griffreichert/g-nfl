@@ -11,6 +11,7 @@ Modules:
 
 import polars as pl
 
+from g_nfl.ml.features.context import add_schedule_context
 from g_nfl.ml.features.injuries import add_injuries
 from g_nfl.ml.features.matrix import build_game_matrix
 from g_nfl.ml.features.plays import play_features
@@ -30,6 +31,7 @@ def build_features(
     epa_splits: bool = False,
     carryover_k: float | None = None,
     injuries: pl.DataFrame | None = None,
+    schedule_ctx: bool = False,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -40,6 +42,8 @@ def build_features(
     cols (pseudo-games of prior; see `carryover.add_carryover`).
     ``injuries`` (L3) joins home/away team-week injury burden, no lag
     (see `injuries.add_injuries`); None leaves the matrix unchanged.
+    ``schedule_ctx`` (L3) appends rest/day-of-week/division context, no lag
+    (see `context.add_schedule_context`).
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -61,4 +65,6 @@ def build_features(
     )
     if injuries is not None:
         matrix = add_injuries(matrix, injuries)
+    if schedule_ctx:
+        matrix = add_schedule_context(matrix, reg_schedule)
     return matrix

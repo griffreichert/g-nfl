@@ -259,6 +259,7 @@ def backtest(
     epa_splits: bool = False,
     carryover_k: float | None = None,
     with_injuries: bool = False,
+    schedule_ctx: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -280,6 +281,7 @@ def backtest(
         epa_splits=epa_splits,
         carryover_k=carryover_k,
         injuries=injuries,
+        schedule_ctx=schedule_ctx,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -301,6 +303,7 @@ def backtest(
             "epa_splits": epa_splits,
             "carryover_k": carryover_k,
             "with_injuries": with_injuries,
+            "schedule_ctx": schedule_ctx,
         },
     )
     return preds, report
@@ -339,6 +342,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L3 team-week injury burden features (no lag)",
     )
     parser.add_argument(
+        "--schedule",
+        action="store_true",
+        help="L3 schedule context: rest, short-week/off-bye, day, division",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -361,6 +369,7 @@ def main(argv: list[str] | None = None) -> None:
         epa_splits=args.epa_splits,
         carryover_k=args.carryover_k,
         with_injuries=args.injuries,
+        schedule_ctx=args.schedule,
         refresh=args.refresh,
     )
     print(report)
@@ -392,6 +401,7 @@ def main(argv: list[str] | None = None) -> None:
                     "epa_splits": args.epa_splits,
                     "carryover_k": args.carryover_k,
                     "with_injuries": args.injuries,
+                    "schedule_ctx": args.schedule,
                     **resolved_params,
                 }
             )
