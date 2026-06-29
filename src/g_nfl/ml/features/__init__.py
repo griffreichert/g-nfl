@@ -25,10 +25,33 @@ def build_features(
     wp_filter: float = DEFAULT_WIN_PROB,
     rolling_weeks: int = DEFAULT_ROLLING_WEEKS,
     min_week: int | None = None,
+    half_life: float | None = None,
+    epa_splits: bool = False,
+    carryover_k: float | None = None,
 ) -> pl.DataFrame:
-    """Full pipeline: raw pbp + schedule -> game-level training matrix."""
+    """Full pipeline: raw pbp + schedule -> game-level training matrix.
+
+    ``half_life`` set switches the windowing to L2 time decay (EWMA over
+    games, rate cols only); None keeps the L1 flat rolling/season cols.
+    ``epa_splits`` adds the L2 pass/rush/early-down EPA features.
+    ``carryover_k`` (flat path) adds prior-season-carryover ``_carry`` rate
+    cols (pseudo-games of prior; see `carryover.add_carryover`).
+    """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
-    plays = play_features(pbp, wp_filter)
+    plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
     weekly = team_week_stats(plays)
-    windowed = add_windows(weekly, reg_schedule, rolling_weeks)
-    return build_game_matrix(windowed, reg_schedule, rolling_weeks, min_week=min_week)
+    windowed = add_windows(
+        weekly,
+        reg_schedule,
+        rolling_weeks,
+        half_life=half_life,
+        carryover_k=carryover_k,
+    )
+    return build_game_matrix(
+        windowed,
+        reg_schedule,
+        rolling_weeks,
+        min_week=min_week,
+        half_life=half_life,
+        carryover_k=carryover_k,
+    )

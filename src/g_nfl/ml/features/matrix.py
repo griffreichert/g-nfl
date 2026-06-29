@@ -27,27 +27,39 @@ def build_game_matrix(
     schedule: pl.DataFrame,
     rolling_weeks: int = DEFAULT_ROLLING_WEEKS,
     min_week: int | None = None,
+    half_life: float | None = None,
+    carryover_k: float | None = None,
 ) -> pl.DataFrame:
     """Join home/away windowed stats onto the schedule with a 1-week lag.
 
     `windowed` comes from `add_windows`; `schedule` must already be
     filtered to regular season. `min_week` drops early-season rows where
-    the windowed stats are still thin (the notebooks used 4).
+    the windowed stats are still thin (the notebooks used 4). `half_life`
+    must match the value passed to `add_windows`: set means decay mode
+    (select ``_ewm`` cols), None means the flat rolling/season cols.
+    `carryover_k` (flat mode only) must likewise match: set also selects
+    the ``_carry`` cols.
     """
-    suffix = rolling_suffix(rolling_weeks)
-    stats = windowed.select("team", "season", "week", cs.ends_with("_season", suffix))
+    if half_life is not None:
+        stat_cols = cs.ends_with("_ewm")
+    else:
+        suffix = rolling_suffix(rolling_weeks)
+        stat_cols = cs.ends_with("_season", suffix)
+        if carryover_k is not None:
+            stat_cols = stat_cols | cs.ends_with("_carry")
+    stats = windowed.select("team", "season", "week", stat_cols)
 
     away_stats = stats.select(
         pl.col("team").alias("away_team"),
         "season",
         "week",
-        cs.ends_with("_season", suffix).name.prefix("away_"),
+        stat_cols.name.prefix("away_"),
     )
     home_stats = stats.select(
         pl.col("team").alias("home_team"),
         "season",
         "week",
-        cs.ends_with("_season", suffix).name.prefix("home_"),
+        stat_cols.name.prefix("home_"),
     )
 
     matrix = (

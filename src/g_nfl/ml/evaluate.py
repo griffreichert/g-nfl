@@ -255,6 +255,9 @@ def backtest(
     rolling_weeks: int = DEFAULT_ROLLING_WEEKS,
     min_train_games: int = DEFAULT_MIN_TRAIN_GAMES,
     edge_thresholds: tuple[int, ...] = DEFAULT_EDGE_THRESHOLDS,
+    half_life: float | None = None,
+    epa_splits: bool = False,
+    carryover_k: float | None = None,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -263,7 +266,13 @@ def backtest(
     pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     matrix = build_features(
-        pbp, schedule, rolling_weeks=rolling_weeks, min_week=min_week
+        pbp,
+        schedule,
+        rolling_weeks=rolling_weeks,
+        min_week=min_week,
+        half_life=half_life,
+        epa_splits=epa_splits,
+        carryover_k=carryover_k,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -281,6 +290,9 @@ def backtest(
             "min_week": min_week,
             "rolling_weeks": rolling_weeks,
             "min_train_games": min_train_games,
+            "half_life": half_life,
+            "epa_splits": epa_splits,
+            "carryover_k": carryover_k,
         },
     )
     return preds, report
@@ -296,6 +308,23 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--min-week", type=int, default=DEFAULT_MIN_WEEK)
     parser.add_argument("--rolling-weeks", type=int, default=DEFAULT_ROLLING_WEEKS)
     parser.add_argument("--min-train-games", type=int, default=DEFAULT_MIN_TRAIN_GAMES)
+    parser.add_argument(
+        "--half-life",
+        type=float,
+        default=None,
+        help="L2 time decay half-life in games (omit = L1 flat windows)",
+    )
+    parser.add_argument(
+        "--epa-splits",
+        action="store_true",
+        help="add L2 pass/rush/early-down EPA features",
+    )
+    parser.add_argument(
+        "--carryover-k",
+        type=float,
+        default=None,
+        help="L2 prior-season carryover, pseudo-games of prior (omit = off)",
+    )
     parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
@@ -315,6 +344,9 @@ def main(argv: list[str] | None = None) -> None:
         min_week=args.min_week,
         rolling_weeks=args.rolling_weeks,
         min_train_games=args.min_train_games,
+        half_life=args.half_life,
+        epa_splits=args.epa_splits,
+        carryover_k=args.carryover_k,
         refresh=args.refresh,
     )
     print(report)
@@ -342,6 +374,9 @@ def main(argv: list[str] | None = None) -> None:
                     "min_week": args.min_week,
                     "rolling_weeks": args.rolling_weeks,
                     "min_train_games": args.min_train_games,
+                    "half_life": args.half_life,
+                    "epa_splits": args.epa_splits,
+                    "carryover_k": args.carryover_k,
                     **resolved_params,
                 }
             )
