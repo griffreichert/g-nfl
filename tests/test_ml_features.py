@@ -372,6 +372,86 @@ def test_future_weeks_do_not_leak(
     assert_frame_equal(base_c.sort("game_id"), pert_c.sort("game_id"))
 
 
+# ---- L3 injuries ----
+
+
+def _injuries(rows: list[tuple[str, int, str, str]]) -> pl.DataFrame:
+    """(team, week, position, report_status) rows for 2023 REG."""
+    return pl.DataFrame(
+        {
+            "season": [2023] * len(rows),
+            "game_type": ["REG"] * len(rows),
+            "team": [r[0] for r in rows],
+            "week": [r[1] for r in rows],
+            "position": [r[2] for r in rows],
+            "report_status": [r[3] for r in rows],
+        }
+    )
+
+
+def test_injuries_join_own_week_no_lag(
+    pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    # KC QB Out in week 2 only: the week-2 game carries it on KC's side
+    # (own week, no lag); all other KC weeks and the opponent stay 0.
+    inj = _injuries([("KC", 2, "QB", "Out")])
+    base = build_features(pbp_sample, schedule_sample)
+    out = build_features(pbp_sample, schedule_sample, injuries=inj)
+
+    # only injury cols are added; the baseline matrix is untouched
+    added = set(out.columns) - set(base.columns)
+    assert added == {
+        f"{side}_inj_{g}_{m}"
+        for side in ("home", "away")
+        for g in ("qb", "skill", "ol", "def")
+        for m in ("out", "q", "burden")
+    }
+
+    kc = (pl.col("home_team") == "KC") | (pl.col("away_team") == "KC")
+    wk2 = out.filter((pl.col("week") == 2) & kc)
+    assert wk2.height == 1
+    r = wk2.row(0, named=True)
+    side = "home" if r["home_team"] == "KC" else "away"
+    other = "away" if side == "home" else "home"
+    assert r[f"{side}_inj_qb_out"] == 1
+    assert r[f"{other}_inj_qb_out"] == 0  # opponent has no injuries -> 0-filled
+
+    # no lag and no bleed: every other KC week shows qb_out == 0
+    for r in out.filter((pl.col("week") != 2) & kc).iter_rows(named=True):
+        side = "home" if r["home_team"] == "KC" else "away"
+        assert r[f"{side}_inj_qb_out"] == 0
+
+
+# ---- L3 schedule context ----
+
+
+def test_schedule_context_cols_and_values(
+    pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    base = build_features(pbp_sample, schedule_sample)
+    out = build_features(pbp_sample, schedule_sample, schedule_ctx=True)
+
+    assert set(out.columns) - set(base.columns) == {
+        "rest_diff",
+        "home_off_bye",
+        "away_off_bye",
+        "home_short_week",
+        "away_short_week",
+        "thursday",
+        "monday",
+        "div_game",
+    }
+    assert out.height == base.height  # join on game_id drops nothing
+
+    reg = schedule_sample.filter(pl.col("game_type") == "REG").select(
+        "game_id", "home_rest", "away_rest"
+    )
+    chk = out.join(reg, on="game_id").with_columns(
+        exp=pl.col("home_rest") - pl.col("away_rest")
+    )
+    assert (chk["rest_diff"] == chk["exp"]).all()
+
+
 # ---- registry ----
 
 

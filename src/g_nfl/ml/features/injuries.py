@@ -39,7 +39,7 @@ def team_week_injuries(injuries: pl.DataFrame) -> pl.DataFrame:
     designated = (
         injuries.with_columns(pl.col("report_status").cast(pl.Utf8))
         .filter(
-            (pl.col("season_type") == "REG")
+            (pl.col("game_type") == "REG")
             & pl.col("report_status").is_in(list(STATUS_WEIGHTS))
         )
         .with_columns(
@@ -83,4 +83,27 @@ def team_week_injuries(injuries: pl.DataFrame) -> pl.DataFrame:
         )
         .select("team", "season", "week", *expected)
         .fill_null(0)
+    )
+
+
+def add_injuries(matrix: pl.DataFrame, injuries: pl.DataFrame) -> pl.DataFrame:
+    """Join home/away team-week injury burden onto the game matrix.
+
+    **No lag** (unlike the performance stats in `matrix`): the injury
+    report for a game's week is known pre-kickoff, so we join on the
+    game's *own* (season, week). Team-weeks with no designated injuries
+    have no row in the aggregate and get 0 after the left join.
+    """
+    tw = team_week_injuries(injuries).with_columns(
+        pl.col("season").cast(matrix.schema["season"]),
+        pl.col("week").cast(matrix.schema["week"]),
+    )
+    inj_cols = [c for c in tw.columns if c.startswith("inj_")]
+    away = tw.rename({"team": "away_team", **{c: f"away_{c}" for c in inj_cols}})
+    home = tw.rename({"team": "home_team", **{c: f"home_{c}" for c in inj_cols}})
+    fill = [f"{side}_{c}" for side in ("away", "home") for c in inj_cols]
+    return (
+        matrix.join(away, on=["away_team", "season", "week"], how="left")
+        .join(home, on=["home_team", "season", "week"], how="left")
+        .with_columns(pl.col(fill).fill_null(0))
     )
