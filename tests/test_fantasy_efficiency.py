@@ -12,8 +12,10 @@ from g_nfl.fantasy.projections.efficiency import (
     EFFICIENCY_POSITIONS,
     Z_CLIP,
     _scored_efficiency,
+    _scored_rates,
     apply_efficiency_adjustment,
     blend_efficiency,
+    blend_rates,
     compute_efficiency,
     compute_routes_proxy,
 )
@@ -455,3 +457,81 @@ def test_default_z_strength_is_eight_percent():
 
 def test_efficiency_positions_is_wr_te():
     assert EFFICIENCY_POSITIONS == {"WR", "TE"}
+
+
+# ---------------------------------------------------------------------------
+# _scored_rates / blend_rates (board diagnostic columns: tprr/yprr/fdrr)
+# ---------------------------------------------------------------------------
+
+
+def _routes_with_stats(*rows: dict) -> pl.DataFrame:
+    return pl.DataFrame(
+        rows,
+        schema={
+            "player_id": pl.Utf8,
+            "season": pl.Int32,
+            "routes_proxy": pl.UInt32,
+            "targets": pl.Int32,
+            "receiving_yards": pl.Float64,
+            "receiving_first_downs": pl.Int32,
+        },
+    )
+
+
+def test_scored_rates_computes_tprr_yprr_fdrr():
+    raw = _routes_with_stats(
+        {
+            "player_id": "WR1",
+            "season": 2023,
+            "routes_proxy": 100,
+            "targets": 25,
+            "receiving_yards": 250.0,
+            "receiving_first_downs": 12,
+        }
+    )
+    scored = _scored_rates(raw)
+    row = scored.row(0, named=True)
+    assert abs(row["tprr"] - 0.25) < 1e-9
+    assert abs(row["yprr"] - 2.5) < 1e-9
+    assert abs(row["fdrr"] - 0.12) < 1e-9
+
+
+def test_scored_rates_drops_thin_route_sample():
+    raw = _routes_with_stats(
+        {
+            "player_id": "WR1",
+            "season": 2023,
+            "routes_proxy": 30,
+            "targets": 5,
+            "receiving_yards": 40.0,
+            "receiving_first_downs": 2,
+        }
+    )
+    assert len(_scored_rates(raw, min_routes=DEFAULT_MIN_ROUTES)) == 0
+    assert len(_scored_rates(raw, min_routes=0)) == 1
+
+
+def test_blend_rates_recency_weighted():
+    scored = _routes_with_stats(
+        {
+            "player_id": "WR1",
+            "season": 2023,
+            "routes_proxy": 100,
+            "targets": 30,
+            "receiving_yards": 300.0,
+            "receiving_first_downs": 15,
+        },
+        {
+            "player_id": "WR1",
+            "season": 2022,
+            "routes_proxy": 100,
+            "targets": 20,
+            "receiving_yards": 200.0,
+            "receiving_first_downs": 10,
+        },
+    ).pipe(_scored_rates)
+    blended = blend_rates(scored, (0.6, 0.4))
+    row = blended.row(0, named=True)
+    assert abs(row["tprr"] - (0.30 * 0.6 + 0.20 * 0.4)) < 1e-9
+    assert abs(row["yprr"] - (3.0 * 0.6 + 2.0 * 0.4)) < 1e-9
+    assert abs(row["fdrr"] - (0.15 * 0.6 + 0.10 * 0.4)) < 1e-9

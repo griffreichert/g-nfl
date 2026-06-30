@@ -119,8 +119,20 @@ def board_for_league(
     return build_board(proj, lg["total_rosters"], lg["roster_positions"])
 
 
+def attach_efficiency_rates(board: pl.DataFrame, rates: pl.DataFrame) -> pl.DataFrame:
+    """Left-join WR/TE diagnostic efficiency rates (tprr/yprr/fdrr) onto a
+    board for eyeballing; QB/RB rows get nulls. Diagnostic only — does not
+    touch ppgar/rank (issue #34: the z-score ppg adjustment backtested
+    mixed/negative, see ``efficiency.py`` module docstring).
+    """
+    return board.join(rates, on="player_id", how="left")
+
+
 def to_markdown(board: pl.DataFrame, top: int = 60) -> str:
-    """Render the top-``top`` rows as a markdown table."""
+    """Render the top-``top`` rows as a markdown table.
+
+    Includes ``tprr``/``yprr``/``fdrr`` if present (see ``attach_efficiency_rates``).
+    """
     cols = [
         "overall_rank",
         "player_name",
@@ -130,26 +142,32 @@ def to_markdown(board: pl.DataFrame, top: int = 60) -> str:
         "proj_ppg",
         "ppgar",
     ]
+    cols += [c for c in ("tprr", "yprr", "fdrr") if c in board.columns]
     rows = board.head(top).select(cols).iter_rows()
     head = "| " + " | ".join(cols) + " |"
     sep = "|" + "|".join("---" for _ in cols) + "|"
-    body = "\n".join(
-        "| "
-        + " | ".join(f"{c:.2f}" if isinstance(c, float) else str(c) for c in r)
-        + " |"
-        for r in rows
-    )
+
+    def _fmt(c: object) -> str:
+        if c is None:
+            return "-"
+        if isinstance(c, float):
+            return f"{c:.2f}"
+        return str(c)
+
+    body = "\n".join("| " + " | ".join(_fmt(c) for c in r) + " |" for r in rows)
     return f"{head}\n{sep}\n{body}"
 
 
 if __name__ == "__main__":
     from pathlib import Path
 
+    from g_nfl.fantasy.projections.efficiency import blend_efficiency_rates
     from g_nfl.fantasy.projections.season import project_season
     from g_nfl.sleeper.client import KNOWN_LEAGUES
 
     TARGET = 2025
-    proj = project_season([2022, 2023, 2024], TARGET, scoring="half")
+    SEASONS = [2022, 2023, 2024]
+    proj = project_season(SEASONS, TARGET, scoring="half")
 
     client = SleeperClient()
     lid = KNOWN_LEAGUES["dudes_rock"]
@@ -161,6 +179,8 @@ if __name__ == "__main__":
     )
 
     board = build_board(proj, lg["total_rosters"], lg["roster_positions"])
+    rates = blend_efficiency_rates(SEASONS, TARGET)
+    board = attach_efficiency_rates(board, rates)
     md = to_markdown(board, top=50)
     print("\n" + md)
 

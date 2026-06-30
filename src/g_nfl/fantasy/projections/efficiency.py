@@ -14,6 +14,13 @@ Validated against PFF's 2023 published numbers:
   can't separate route-run snaps from pass-pro snaps. Cleaner for flex TEs.
 - RB: unusable (CMC proxy 545 "routes" vs PFF's real ~350) — RBs spend most
   pass downs blocking. Scoped out; RB stays on the #30 PPG projection.
+
+The ``apply_efficiency_adjustment`` / ``project_season_with_efficiency`` path
+(z-score proj_ppg bump vs position peers) backtested mixed/negative on a
+single 2022-23 -> 2024 holdout (TE top-12 +1 hit but worse MAE both
+positions; WR unchanged hit-rate, worse MAE) — NOT promoted as trustworthy.
+The #31 draft board uses ``blend_efficiency_rates`` instead: raw TPRR/YPRR/
+1DRR as diagnostic columns, no automatic ppg adjustment.
 """
 
 from __future__ import annotations
@@ -166,6 +173,9 @@ def load_efficiency_inputs(seasons: list[int]) -> pl.DataFrame:
         "games",
         "fantasy_points",
         "fantasy_points_ppr",
+        "targets",
+        "receiving_yards",
+        "receiving_first_downs",
     )
     return (
         routes.join(stats, on=["player_id", "season"], how="inner")
@@ -229,6 +239,62 @@ def project_efficiency(
     raw = load_efficiency_inputs(seasons)
     scored = _scored_efficiency(raw, scoring, min_routes)
     return blend_efficiency(scored, weights)
+
+
+# ---------------------------------------------------------------------------
+# Draft-board diagnostic columns (issue #34, "ship rates, hold the
+# adjustment" — the z_strength backtest came back mixed/negative, see module
+# docstring; TPRR/YPRR/1DRR are useful to eyeball on the board regardless).
+# ---------------------------------------------------------------------------
+
+
+def _scored_rates(
+    df: pl.DataFrame, min_routes: int = DEFAULT_MIN_ROUTES
+) -> pl.DataFrame:
+    """Add raw TPRR/YPRR/1DRR; drop thin route samples."""
+    return df.filter(pl.col("routes_proxy") >= min_routes).with_columns(
+        (pl.col("targets") / pl.col("routes_proxy")).alias("tprr"),
+        (pl.col("receiving_yards") / pl.col("routes_proxy")).alias("yprr"),
+        (pl.col("receiving_first_downs") / pl.col("routes_proxy")).alias("fdrr"),
+    )
+
+
+def blend_rates(scored: pl.DataFrame, weights: tuple[float, ...]) -> pl.DataFrame:
+    """Pure blending step — takes an already-scored frame (``_scored_rates``
+    output) and recency-blends ``tprr``/``yprr``/``fdrr`` per player.
+    """
+    tprr = _recency_weighted(scored, "tprr", weights).select(
+        "player_id", pl.col("blended_tprr").alias("tprr")
+    )
+    yprr = _recency_weighted(scored, "yprr", weights).select(
+        "player_id", pl.col("blended_yprr").alias("yprr")
+    )
+    fdrr = _recency_weighted(scored, "fdrr", weights).select(
+        "player_id", pl.col("blended_fdrr").alias("fdrr")
+    )
+    return tprr.join(yprr, on="player_id", how="left").join(
+        fdrr, on="player_id", how="left"
+    )
+
+
+def blend_efficiency_rates(
+    seasons: list[int],
+    target_season: int,
+    *,
+    weights: tuple[float, ...] = DEFAULT_WEIGHTS,
+    min_routes: int = DEFAULT_MIN_ROUTES,
+) -> pl.DataFrame:
+    """Recency-blended TPRR / YPRR / 1DRR per player, WR/TE only.
+
+    Diagnostic only — does not touch proj_ppg. For the #31 board to display
+    alongside the PPG-only ranking (see ``board.attach_efficiency_rates``).
+    """
+    assert all(s < target_season for s in seasons), (
+        f"All seasons must be < target_season={target_season}"
+    )
+    raw = load_efficiency_inputs(seasons)
+    scored = _scored_rates(raw, min_routes)
+    return blend_rates(scored, weights)
 
 
 def apply_efficiency_adjustment(

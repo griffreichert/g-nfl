@@ -2,7 +2,11 @@
 
 import polars as pl
 
-from g_nfl.fantasy.projections.board import build_board, replacement_baselines
+from g_nfl.fantasy.projections.board import (
+    attach_efficiency_rates,
+    build_board,
+    replacement_baselines,
+)
 
 
 def _proj(*rows: tuple[str, str, float]) -> pl.DataFrame:
@@ -78,3 +82,15 @@ def test_ppgar_and_ranks():
     assert abs(rb1["ppgar"] - 15.0) < 1e-9
     assert rb1["overall_rank"] == 1  # RB1 ppgar 15 > QB1 ppgar 10
     assert board["overall_rank"].to_list() == sorted(board["overall_rank"].to_list())
+
+
+def test_attach_efficiency_rates_left_join_nulls_for_missing():
+    board = _proj(("WR1", "WR", 15.0), ("QB1", "QB", 25.0))
+    rates = pl.DataFrame(
+        {"player_id": ["WR1"], "tprr": [0.25], "yprr": [2.0], "fdrr": [0.1]}
+    )
+    attached = attach_efficiency_rates(board, rates)
+    wr_row = attached.filter(pl.col("player_id") == "WR1").row(0, named=True)
+    qb_row = attached.filter(pl.col("player_id") == "QB1").row(0, named=True)
+    assert abs(wr_row["yprr"] - 2.0) < 1e-9
+    assert qb_row["tprr"] is None
