@@ -169,6 +169,24 @@ def test_scored_ppg_invalid_scoring():
         _scored_ppg(FRAME, "invalid")
 
 
+def test_scored_ppg_min_games_drops_thin_sample():
+    """A thin player-season (below min_games) is dropped, but min_games=0 keeps it."""
+    frame = _make_frame(
+        {
+            "player_id": "BKP",
+            "player_name": "One Game Backup",
+            "position": "QB",
+            "recent_team": "NYG",
+            "season": 2024,
+            "games": 1,
+            "fantasy_points": 21.0,
+            "fantasy_points_ppr": 21.0,
+        },
+    )
+    assert len(_scored_ppg(frame, "ppr", min_games=6)) == 0
+    assert len(_scored_ppg(frame, "ppr", min_games=0)) == 1
+
+
 # ---------------------------------------------------------------------------
 # blend_projections
 # ---------------------------------------------------------------------------

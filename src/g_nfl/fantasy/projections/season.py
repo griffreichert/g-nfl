@@ -17,6 +17,10 @@ _FB_TO_RB: dict[str, str] = {"FB": "RB"}
 DEFAULT_WEIGHTS: tuple[float, ...] = (0.6, 0.3, 0.1)
 # ponytail: flat 17-game denominator — availability / injury modeling deferred to #31.
 DEFAULT_GAMES: int = 17
+# Drop player-seasons under this many games: a tiny sample (e.g. a 1-game backup)
+# inflates per-game scoring and ranks like a starter. Whole-player drops out if all
+# their seasons are thin.
+DEFAULT_MIN_GAMES: int = 6
 
 _SCORING_OPTIONS = {"standard", "ppr", "half"}
 
@@ -45,11 +49,14 @@ def load_player_seasons(seasons: list[int]) -> pl.DataFrame:
     )
 
 
-def _scored_ppg(df: pl.DataFrame, scoring: str) -> pl.DataFrame:
+def _scored_ppg(
+    df: pl.DataFrame, scoring: str, min_games: int = DEFAULT_MIN_GAMES
+) -> pl.DataFrame:
     """Add a ``ppg`` column (fantasy points per game) for the given scoring type.
 
-    games == 0 rows produce null ppg and are dropped; this is the right call
-    because a zero-game season carries no signal for projection.
+    Player-seasons under ``min_games`` are dropped: a tiny sample inflates
+    per-game scoring (a 1-game backup ranking like a starter). ``min_games=0``
+    keeps everything with at least one game played.
     """
     if scoring not in _SCORING_OPTIONS:
         raise ValueError(f"scoring must be one of {_SCORING_OPTIONS}, got {scoring!r}")
@@ -61,12 +68,11 @@ def _scored_ppg(df: pl.DataFrame, scoring: str) -> pl.DataFrame:
     else:  # half
         pts = (pl.col("fantasy_points") + pl.col("fantasy_points_ppr")) / 2
 
-    return df.with_columns(
-        pl.when(pl.col("games") > 0)
-        .then(pts / pl.col("games"))
-        .otherwise(None)
-        .alias("ppg")
-    ).filter(pl.col("ppg").is_not_null())
+    return (
+        df.filter(pl.col("games") >= max(min_games, 1))
+        .with_columns((pts / pl.col("games")).alias("ppg"))
+        .filter(pl.col("ppg").is_not_null())
+    )
 
 
 def blend_projections(
@@ -144,6 +150,7 @@ def project_season(
     scoring: str = "ppr",
     weights: tuple[float, ...] = DEFAULT_WEIGHTS,
     games: int = DEFAULT_GAMES,
+    min_games: int = DEFAULT_MIN_GAMES,
 ) -> pl.DataFrame:
     """Project fantasy points for ``target_season`` from ``seasons`` of history.
 
@@ -155,6 +162,7 @@ def project_season(
         scoring: One of "standard", "ppr", "half".
         weights: Recency weights; index 0 = most recent prior season.
         games: Games to project over (flat; availability modeling deferred to #31).
+        min_games: Drop player-seasons under this many games (tiny-sample filter).
 
     Returns:
         One row per player, sorted by proj_points descending.
@@ -164,7 +172,7 @@ def project_season(
     )
 
     raw = load_player_seasons(seasons)
-    scored = _scored_ppg(raw, scoring)
+    scored = _scored_ppg(raw, scoring, min_games)
     return blend_projections(scored, target_season, weights, games)
 
 
