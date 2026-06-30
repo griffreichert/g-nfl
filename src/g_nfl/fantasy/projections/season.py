@@ -49,6 +49,19 @@ def load_player_seasons(seasons: list[int]) -> pl.DataFrame:
     )
 
 
+def _points_expr(scoring: str) -> pl.Expr:
+    """Fantasy-points expression for the given scoring type."""
+    if scoring not in _SCORING_OPTIONS:
+        raise ValueError(f"scoring must be one of {_SCORING_OPTIONS}, got {scoring!r}")
+
+    if scoring == "standard":
+        return pl.col("fantasy_points")
+    elif scoring == "ppr":
+        return pl.col("fantasy_points_ppr")
+    else:  # half
+        return (pl.col("fantasy_points") + pl.col("fantasy_points_ppr")) / 2
+
+
 def _scored_ppg(
     df: pl.DataFrame, scoring: str, min_games: int = DEFAULT_MIN_GAMES
 ) -> pl.DataFrame:
@@ -58,16 +71,7 @@ def _scored_ppg(
     per-game scoring (a 1-game backup ranking like a starter). ``min_games=0``
     keeps everything with at least one game played.
     """
-    if scoring not in _SCORING_OPTIONS:
-        raise ValueError(f"scoring must be one of {_SCORING_OPTIONS}, got {scoring!r}")
-
-    if scoring == "standard":
-        pts = pl.col("fantasy_points")
-    elif scoring == "ppr":
-        pts = pl.col("fantasy_points_ppr")
-    else:  # half
-        pts = (pl.col("fantasy_points") + pl.col("fantasy_points_ppr")) / 2
-
+    pts = _points_expr(scoring)
     return (
         df.filter(pl.col("games") >= max(min_games, 1))
         .with_columns((pts / pl.col("games")).alias("ppg"))
@@ -75,19 +79,14 @@ def _scored_ppg(
     )
 
 
-def blend_projections(
-    df: pl.DataFrame,
-    target_season: int,
-    weights: tuple[float, ...],
-    games: int,
+def _recency_weighted(
+    df: pl.DataFrame, value_col: str, weights: tuple[float, ...]
 ) -> pl.DataFrame:
-    """Pure blending step — takes an already-loaded frame with a ``ppg`` column.
+    """Recency-weighted blend of ``value_col`` across each player's seasons.
 
-    ``df`` must contain: player_id, player_name, position, recent_team, season, ppg.
-    Seasons in ``df`` must all be < ``target_season``.
-
-    Weight assignment: sort each player's seasons descending (most recent first),
-    zip with weights in order, renormalise over seasons the player actually has.
+    Sorts each player's seasons descending (most recent first), zips with
+    ``weights`` in order, renormalises over seasons the player actually has.
+    Returns one row per player: ``player_id``, ``blended_{value_col}``, ``n_seasons``.
     """
     # Rank each season per player by recency (1 = most recent)
     ranked = df.with_columns(
@@ -112,21 +111,43 @@ def blend_projections(
     # Per-player: sum weights over present seasons (for renormalisation)
     player_wsum = joined.group_by("player_id").agg(pl.col("_w").sum().alias("_wsum"))
 
-    blended = (
+    blended_col = f"blended_{value_col}"
+    return (
         joined.join(player_wsum, on="player_id", how="left")
         .with_columns(
             # renormalised contribution of each season row
-            (pl.col("ppg") * pl.col("_w") / pl.col("_wsum")).alias("_contrib")
+            (pl.col(value_col) * pl.col("_w") / pl.col("_wsum")).alias("_contrib")
         )
         .group_by("player_id")
         .agg(
-            pl.col("player_name").last(),
-            pl.col("position").last(),
-            # most recent team
-            pl.col("recent_team").sort_by(pl.col("season")).last().alias("last_team"),
+            pl.col("_contrib").sum().alias(blended_col),
             pl.col("season").count().alias("n_seasons"),
-            pl.col("_contrib").sum().alias("proj_ppg"),
         )
+    )
+
+
+def blend_projections(
+    df: pl.DataFrame,
+    target_season: int,
+    weights: tuple[float, ...],
+    games: int,
+) -> pl.DataFrame:
+    """Pure blending step — takes an already-loaded frame with a ``ppg`` column.
+
+    ``df`` must contain: player_id, player_name, position, recent_team, season, ppg.
+    Seasons in ``df`` must all be < ``target_season``.
+    """
+    blended = _recency_weighted(df, "ppg", weights)
+    meta = df.group_by("player_id").agg(
+        pl.col("player_name").last(),
+        pl.col("position").last(),
+        # most recent team
+        pl.col("recent_team").sort_by(pl.col("season")).last().alias("last_team"),
+    )
+
+    return (
+        blended.join(meta, on="player_id", how="left")
+        .rename({"blended_ppg": "proj_ppg"})
         .with_columns((pl.col("proj_ppg") * games).alias("proj_points"))
         .select(
             "player_id",
@@ -139,8 +160,6 @@ def blend_projections(
         )
         .sort("proj_points", descending=True)
     )
-
-    return blended
 
 
 def project_season(

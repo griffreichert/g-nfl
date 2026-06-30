@@ -21,7 +21,27 @@ from __future__ import annotations
 import nflreadpy as nfl
 import polars as pl
 
+from g_nfl.fantasy.projections.season import (
+    DEFAULT_GAMES,
+    DEFAULT_WEIGHTS,
+    _points_expr,
+    _recency_weighted,
+    project_season,
+)
+
 EFFICIENCY_POSITIONS: set[str] = {"WR", "TE"}
+
+# Drop player-seasons under this many routes: mirrors season.py's
+# DEFAULT_MIN_GAMES floor — a tiny route sample makes pprr noisy.
+DEFAULT_MIN_ROUTES: int = 50
+
+# proj_ppg *= (1 + DEFAULT_Z_STRENGTH * pprr_z): a 1-std-dev efficiency edge
+# over position peers is roughly an 8% ppg bump. ponytail: arbitrary starting
+# point, tune via backtest before trusting it.
+DEFAULT_Z_STRENGTH: float = 0.08
+
+# Clip pprr_z before applying it — caps the swing from a small-sample outlier.
+Z_CLIP: float = 2.5
 
 
 def load_routes_pbp(seasons: list[int]) -> pl.DataFrame:
@@ -108,18 +128,189 @@ def load_efficiency(seasons: list[int]) -> pl.DataFrame:
     return compute_efficiency(routes, stats)
 
 
-if __name__ == "__main__":
-    SEASONS = [2023]
-    MIN_ROUTES = 200
+# ---------------------------------------------------------------------------
+# Augmenting season.py's PPG projection (issue #34, "augment" path)
+#
+# First cut multiplied a blended efficiency rate (pprr) back by a blended
+# volume estimate (routes_per_game) derived from the *same* player's own
+# route history. That's circular: pprr * routes_per_game = points / games =
+# ppg exactly, per season, by construction — multiplying two separately
+# blended averages back together doesn't add information, it just
+# reconstructs ppg plus noise from the season-to-season covariance between
+# efficiency and volume. Caught live (deltas were ~0.01-0.08 ppg, not signal).
+#
+# Fix: don't reconstruct volume at all. Compare each player's blended pprr to
+# the WR/TE positional average (z-score) and use that as a quality bump/fade
+# on top of the existing PPG blend's own volume assumption — additive
+# correction, not reconstruction.
+# ---------------------------------------------------------------------------
 
-    eff = load_efficiency(SEASONS)
 
-    for pos in ("WR", "TE"):
-        print(f"\n=== Top 10 {pos} by YPRR (min {MIN_ROUTES} routes, {SEASONS}) ===")
-        print(
-            eff.filter(
-                (pl.col("position") == pos) & (pl.col("routes_proxy") >= MIN_ROUTES)
-            )
-            .sort("yprr", descending=True)
-            .head(10)
+def load_efficiency_inputs(seasons: list[int]) -> pl.DataFrame:
+    """Routes-proxy joined to player-season stats, WR/TE only, games > 0.
+
+    Needs ``games`` + raw points columns, unlike the rate-only
+    ``compute_efficiency``/``load_efficiency`` path above.
+    """
+    pass_plays = load_routes_pbp(seasons)
+    participation = load_participation(seasons)
+    routes = compute_routes_proxy(pass_plays, participation)
+
+    stats: pl.DataFrame = nfl.load_player_stats(
+        seasons=seasons, summary_level="reg"
+    ).select(
+        "player_id",
+        "player_name",
+        "position",
+        "season",
+        "games",
+        "fantasy_points",
+        "fantasy_points_ppr",
+    )
+    return (
+        routes.join(stats, on=["player_id", "season"], how="inner")
+        .filter(pl.col("position").is_in(EFFICIENCY_POSITIONS))
+        .filter(pl.col("games") > 0)
+    )
+
+
+def _scored_efficiency(
+    df: pl.DataFrame, scoring: str, min_routes: int = DEFAULT_MIN_ROUTES
+) -> pl.DataFrame:
+    """Add ``pprr`` (fantasy points per route run); drop thin route samples."""
+    pts = _points_expr(scoring)
+    return df.filter(pl.col("routes_proxy") >= min_routes).with_columns(
+        (pts / pl.col("routes_proxy")).alias("pprr")
+    )
+
+
+def blend_efficiency(scored: pl.DataFrame, weights: tuple[float, ...]) -> pl.DataFrame:
+    """Pure blending step — takes an already-scored frame (``_scored_efficiency``
+    output), recency-blends ``pprr`` per player, and z-scores it against
+    WR/TE position peers (``pprr_z``, clipped to +-``Z_CLIP``).
+    """
+    pprr_blend = _recency_weighted(scored, "pprr", weights)
+    meta = scored.group_by("player_id").agg(
+        pl.col("player_name").last(), pl.col("position").last()
+    )
+
+    mean_pos = pl.col("pprr_proj").mean().over("position")
+    std_pos = pl.col("pprr_proj").std(ddof=0).over("position")
+    z_expr = (
+        pl.when(std_pos > 0)
+        .then((pl.col("pprr_proj") - mean_pos) / std_pos)
+        .otherwise(0.0)
+        .clip(-Z_CLIP, Z_CLIP)
+    )
+
+    return (
+        pprr_blend.join(meta, on="player_id", how="left")
+        .rename({"blended_pprr": "pprr_proj"})
+        .with_columns(z_expr.alias("pprr_z"))
+        .select(
+            "player_id", "player_name", "position", "n_seasons", "pprr_proj", "pprr_z"
         )
+        .sort("pprr_z", descending=True)
+    )
+
+
+def project_efficiency(
+    seasons: list[int],
+    target_season: int,
+    *,
+    scoring: str = "ppr",
+    weights: tuple[float, ...] = DEFAULT_WEIGHTS,
+    min_routes: int = DEFAULT_MIN_ROUTES,
+) -> pl.DataFrame:
+    """Recency-blended efficiency projection, WR/TE only. See ``blend_efficiency``."""
+    assert all(s < target_season for s in seasons), (
+        f"All seasons must be < target_season={target_season}"
+    )
+    raw = load_efficiency_inputs(seasons)
+    scored = _scored_efficiency(raw, scoring, min_routes)
+    return blend_efficiency(scored, weights)
+
+
+def apply_efficiency_adjustment(
+    base: pl.DataFrame,
+    efficiency: pl.DataFrame,
+    strength: float = DEFAULT_Z_STRENGTH,
+    games: int = DEFAULT_GAMES,
+) -> pl.DataFrame:
+    """Scale WR/TE ``proj_ppg`` by ``(1 + strength * pprr_z)`` — a quality
+    bump/fade relative to position peers, layered on the existing PPG blend's
+    volume assumption (not a reconstruction of it; see module docstring).
+    Players without an efficiency row (e.g. below ``DEFAULT_MIN_ROUTES``) or
+    outside WR/TE keep their base ``proj_ppg`` unchanged.
+    """
+    eff = efficiency.select("player_id", "pprr_z")
+    merged = base.join(eff, on="player_id", how="left")
+
+    has_z = pl.col("pprr_z").is_not_null() & pl.col("position").is_in(
+        EFFICIENCY_POSITIONS
+    )
+    adjusted_ppg = (
+        pl.when(has_z)
+        .then(pl.col("proj_ppg") * (1 + strength * pl.col("pprr_z")))
+        .otherwise(pl.col("proj_ppg"))
+    )
+
+    return (
+        merged.with_columns(adjusted_ppg.alias("proj_ppg"))
+        .with_columns((pl.col("proj_ppg") * games).alias("proj_points"))
+        .select(base.columns)
+        .sort("proj_points", descending=True)
+    )
+
+
+def project_season_with_efficiency(
+    seasons: list[int],
+    target_season: int,
+    *,
+    scoring: str = "ppr",
+    weights: tuple[float, ...] = DEFAULT_WEIGHTS,
+    games: int = DEFAULT_GAMES,
+    min_routes: int = DEFAULT_MIN_ROUTES,
+    z_strength: float = DEFAULT_Z_STRENGTH,
+) -> pl.DataFrame:
+    """``project_season`` adjusted by WR/TE route efficiency vs position peers.
+
+    QB/RB are passed through from ``project_season`` unchanged. See
+    ``apply_efficiency_adjustment`` for the adjustment mechanics.
+    """
+    base = project_season(
+        seasons, target_season, scoring=scoring, weights=weights, games=games
+    )
+    efficiency = project_efficiency(
+        seasons, target_season, scoring=scoring, weights=weights, min_routes=min_routes
+    )
+    return apply_efficiency_adjustment(
+        base, efficiency, strength=z_strength, games=games
+    )
+
+
+if __name__ == "__main__":
+    TARGET = 2025
+    SEASONS = [2022, 2023, 2024]
+
+    base = project_season(SEASONS, TARGET)
+    adjusted = project_season_with_efficiency(SEASONS, TARGET)
+
+    print(
+        f"=== WR/TE proj_ppg: PPG-only vs efficiency-adjusted (z_strength={DEFAULT_Z_STRENGTH}) ==="
+    )
+    compare = (
+        base.select(
+            "player_id", "player_name", "position", pl.col("proj_ppg").alias("ppg_only")
+        )
+        .join(
+            adjusted.select("player_id", pl.col("proj_ppg").alias("ppg_adjusted")),
+            on="player_id",
+        )
+        .filter(pl.col("position").is_in(EFFICIENCY_POSITIONS))
+        .with_columns((pl.col("ppg_adjusted") - pl.col("ppg_only")).alias("delta"))
+        .sort("ppg_adjusted", descending=True)
+    )
+    print(compare.head(20))
+    print("\n=== Biggest fades (most negative delta) ===")
+    print(compare.sort("delta").head(10))
