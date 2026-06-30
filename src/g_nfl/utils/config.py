@@ -1,8 +1,14 @@
 CUR_SEASON = 2025
-HFA = 1.3
+CUR_WEEK = 12
+
+# Home-field advantage in points. Realized 2016-23 mean home margin ~2.1, but
+# HFA has been declining post-2020; 1.5 ~ recent seasons.
+HFA = 1.5
 AVG_POINTS = 21.5
 
-SPREAD_STDEV = 11.5
+# Std of home margin. Realized ~14 (REG 2016-23), ~13.3 trimmed of blowouts.
+# (Was a stale 11.5, which made percentile->spread conversions too narrow.)
+SPREAD_STDEV = 13.5
 
 # Win probability threshold to limit garbage time
 DEFAULT_WIN_PROB = 0.05

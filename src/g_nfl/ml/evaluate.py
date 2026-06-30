@@ -27,7 +27,13 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from g_nfl.ml.data import DEFAULT_CACHE_DIR, load_injuries, load_pbp, load_schedule
+from g_nfl.ml.data import (
+    DEFAULT_CACHE_DIR,
+    load_injuries,
+    load_pbp,
+    load_schedule,
+    load_snap_counts,
+)
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
@@ -46,6 +52,11 @@ BREAK_EVEN = 110 / 210
 # skip walk-forward folds with fewer training games than this; early
 # weeks of the first loaded season have nothing to train on
 DEFAULT_MIN_TRAIN_GAMES = 200
+# ml_odds margin-distribution reference: deep, strictly-prior schedule pull
+# (REG results) so the implied-spread conversion is calibrated on a large,
+# leak-free sample. ponytail: 2006 cutoff dodges the worst pre-OT-reform
+# regime drift; widen if the PMF ever looks sample-starved.
+MARGIN_REF_START = 2006
 # notebook swept the pick cutoff k over 1..20; 0 = bet every game
 DEFAULT_EDGE_THRESHOLDS = tuple(range(0, 21))
 # report performance of each week's n most confident picks, n = 1..5
@@ -260,18 +271,48 @@ def backtest(
     carryover_k: float | None = None,
     with_injuries: bool = False,
     schedule_ctx: bool = False,
+    qb_ctx: bool = False,
+    qb_history: int = 3,
+    continuity: bool = False,
+    ml_odds: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
     """Full backtest: load data, walk forward, score; returns the
-    per-game predictions and the markdown report."""
-    pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
+    per-game predictions and the markdown report.
+
+    ``qb_ctx`` loads ``qb_history`` extra contiguous seasons of pbp before
+    the earliest eval season to warm the per-QB EWMA; the matrix rows stay
+    eval-season only (schedule is loaded for ``seasons`` alone), so the
+    training set is identical to the baseline — a clean A/B.
+    """
+    pbp_seasons = (
+        list(range(min(seasons) - qb_history, max(seasons) + 1)) if qb_ctx else seasons
+    )
+    pbp = load_pbp(pbp_seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     injuries = (
         load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
         if with_injuries
         else None
     )
+    snaps = (
+        load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh)
+        if continuity
+        else None
+    )
+    ml_margins = None
+    if ml_odds:
+        ref_seasons = list(range(MARGIN_REF_START, min(seasons)))
+        if ref_seasons:
+            ref = load_schedule(ref_seasons, cache_dir=cache_dir, refresh=refresh)
+            ml_margins = (
+                ref.filter(
+                    (pl.col("game_type") == "REG") & pl.col("result").is_not_null()
+                )["result"]
+                .to_numpy()
+                .astype(float)
+            )
     matrix = build_features(
         pbp,
         schedule,
@@ -282,6 +323,10 @@ def backtest(
         carryover_k=carryover_k,
         injuries=injuries,
         schedule_ctx=schedule_ctx,
+        qb_ctx=qb_ctx,
+        snaps=snaps,
+        ml_odds=ml_odds,
+        ml_margins=ml_margins,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -304,6 +349,9 @@ def backtest(
             "carryover_k": carryover_k,
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
+            "qb_ctx": qb_ctx,
+            "continuity": continuity,
+            "ml_odds": ml_odds,
         },
     )
     return preds, report
@@ -347,6 +395,21 @@ def main(argv: list[str] | None = None) -> None:
         help="L3 schedule context: rest, short-week/off-bye, day, division",
     )
     parser.add_argument(
+        "--qb",
+        action="store_true",
+        help="L4 starting-QB player-grain features (lagged EWMA + volume)",
+    )
+    parser.add_argument(
+        "--continuity",
+        action="store_true",
+        help="L4 O-line continuity index (lagged season-to-date lineup stability)",
+    )
+    parser.add_argument(
+        "--ml-odds",
+        action="store_true",
+        help="L4 moneyline-implied spread + divergence from posted line",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -370,6 +433,9 @@ def main(argv: list[str] | None = None) -> None:
         carryover_k=args.carryover_k,
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
+        qb_ctx=args.qb,
+        continuity=args.continuity,
+        ml_odds=args.ml_odds,
         refresh=args.refresh,
     )
     print(report)
@@ -402,6 +468,9 @@ def main(argv: list[str] | None = None) -> None:
                     "carryover_k": args.carryover_k,
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
+                    "qb_ctx": args.qb,
+                    "continuity": args.continuity,
+                    "ml_odds": args.ml_odds,
                     **resolved_params,
                 }
             )
