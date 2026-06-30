@@ -9,6 +9,7 @@ Modules:
 - registry: named, versioned feature sets
 """
 
+import numpy as np
 import polars as pl
 
 from g_nfl.ml.features.context import add_schedule_context
@@ -38,6 +39,7 @@ def build_features(
     qb_ctx: bool = False,
     snaps: pl.DataFrame | None = None,
     ml_odds: bool = False,
+    ml_margins: np.ndarray | None = None,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -57,6 +59,9 @@ def build_features(
     (see `continuity.add_continuity`); None leaves the matrix unchanged.
     ``ml_odds`` (L4) attaches the moneyline-implied spread + its divergence
     from the posted line (see `odds.add_ml_odds`); market data, no lag.
+    ``ml_margins`` calibrates the implied-spread margin distribution from a
+    deep, strictly-prior reference (passed by the caller); None falls back to
+    self-calibration on the matrix's own completed games.
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -85,5 +90,5 @@ def build_features(
     if snaps is not None:
         matrix = add_continuity(matrix, snaps)
     if ml_odds:
-        matrix = add_ml_odds(matrix, reg_schedule)
+        matrix = add_ml_odds(matrix, reg_schedule, margins=ml_margins)
     return matrix

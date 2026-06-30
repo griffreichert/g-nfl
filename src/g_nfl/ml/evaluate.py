@@ -52,6 +52,11 @@ BREAK_EVEN = 110 / 210
 # skip walk-forward folds with fewer training games than this; early
 # weeks of the first loaded season have nothing to train on
 DEFAULT_MIN_TRAIN_GAMES = 200
+# ml_odds margin-distribution reference: deep, strictly-prior schedule pull
+# (REG results) so the implied-spread conversion is calibrated on a large,
+# leak-free sample. ponytail: 2006 cutoff dodges the worst pre-OT-reform
+# regime drift; widen if the PMF ever looks sample-starved.
+MARGIN_REF_START = 2006
 # notebook swept the pick cutoff k over 1..20; 0 = bet every game
 DEFAULT_EDGE_THRESHOLDS = tuple(range(0, 21))
 # report performance of each week's n most confident picks, n = 1..5
@@ -296,6 +301,18 @@ def backtest(
         if continuity
         else None
     )
+    ml_margins = None
+    if ml_odds:
+        ref_seasons = list(range(MARGIN_REF_START, min(seasons)))
+        if ref_seasons:
+            ref = load_schedule(ref_seasons, cache_dir=cache_dir, refresh=refresh)
+            ml_margins = (
+                ref.filter(
+                    (pl.col("game_type") == "REG") & pl.col("result").is_not_null()
+                )["result"]
+                .to_numpy()
+                .astype(float)
+            )
     matrix = build_features(
         pbp,
         schedule,
@@ -309,6 +326,7 @@ def backtest(
         qb_ctx=qb_ctx,
         snaps=snaps,
         ml_odds=ml_odds,
+        ml_margins=ml_margins,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
