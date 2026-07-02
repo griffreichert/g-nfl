@@ -9,6 +9,7 @@ import pytest
 
 from g_nfl.fantasy.projections.season import (
     DEFAULT_GAMES,
+    _recency_weighted,
     _scored_ppg,
     blend_projections,
 )
@@ -267,3 +268,27 @@ def test_fb_normalised_to_rb():
     )
     scored = _scored_ppg(normalised, "ppr")
     assert scored.filter(pl.col("player_id") == "FB1")["position"][0] == "RB"
+
+
+# ---------------------------------------------------------------------------
+# _recency_weighted (shared blend primitive, reused by efficiency.py)
+# ---------------------------------------------------------------------------
+
+
+def test_recency_weighted_arbitrary_value_column():
+    """Generic over the value column being blended, not just 'ppg'."""
+    df = pl.DataFrame(
+        {
+            "player_id": ["A", "A", "B"],
+            "season": [2024, 2023, 2024],
+            "rate": [10.0, 20.0, 5.0],
+        },
+        schema={"player_id": pl.Utf8, "season": pl.Int32, "rate": pl.Float64},
+    )
+    result = _recency_weighted(df, "rate", (0.6, 0.3, 0.1))
+    a_row = result.filter(pl.col("player_id") == "A").row(0, named=True)
+    b_row = result.filter(pl.col("player_id") == "B").row(0, named=True)
+    assert abs(a_row["blended_rate"] - (10.0 * 0.6 + 20.0 * 0.3) / 0.9) < 1e-9
+    assert a_row["n_seasons"] == 2
+    assert abs(b_row["blended_rate"] - 5.0) < 1e-9
+    assert b_row["n_seasons"] == 1
