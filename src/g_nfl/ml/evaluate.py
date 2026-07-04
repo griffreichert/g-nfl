@@ -124,6 +124,55 @@ def regression_metrics(preds: pl.DataFrame) -> dict[str, float]:
     }
 
 
+def _sharpness_row(df: pl.DataFrame) -> dict[str, Any]:
+    """Sharpness numbers for one slice of predictions (pooled or one season).
+
+    Same market-implied-margin convention as ``regression_metrics``:
+    ``spread_line`` is the market's home-margin prediction directly, no sign
+    flip (see module docstring).
+    """
+    err = (df["pred"] - df["result"]).to_numpy()
+    market_err = (df["spread_line"] - df["result"]).to_numpy()
+    close_err = (df["pred"] - df["spread_line"]).to_numpy()
+    rmse_model = float(np.sqrt(np.mean(err**2)))
+    rmse_market = float(np.sqrt(np.mean(market_err**2)))
+    abs_close_err = np.abs(close_err)
+    return {
+        "n_games": df.height,
+        "rmse_model": rmse_model,
+        "mae_model": float(np.mean(np.abs(err))),
+        "rmse_market": rmse_market,
+        "mae_market": float(np.mean(np.abs(market_err))),
+        "gap_rmse": rmse_model - rmse_market,
+        "mae_vs_close": float(np.mean(abs_close_err)),
+        "rmse_vs_close": float(np.sqrt(np.mean(close_err**2))),
+        "tail_gt3_pct": float(np.mean(abs_close_err > 3)),
+        "tail_gt7_pct": float(np.mean(abs_close_err > 7)),
+    }
+
+
+def sharpness_metrics(preds: pl.DataFrame) -> pl.DataFrame:
+    """Model sharpness vs the market close: pooled row (``season == "all"``)
+    plus one row per season.
+
+    ``gap_rmse`` (model RMSE − market RMSE vs actual margin) is the headline
+    number per the sharpness gate (notes/sharpness-player-availability.md):
+    the model no longer needs to beat the close, it needs to approach it.
+    ``mae_vs_close``/``rmse_vs_close`` and the disagreement tails
+    (``tail_gt3_pct``/``tail_gt7_pct``) measure line tracking directly.
+    """
+    seasons = sorted(preds["season"].unique().to_list())
+    rows = [{"season": "all", **_sharpness_row(preds)}]
+    for season in seasons:
+        rows.append(
+            {
+                "season": str(season),
+                **_sharpness_row(preds.filter(pl.col("season") == season)),
+            }
+        )
+    return pl.DataFrame(rows)
+
+
 def _score_picks(preds: pl.DataFrame) -> pl.DataFrame:
     """Add edge / push / win columns; drop edge == 0 (no side to bet)."""
     return (
@@ -211,11 +260,22 @@ def _record_cells(r: dict[str, Any]) -> str:
     return f"{r['wins']}-{r['losses']}-{r['pushes']} | {ats} | {vbe} | {roi} |"
 
 
+def _sharpness_row_cells(r: dict[str, Any]) -> str:
+    """`RMSE gap | MAE/RMSE vs close | tail>3 | tail>7` markdown cells for a
+    sharpness row."""
+    return (
+        f"{r['rmse_model']:.2f} | {r['rmse_market']:.2f} | {r['gap_rmse']:+.2f} | "
+        f"{r['mae_vs_close']:.2f} | {r['rmse_vs_close']:.2f} | "
+        f"{r['tail_gt3_pct']:.1%} | {r['tail_gt7_pct']:.1%} |"
+    )
+
+
 def format_report(
     preds: pl.DataFrame,
     sweep: pl.DataFrame,
     top_n: pl.DataFrame,
     reg: dict[str, float],
+    sharpness: pl.DataFrame,
     config: dict[str, Any],
 ) -> str:
     """Markdown backtest summary."""
@@ -233,6 +293,23 @@ def format_report(
         f"- model RMSE: {reg['rmse']:.2f} | MAE: {reg['mae']:.2f}",
         f"- market (spread_line) RMSE: {reg['market_rmse']:.2f} "
         "<- model must approach this to find value",
+        "",
+        "## Sharpness (vs market close)",
+        "",
+        "Gate: model no longer needs to beat the close, it needs to approach "
+        "it. `gap_rmse` = model RMSE − market RMSE vs actual margin "
+        "(negative = model sharper). `vs close` columns track the model line "
+        "against the market line directly; tails are the share of games with "
+        "|model − close| over 3 / 7 points.",
+        "",
+        "| season | n | RMSE model | RMSE market | gap | MAE vs close | "
+        "RMSE vs close | tail>3 | tail>7 |",
+        "|-------:|--:|-----------:|------------:|----:|-------------:|"
+        "--------------:|-------:|-------:|",
+    ]
+    for r in sharpness.iter_rows(named=True):
+        lines.append(f"| {r['season']} | {r['n_games']} | {_sharpness_row_cells(r)}")
+    lines += [
         "",
         "## Betting (1 unit at -110)",
         "",
@@ -338,6 +415,7 @@ def backtest(
         betting_metrics(preds, edge_thresholds),
         top_n_metrics(preds),
         regression_metrics(preds),
+        sharpness_metrics(preds),
         config={
             "feature_set": fs.name,
             "seasons_loaded": list(seasons),
@@ -480,6 +558,20 @@ def main(argv: list[str] | None = None) -> None:
                     "rmse": reg["rmse"],
                     "mae": reg["mae"],
                     "market_rmse": reg["market_rmse"],
+                }
+            )
+            sharp = (
+                sharpness_metrics(preds)
+                .filter(pl.col("season") == "all")
+                .row(0, named=True)
+            )
+            mlflow.log_metrics(
+                {
+                    "gap_rmse": sharp["gap_rmse"],
+                    "mae_vs_close": sharp["mae_vs_close"],
+                    "rmse_vs_close": sharp["rmse_vs_close"],
+                    "tail_gt3_pct": sharp["tail_gt3_pct"],
+                    "tail_gt7_pct": sharp["tail_gt7_pct"],
                 }
             )
             bm = betting_metrics(preds)

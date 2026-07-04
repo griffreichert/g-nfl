@@ -200,6 +200,78 @@ def test_regression_metrics_known_values():
     assert reg["market_rmse"] == pytest.approx(np.sqrt((0 + 1) / 2))
 
 
+def test_sharpness_metrics_known_values():
+    # season 2023: two games; season 2024: one game
+    preds = pl.DataFrame(
+        {
+            "season": [2023, 2023, 2024],
+            "week": [1, 2, 1],
+            "pred": [3.0, -1.0, 5.0],
+            "spread_line": [0.0, 2.0, 4.0],
+            "result": [0.0, 3.0, 0.0],
+        }
+    )
+    sharp = eval_mod.sharpness_metrics(preds)
+    assert sharp["season"].to_list() == ["all", "2023", "2024"]
+
+    pooled = sharp.filter(pl.col("season") == "all").row(0, named=True)
+    # model errs: 3, -4, 5 -> rmse sqrt((9+16+25)/3), mae (3+4+5)/3
+    assert pooled["n_games"] == 3
+    assert pooled["rmse_model"] == pytest.approx(np.sqrt((9 + 16 + 25) / 3))
+    assert pooled["mae_model"] == pytest.approx((3 + 4 + 5) / 3)
+    # market errs (spread_line - result): 0, -1, 4
+    assert pooled["rmse_market"] == pytest.approx(np.sqrt((0 + 1 + 16) / 3))
+    assert pooled["mae_market"] == pytest.approx((0 + 1 + 4) / 3)
+    assert pooled["gap_rmse"] == pytest.approx(
+        pooled["rmse_model"] - pooled["rmse_market"]
+    )
+    # close errs (pred - spread_line): 3, -3, 1
+    assert pooled["mae_vs_close"] == pytest.approx((3 + 3 + 1) / 3)
+    assert pooled["rmse_vs_close"] == pytest.approx(np.sqrt((9 + 9 + 1) / 3))
+    assert pooled["tail_gt3_pct"] == pytest.approx(0.0)  # none strictly > 3
+    assert pooled["tail_gt7_pct"] == pytest.approx(0.0)
+
+    row_2023 = sharp.filter(pl.col("season") == "2023").row(0, named=True)
+    assert row_2023["n_games"] == 2
+    assert row_2023["rmse_model"] == pytest.approx(np.sqrt((9 + 16) / 2))
+
+    row_2024 = sharp.filter(pl.col("season") == "2024").row(0, named=True)
+    assert row_2024["n_games"] == 1
+    assert row_2024["rmse_model"] == pytest.approx(5.0)
+
+
+def test_sharpness_metrics_tail_pct():
+    preds = _preds_frame(
+        [
+            (5.0, 0.0, 5.0),  # close err 5 -> > 3, not > 7
+            (10.0, 0.0, 10.0),  # close err 10 -> > 3 and > 7
+            (1.0, 0.0, 1.0),  # close err 1 -> neither
+            (2.0, 0.0, 2.0),  # close err 2 -> neither
+        ]
+    )
+    sharp = eval_mod.sharpness_metrics(preds)
+    pooled = sharp.filter(pl.col("season") == "all").row(0, named=True)
+    assert pooled["tail_gt3_pct"] == pytest.approx(2 / 4)
+    assert pooled["tail_gt7_pct"] == pytest.approx(1 / 4)
+
+
+def test_sharpness_metrics_market_rmse_zero_when_line_is_perfect():
+    """Sign-convention check: a market line that exactly predicts every
+    margin (spread_line == result) must give rmse_market == 0, not blow up
+    to the ~27-point scale a sign flip would produce."""
+    preds = _preds_frame(
+        [
+            (3.0, 5.0, 5.0),
+            (-2.0, -8.0, -8.0),
+            (0.0, 14.0, 14.0),
+        ]
+    )
+    sharp = eval_mod.sharpness_metrics(preds)
+    pooled = sharp.filter(pl.col("season") == "all").row(0, named=True)
+    assert pooled["rmse_market"] == pytest.approx(0.0)
+    assert pooled["mae_market"] == pytest.approx(0.0)
+
+
 def test_backtest_cli_end_to_end(
     tmp_path, monkeypatch, pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
 ):
@@ -230,3 +302,5 @@ def test_backtest_cli_end_to_end(
     assert "| 20 |" in report  # full default sweep rendered
     assert "Break-even ATS%: 52.38%" in report
     assert "## Top-n confidence picks per week" in report
+    assert "## Sharpness (vs market close)" in report
+    assert "| all |" in report
