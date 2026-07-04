@@ -8,7 +8,12 @@ from polars.testing import assert_frame_equal, assert_series_equal
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.carryover import carryover_blend
 from g_nfl.ml.features.matrix import META_COLS, build_game_matrix
-from g_nfl.ml.features.opponent import STATS, fit_opponent_ratings, team_games_frame
+from g_nfl.ml.features.opponent import (
+    STATS,
+    add_opponent_ratings,
+    fit_opponent_ratings,
+    team_games_frame,
+)
 from g_nfl.ml.features.plays import (
     EPA_SPLIT_COLS,
     HAVOC_COLS,
@@ -605,3 +610,47 @@ def test_v1_team_feature_set(matrix: pl.DataFrame):
 def test_unknown_feature_set_raises():
     with pytest.raises(KeyError, match="unknown feature set"):
         get_feature_set("nope")
+
+
+@pytest.fixture(scope="module")
+def adj_matrix(windowed: pl.DataFrame, reg_schedule: pl.DataFrame, plays: pl.DataFrame):
+    matrix = build_game_matrix(windowed, reg_schedule)
+    return add_opponent_ratings(
+        matrix, team_games_frame(plays), lam=10.0, prior_weight=0.3
+    )
+
+
+def test_v2_adj_only_feature_set(adj_matrix: pl.DataFrame):
+    feature_cols = get_feature_set("v2_adj_only").columns(adj_matrix)
+    expected = {
+        f"{side}_{stat}_adj_{part}"
+        for side in ("home", "away")
+        for stat in STATS
+        for part in ("off", "def")
+    } | {"adj_rating_diff"}
+    assert set(feature_cols) == expected
+
+
+def test_v2_adj_only_errors_without_opp_adjust(matrix: pl.DataFrame):
+    with pytest.raises(ValueError, match="opp_adjust"):
+        get_feature_set("v2_adj_only").columns(matrix)
+
+
+def test_v2_adj_lean_feature_set(adj_matrix: pl.DataFrame):
+    feature_cols = get_feature_set("v2_adj_lean").columns(adj_matrix)
+    adj_cols = set(get_feature_set("v2_adj_only").columns(adj_matrix))
+    assert adj_cols <= set(feature_cols)
+    lean_only = set(feature_cols) - adj_cols
+    assert lean_only  # picked up some rate-stat core cols too
+    stems = [
+        "epa_mean",
+        "success_mean",
+        "cpoe_mean",
+        "pass_oe_mean",
+        "sack_mean",
+        "first_down_mean",
+    ]
+    for c in lean_only:
+        assert any(stem in c for stem in stems)
+        assert c.startswith(("home_", "away_"))
+        assert c.endswith("_season") or "_last_" in c
