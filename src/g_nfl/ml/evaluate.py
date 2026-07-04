@@ -275,6 +275,9 @@ def backtest(
     qb_history: int = 3,
     continuity: bool = False,
     ml_odds: bool = False,
+    opp_adjust: bool = False,
+    opp_lambda: float = 10.0,
+    opp_prior_weight: float = 0.3,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -284,10 +287,16 @@ def backtest(
     ``qb_ctx`` loads ``qb_history`` extra contiguous seasons of pbp before
     the earliest eval season to warm the per-QB EWMA; the matrix rows stay
     eval-season only (schedule is loaded for ``seasons`` alone), so the
-    training set is identical to the baseline — a clean A/B.
+    training set is identical to the baseline — a clean A/B. ``opp_adjust``
+    needs at least 1 prior season of pbp so eval-season week-1 ratings have
+    a prior; it shares this extra-pbp-history mechanism with ``qb_ctx``
+    rather than loading its own copy.
     """
+    extra_history = max(qb_history if qb_ctx else 0, 1 if opp_adjust else 0)
     pbp_seasons = (
-        list(range(min(seasons) - qb_history, max(seasons) + 1)) if qb_ctx else seasons
+        list(range(min(seasons) - extra_history, max(seasons) + 1))
+        if extra_history
+        else seasons
     )
     pbp = load_pbp(pbp_seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
@@ -327,6 +336,9 @@ def backtest(
         snaps=snaps,
         ml_odds=ml_odds,
         ml_margins=ml_margins,
+        opp_adjust=opp_adjust,
+        opp_lambda=opp_lambda,
+        opp_prior_weight=opp_prior_weight,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -352,6 +364,9 @@ def backtest(
             "qb_ctx": qb_ctx,
             "continuity": continuity,
             "ml_odds": ml_odds,
+            "opp_adjust": opp_adjust,
+            "opp_lambda": opp_lambda,
+            "opp_prior_weight": opp_prior_weight,
         },
     )
     return preds, report
@@ -410,6 +425,23 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 moneyline-implied spread + divergence from posted line",
     )
     parser.add_argument(
+        "--opp-adjust",
+        action="store_true",
+        help="L4 opponent-adjusted offense/defense ratings (weighted ridge)",
+    )
+    parser.add_argument(
+        "--opp-lambda",
+        type=float,
+        default=10.0,
+        help="ridge penalty for opponent-adjusted ratings",
+    )
+    parser.add_argument(
+        "--opp-prior-weight",
+        type=float,
+        default=0.3,
+        help="sample weight on prior-season games in opponent-adjusted ratings",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -436,6 +468,9 @@ def main(argv: list[str] | None = None) -> None:
         qb_ctx=args.qb,
         continuity=args.continuity,
         ml_odds=args.ml_odds,
+        opp_adjust=args.opp_adjust,
+        opp_lambda=args.opp_lambda,
+        opp_prior_weight=args.opp_prior_weight,
         refresh=args.refresh,
     )
     print(report)
@@ -471,6 +506,9 @@ def main(argv: list[str] | None = None) -> None:
                     "qb_ctx": args.qb,
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
+                    "opp_adjust": args.opp_adjust,
+                    "opp_lambda": args.opp_lambda,
+                    "opp_prior_weight": args.opp_prior_weight,
                     **resolved_params,
                 }
             )
