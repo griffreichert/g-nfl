@@ -31,10 +31,12 @@ from g_nfl.ml.data import (
     DEFAULT_CACHE_DIR,
     load_injuries,
     load_pbp,
+    load_players,
     load_schedule,
     load_snap_counts,
 )
 from g_nfl.ml.features import build_features
+from g_nfl.ml.features.qb_change import apply_qb_adjustment
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
 from g_nfl.ml.models.spread import DEFAULT_PARAMS, SpreadModel
@@ -69,6 +71,7 @@ def walk_forward_predictions(
     params: dict[str, Any] | None = None,
     *,
     min_train_games: int = DEFAULT_MIN_TRAIN_GAMES,
+    target: str = "result",
 ) -> pl.DataFrame:
     """Predict each (season, week) using only strictly earlier games.
 
@@ -77,6 +80,13 @@ def walk_forward_predictions(
     earlier week of the same season — never the evaluation week itself
     or anything after it. Returns the meta columns plus ``pred`` and
     ``n_train`` for every game in folds that met `min_train_games`.
+
+    ``target`` selects the fit label column (#39 experiment: ``result``,
+    the actual home margin, or ``spread_line``, the market close). Only
+    training rows ever read this column — all rows here are strictly
+    prior, completed games, so ``spread_line`` is already known and this
+    introduces no leak. Evaluation always compares ``pred`` to the real
+    ``result``/``spread_line``, unaffected by this choice.
     """
     matrix = matrix.sort("season", "week")
     folds = matrix.select("season", "week").unique().sort("season", "week")
@@ -94,7 +104,7 @@ def walk_forward_predictions(
         model = SpreadModel(params)
         model.fit(
             train_df.select(feature_cols).to_numpy(),
-            train_df["result"].to_numpy(),
+            train_df[target].to_numpy(),
         )
         preds = model.predict(test_df.select(feature_cols).to_numpy())
         out.append(
@@ -122,6 +132,55 @@ def regression_metrics(preds: pl.DataFrame) -> dict[str, float]:
         "mae": float(np.mean(np.abs(err))),
         "market_rmse": float(np.sqrt(np.mean(market_err**2))),
     }
+
+
+def _sharpness_row(df: pl.DataFrame) -> dict[str, Any]:
+    """Sharpness numbers for one slice of predictions (pooled or one season).
+
+    Same market-implied-margin convention as ``regression_metrics``:
+    ``spread_line`` is the market's home-margin prediction directly, no sign
+    flip (see module docstring).
+    """
+    err = (df["pred"] - df["result"]).to_numpy()
+    market_err = (df["spread_line"] - df["result"]).to_numpy()
+    close_err = (df["pred"] - df["spread_line"]).to_numpy()
+    rmse_model = float(np.sqrt(np.mean(err**2)))
+    rmse_market = float(np.sqrt(np.mean(market_err**2)))
+    abs_close_err = np.abs(close_err)
+    return {
+        "n_games": df.height,
+        "rmse_model": rmse_model,
+        "mae_model": float(np.mean(np.abs(err))),
+        "rmse_market": rmse_market,
+        "mae_market": float(np.mean(np.abs(market_err))),
+        "gap_rmse": rmse_model - rmse_market,
+        "mae_vs_close": float(np.mean(abs_close_err)),
+        "rmse_vs_close": float(np.sqrt(np.mean(close_err**2))),
+        "tail_gt3_pct": float(np.mean(abs_close_err > 3)),
+        "tail_gt7_pct": float(np.mean(abs_close_err > 7)),
+    }
+
+
+def sharpness_metrics(preds: pl.DataFrame) -> pl.DataFrame:
+    """Model sharpness vs the market close: pooled row (``season == "all"``)
+    plus one row per season.
+
+    ``gap_rmse`` (model RMSE − market RMSE vs actual margin) is the headline
+    number per the sharpness gate (notes/sharpness-player-availability.md):
+    the model no longer needs to beat the close, it needs to approach it.
+    ``mae_vs_close``/``rmse_vs_close`` and the disagreement tails
+    (``tail_gt3_pct``/``tail_gt7_pct``) measure line tracking directly.
+    """
+    seasons = sorted(preds["season"].unique().to_list())
+    rows = [{"season": "all", **_sharpness_row(preds)}]
+    for season in seasons:
+        rows.append(
+            {
+                "season": str(season),
+                **_sharpness_row(preds.filter(pl.col("season") == season)),
+            }
+        )
+    return pl.DataFrame(rows)
 
 
 def _score_picks(preds: pl.DataFrame) -> pl.DataFrame:
@@ -211,11 +270,22 @@ def _record_cells(r: dict[str, Any]) -> str:
     return f"{r['wins']}-{r['losses']}-{r['pushes']} | {ats} | {vbe} | {roi} |"
 
 
+def _sharpness_row_cells(r: dict[str, Any]) -> str:
+    """`RMSE gap | MAE/RMSE vs close | tail>3 | tail>7` markdown cells for a
+    sharpness row."""
+    return (
+        f"{r['rmse_model']:.2f} | {r['rmse_market']:.2f} | {r['gap_rmse']:+.2f} | "
+        f"{r['mae_vs_close']:.2f} | {r['rmse_vs_close']:.2f} | "
+        f"{r['tail_gt3_pct']:.1%} | {r['tail_gt7_pct']:.1%} |"
+    )
+
+
 def format_report(
     preds: pl.DataFrame,
     sweep: pl.DataFrame,
     top_n: pl.DataFrame,
     reg: dict[str, float],
+    sharpness: pl.DataFrame,
     config: dict[str, Any],
 ) -> str:
     """Markdown backtest summary."""
@@ -233,6 +303,23 @@ def format_report(
         f"- model RMSE: {reg['rmse']:.2f} | MAE: {reg['mae']:.2f}",
         f"- market (spread_line) RMSE: {reg['market_rmse']:.2f} "
         "<- model must approach this to find value",
+        "",
+        "## Sharpness (vs market close)",
+        "",
+        "Gate: model no longer needs to beat the close, it needs to approach "
+        "it. `gap_rmse` = model RMSE − market RMSE vs actual margin "
+        "(negative = model sharper). `vs close` columns track the model line "
+        "against the market line directly; tails are the share of games with "
+        "|model − close| over 3 / 7 points.",
+        "",
+        "| season | n | RMSE model | RMSE market | gap | MAE vs close | "
+        "RMSE vs close | tail>3 | tail>7 |",
+        "|-------:|--:|-----------:|------------:|----:|-------------:|"
+        "--------------:|-------:|-------:|",
+    ]
+    for r in sharpness.iter_rows(named=True):
+        lines.append(f"| {r['season']} | {r['n_games']} | {_sharpness_row_cells(r)}")
+    lines += [
         "",
         "## Betting (1 unit at -110)",
         "",
@@ -273,26 +360,39 @@ def backtest(
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
     qb_history: int = 3,
+    qb_change: bool = False,
+    qb_adjust_k: float | None = None,
     continuity: bool = False,
     ml_odds: bool = False,
+    availability: bool = False,
     opp_adjust: bool = False,
     opp_lambda: float = 10.0,
     opp_prior_weight: float = 0.3,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
+    target: str = "result",
 ) -> tuple[pl.DataFrame, str]:
     """Full backtest: load data, walk forward, score; returns the
     per-game predictions and the markdown report.
 
-    ``qb_ctx`` loads ``qb_history`` extra contiguous seasons of pbp before
-    the earliest eval season to warm the per-QB EWMA; the matrix rows stay
-    eval-season only (schedule is loaded for ``seasons`` alone), so the
-    training set is identical to the baseline — a clean A/B. ``opp_adjust``
+    ``qb_ctx``/``qb_change`` load ``qb_history`` extra contiguous seasons of
+    pbp before the earliest eval season to warm the per-QB EWMA; the matrix
+    rows stay eval-season only (schedule is loaded for ``seasons`` alone), so
+    the training set is identical to the baseline — a clean A/B. ``opp_adjust``
     needs at least 1 prior season of pbp so eval-season week-1 ratings have
-    a prior; it shares this extra-pbp-history mechanism with ``qb_ctx``
-    rather than loading its own copy.
+    a prior; it shares this extra-pbp-history mechanism rather than loading
+    its own copy.
+
+    ``qb_adjust_k`` applies the explicit additive QB-change correction
+    (`features.qb_change.apply_qb_adjustment`) to the walk-forward
+    predictions before any metric is computed, so sharpness/betting/top-n
+    all see the adjusted line. Requires ``qb_change=True``.
     """
-    extra_history = max(qb_history if qb_ctx else 0, 1 if opp_adjust else 0)
+    if qb_adjust_k is not None and not qb_change:
+        raise ValueError("qb_adjust_k requires qb_change=True")
+    extra_history = max(
+        qb_history if (qb_ctx or qb_change) else 0, 1 if opp_adjust else 0
+    )
     pbp_seasons = (
         list(range(min(seasons) - extra_history, max(seasons) + 1))
         if extra_history
@@ -302,13 +402,16 @@ def backtest(
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     injuries = (
         load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
-        if with_injuries
+        if (with_injuries or qb_change or availability)
         else None
     )
     snaps = (
         load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh)
-        if continuity
+        if (continuity or availability)
         else None
+    )
+    players = (
+        load_players(cache_dir=cache_dir, refresh=refresh) if availability else None
     )
     ml_margins = None
     if ml_odds:
@@ -330,12 +433,16 @@ def backtest(
         half_life=half_life,
         epa_splits=epa_splits,
         carryover_k=carryover_k,
-        injuries=injuries,
+        injuries=injuries if with_injuries else None,
         schedule_ctx=schedule_ctx,
         qb_ctx=qb_ctx,
+        qb_change=injuries if qb_change else None,
         snaps=snaps,
+        continuity=continuity,
         ml_odds=ml_odds,
         ml_margins=ml_margins,
+        availability=injuries if availability else None,
+        players=players,
         opp_adjust=opp_adjust,
         opp_lambda=opp_lambda,
         opp_prior_weight=opp_prior_weight,
@@ -343,13 +450,23 @@ def backtest(
 
     fs = get_feature_set(feature_set)
     preds = walk_forward_predictions(
-        matrix, fs.columns(matrix), params, min_train_games=min_train_games
+        matrix,
+        fs.columns(matrix),
+        params,
+        min_train_games=min_train_games,
+        target=target,
     )
+    if qb_adjust_k is not None:
+        downgrades = matrix.select("game_id", "home_qb_downgrade", "away_qb_downgrade")
+        preds = apply_qb_adjustment(
+            preds.join(downgrades, on="game_id", how="left"), qb_adjust_k
+        ).drop("home_qb_downgrade", "away_qb_downgrade")
     report = format_report(
         preds,
         betting_metrics(preds, edge_thresholds),
         top_n_metrics(preds),
         regression_metrics(preds),
+        sharpness_metrics(preds),
         config={
             "feature_set": fs.name,
             "seasons_loaded": list(seasons),
@@ -362,8 +479,12 @@ def backtest(
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
+            "qb_change": qb_change,
+            "qb_adjust_k": qb_adjust_k,
             "continuity": continuity,
             "ml_odds": ml_odds,
+            "availability": availability,
+            "target": target,
             "opp_adjust": opp_adjust,
             "opp_lambda": opp_lambda,
             "opp_prior_weight": opp_prior_weight,
@@ -415,6 +536,17 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 starting-QB player-grain features (lagged EWMA + volume)",
     )
     parser.add_argument(
+        "--qb-change",
+        action="store_true",
+        help="L4 QB-change delta triggered by the injury report (Out/Doubtful)",
+    )
+    parser.add_argument(
+        "--qb-adjust-k",
+        type=float,
+        default=None,
+        help="L4 explicit additive QB-change correction on pred (requires --qb-change)",
+    )
+    parser.add_argument(
         "--continuity",
         action="store_true",
         help="L4 O-line continuity index (lagged season-to-date lineup stability)",
@@ -423,6 +555,21 @@ def main(argv: list[str] | None = None) -> None:
         "--ml-odds",
         action="store_true",
         help="L4 moneyline-implied spread + divergence from posted line",
+    )
+    parser.add_argument(
+        "--availability",
+        action="store_true",
+        help=(
+            "L4 availability-weighted unit snap-value lost (#39 lever 2), "
+            "by OL/skill/front-7/secondary"
+        ),
+    )
+    parser.add_argument(
+        "--target",
+        choices=["result", "spread_line"],
+        default="result",
+        help="#39 experiment: fit label (result = actual margin, "
+        "spread_line = market close)",
     )
     parser.add_argument(
         "--opp-adjust",
@@ -466,12 +613,16 @@ def main(argv: list[str] | None = None) -> None:
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
+        qb_change=args.qb_change,
+        qb_adjust_k=args.qb_adjust_k,
         continuity=args.continuity,
         ml_odds=args.ml_odds,
+        availability=args.availability,
         opp_adjust=args.opp_adjust,
         opp_lambda=args.opp_lambda,
         opp_prior_weight=args.opp_prior_weight,
         refresh=args.refresh,
+        target=args.target,
     )
     print(report)
     if args.output:
@@ -504,8 +655,12 @@ def main(argv: list[str] | None = None) -> None:
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
+                    "qb_change": args.qb_change,
+                    "qb_adjust_k": args.qb_adjust_k,
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
+                    "availability": args.availability,
+                    "target": args.target,
                     "opp_adjust": args.opp_adjust,
                     "opp_lambda": args.opp_lambda,
                     "opp_prior_weight": args.opp_prior_weight,
@@ -518,6 +673,20 @@ def main(argv: list[str] | None = None) -> None:
                     "rmse": reg["rmse"],
                     "mae": reg["mae"],
                     "market_rmse": reg["market_rmse"],
+                }
+            )
+            sharp = (
+                sharpness_metrics(preds)
+                .filter(pl.col("season") == "all")
+                .row(0, named=True)
+            )
+            mlflow.log_metrics(
+                {
+                    "gap_rmse": sharp["gap_rmse"],
+                    "mae_vs_close": sharp["mae_vs_close"],
+                    "rmse_vs_close": sharp["rmse_vs_close"],
+                    "tail_gt3_pct": sharp["tail_gt3_pct"],
+                    "tail_gt7_pct": sharp["tail_gt7_pct"],
                 }
             )
             bm = betting_metrics(preds)

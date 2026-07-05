@@ -11,7 +11,19 @@ from dataclasses import dataclass
 
 import polars as pl
 
+from g_nfl.ml.features.availability import AVAIL_COLS
 from g_nfl.ml.features.matrix import META_COLS
+from g_nfl.ml.features.qb_change import QB_CHANGE_COLS
+
+# qb_change cols ride the matrix for the additive prediction adjustment
+# (qb_adjust_k) but are never training features: as tree inputs they are
+# rare-nonzero soup that measurably *hurts* subset sharpness (#41).
+# availability cols (#39 lever 2) are spec'd the same way from the start --
+# an additive/prior correction, not tree soup -- so they ride the matrix as
+# adjustment inputs only, same exclusion.
+ADJUSTMENT_COLS = {
+    f"{side}_{c}" for side in ("home", "away") for c in (*QB_CHANGE_COLS, *AVAIL_COLS)
+}
 
 
 @dataclass(frozen=True)
@@ -26,7 +38,9 @@ class FeatureSet:
 
 
 def _all_team_stat_cols(matrix: pl.DataFrame) -> list[str]:
-    return [c for c in matrix.columns if c not in META_COLS]
+    return [
+        c for c in matrix.columns if c not in META_COLS and c not in ADJUSTMENT_COLS
+    ]
 
 
 V1_TEAM = FeatureSet(
