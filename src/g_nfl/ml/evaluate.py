@@ -71,6 +71,7 @@ def walk_forward_predictions(
     params: dict[str, Any] | None = None,
     *,
     min_train_games: int = DEFAULT_MIN_TRAIN_GAMES,
+    target: str = "result",
 ) -> pl.DataFrame:
     """Predict each (season, week) using only strictly earlier games.
 
@@ -79,6 +80,13 @@ def walk_forward_predictions(
     earlier week of the same season — never the evaluation week itself
     or anything after it. Returns the meta columns plus ``pred`` and
     ``n_train`` for every game in folds that met `min_train_games`.
+
+    ``target`` selects the fit label column (#39 experiment: ``result``,
+    the actual home margin, or ``spread_line``, the market close). Only
+    training rows ever read this column — all rows here are strictly
+    prior, completed games, so ``spread_line`` is already known and this
+    introduces no leak. Evaluation always compares ``pred`` to the real
+    ``result``/``spread_line``, unaffected by this choice.
     """
     matrix = matrix.sort("season", "week")
     folds = matrix.select("season", "week").unique().sort("season", "week")
@@ -96,7 +104,7 @@ def walk_forward_predictions(
         model = SpreadModel(params)
         model.fit(
             train_df.select(feature_cols).to_numpy(),
-            train_df["result"].to_numpy(),
+            train_df[target].to_numpy(),
         )
         preds = model.predict(test_df.select(feature_cols).to_numpy())
         out.append(
@@ -359,6 +367,7 @@ def backtest(
     availability: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
+    target: str = "result",
 ) -> tuple[pl.DataFrame, str]:
     """Full backtest: load data, walk forward, score; returns the
     per-game predictions and the markdown report.
@@ -429,7 +438,11 @@ def backtest(
 
     fs = get_feature_set(feature_set)
     preds = walk_forward_predictions(
-        matrix, fs.columns(matrix), params, min_train_games=min_train_games
+        matrix,
+        fs.columns(matrix),
+        params,
+        min_train_games=min_train_games,
+        target=target,
     )
     if qb_adjust_k is not None:
         downgrades = matrix.select("game_id", "home_qb_downgrade", "away_qb_downgrade")
@@ -459,6 +472,7 @@ def backtest(
             "continuity": continuity,
             "ml_odds": ml_odds,
             "availability": availability,
+            "target": target,
         },
     )
     return preds, report
@@ -536,6 +550,13 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument(
+        "--target",
+        choices=["result", "spread_line"],
+        default="result",
+        help="#39 experiment: fit label (result = actual margin, "
+        "spread_line = market close)",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -566,6 +587,7 @@ def main(argv: list[str] | None = None) -> None:
         ml_odds=args.ml_odds,
         availability=args.availability,
         refresh=args.refresh,
+        target=args.target,
     )
     print(report)
     if args.output:
@@ -603,6 +625,7 @@ def main(argv: list[str] | None = None) -> None:
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
                     "availability": args.availability,
+                    "target": args.target,
                     **resolved_params,
                 }
             )

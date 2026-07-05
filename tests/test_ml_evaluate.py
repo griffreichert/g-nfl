@@ -106,6 +106,40 @@ def test_walk_forward_raises_when_no_fold_has_enough_data(fixture_matrix, featur
         )
 
 
+def test_walk_forward_target_default_matches_result(fixture_matrix, feature_cols):
+    """Omitting ``target`` must be byte-identical to ``target="result"``."""
+    default_preds = eval_mod.walk_forward_predictions(
+        fixture_matrix, feature_cols, SMALL_PARAMS, min_train_games=1
+    )
+    explicit_preds = eval_mod.walk_forward_predictions(
+        fixture_matrix, feature_cols, SMALL_PARAMS, min_train_games=1, target="result"
+    )
+    np.testing.assert_array_equal(
+        default_preds.sort("game_id")["pred"], explicit_preds.sort("game_id")["pred"]
+    )
+
+
+def test_walk_forward_target_spread_line_differs_from_result(
+    fixture_matrix, feature_cols
+):
+    """Fitting on the market close instead of the actual result changes
+    predictions (#39: can the same features track the close better)."""
+    result_preds = eval_mod.walk_forward_predictions(
+        fixture_matrix, feature_cols, SMALL_PARAMS, min_train_games=1, target="result"
+    )
+    close_preds = eval_mod.walk_forward_predictions(
+        fixture_matrix,
+        feature_cols,
+        SMALL_PARAMS,
+        min_train_games=1,
+        target="spread_line",
+    )
+    assert result_preds.height == close_preds.height
+    assert not np.allclose(
+        result_preds.sort("game_id")["pred"], close_preds.sort("game_id")["pred"]
+    )
+
+
 def _preds_frame(rows: list[tuple[float, float, float]]) -> pl.DataFrame:
     """(pred, spread_line, result) rows with dummy meta columns."""
     return pl.DataFrame(
