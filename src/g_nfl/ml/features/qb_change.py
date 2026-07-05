@@ -191,6 +191,23 @@ def team_week_qb_change(
     ).select("game_id", "posteam", *QB_CHANGE_COLS)
 
 
+def apply_qb_adjustment(preds: pl.DataFrame, k: float) -> pl.DataFrame:
+    """Explicit additive QB-change correction on top of the model's
+    prediction (diagnostic: `scratch/qb_change_additive.py`, #41).
+
+    XGBoost ignores ``home/away_qb_downgrade`` (rare-nonzero columns), but
+    the signal is real: shifting the predicted home margin down when the
+    home team's starter is downgraded (and up when the away team's is)
+    closes the model-vs-market sharpness gap in QB-change games. Nulls in
+    either downgrade column are treated as 0 (no trigger this game).
+    """
+    return preds.with_columns(
+        pred=pl.col("pred")
+        - k * pl.col("home_qb_downgrade").fill_null(0.0)
+        + k * pl.col("away_qb_downgrade").fill_null(0.0)
+    )
+
+
 def add_qb_change(
     matrix: pl.DataFrame,
     pbp: pl.DataFrame,

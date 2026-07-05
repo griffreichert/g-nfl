@@ -35,6 +35,7 @@ from g_nfl.ml.data import (
     load_snap_counts,
 )
 from g_nfl.ml.features import build_features
+from g_nfl.ml.features.qb_change import apply_qb_adjustment
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
 from g_nfl.ml.models.spread import DEFAULT_PARAMS, SpreadModel
@@ -351,6 +352,7 @@ def backtest(
     qb_ctx: bool = False,
     qb_history: int = 3,
     qb_change: bool = False,
+    qb_adjust_k: float | None = None,
     continuity: bool = False,
     ml_odds: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
@@ -363,7 +365,14 @@ def backtest(
     pbp before the earliest eval season to warm the per-QB EWMA; the matrix
     rows stay eval-season only (schedule is loaded for ``seasons`` alone), so
     the training set is identical to the baseline — a clean A/B.
+
+    ``qb_adjust_k`` applies the explicit additive QB-change correction
+    (`features.qb_change.apply_qb_adjustment`) to the walk-forward
+    predictions before any metric is computed, so sharpness/betting/top-n
+    all see the adjusted line. Requires ``qb_change=True``.
     """
+    if qb_adjust_k is not None and not qb_change:
+        raise ValueError("qb_adjust_k requires qb_change=True")
     pbp_seasons = (
         list(range(min(seasons) - qb_history, max(seasons) + 1))
         if (qb_ctx or qb_change)
@@ -414,6 +423,11 @@ def backtest(
     preds = walk_forward_predictions(
         matrix, fs.columns(matrix), params, min_train_games=min_train_games
     )
+    if qb_adjust_k is not None:
+        downgrades = matrix.select("game_id", "home_qb_downgrade", "away_qb_downgrade")
+        preds = apply_qb_adjustment(
+            preds.join(downgrades, on="game_id", how="left"), qb_adjust_k
+        ).drop("home_qb_downgrade", "away_qb_downgrade")
     report = format_report(
         preds,
         betting_metrics(preds, edge_thresholds),
@@ -433,6 +447,7 @@ def backtest(
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
             "qb_change": qb_change,
+            "qb_adjust_k": qb_adjust_k,
             "continuity": continuity,
             "ml_odds": ml_odds,
         },
@@ -488,6 +503,12 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 QB-change delta triggered by the injury report (Out/Doubtful)",
     )
     parser.add_argument(
+        "--qb-adjust-k",
+        type=float,
+        default=None,
+        help="L4 explicit additive QB-change correction on pred (requires --qb-change)",
+    )
+    parser.add_argument(
         "--continuity",
         action="store_true",
         help="L4 O-line continuity index (lagged season-to-date lineup stability)",
@@ -523,6 +544,7 @@ def main(argv: list[str] | None = None) -> None:
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
         qb_change=args.qb_change,
+        qb_adjust_k=args.qb_adjust_k,
         continuity=args.continuity,
         ml_odds=args.ml_odds,
         refresh=args.refresh,
@@ -559,6 +581,7 @@ def main(argv: list[str] | None = None) -> None:
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
                     "qb_change": args.qb_change,
+                    "qb_adjust_k": args.qb_adjust_k,
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
                     **resolved_params,

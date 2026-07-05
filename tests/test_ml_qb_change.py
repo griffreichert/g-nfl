@@ -12,7 +12,11 @@ import polars as pl
 import pytest
 
 from g_nfl.ml.features import build_features
-from g_nfl.ml.features.qb_change import add_qb_change, team_week_qb_change
+from g_nfl.ml.features.qb_change import (
+    add_qb_change,
+    apply_qb_adjustment,
+    team_week_qb_change,
+)
 
 
 def _pbp(rows: list[dict]) -> pl.DataFrame:
@@ -237,3 +241,44 @@ def test_add_qb_change_matches_direct_call(
     side = "home" if kc_row["home_team"] == "KC" else "away"
     assert kc_row[f"{side}_qb_downgrade"] == pytest.approx(kc_direct["qb_downgrade"])
     assert kc_row[f"{side}_qb_out"] == kc_direct["qb_out"]
+
+
+# ---- apply_qb_adjustment ----
+
+
+def test_apply_qb_adjustment_arithmetic_and_sign():
+    # home downgrade positive -> pred decreases; away downgrade positive
+    # -> pred increases; k=10 scales EPA/dropback units to points
+    preds = pl.DataFrame(
+        {
+            "pred": [3.0, 3.0, 3.0],
+            "home_qb_downgrade": [1.0, 0.0, 0.5],
+            "away_qb_downgrade": [0.0, 1.0, 0.5],
+        }
+    )
+    out = apply_qb_adjustment(preds, k=10.0)
+    assert out["pred"].to_list() == pytest.approx([3.0 - 10.0, 3.0 + 10.0, 3.0])
+
+
+def test_apply_qb_adjustment_treats_null_as_zero():
+    preds = pl.DataFrame(
+        {
+            "pred": [3.0],
+            "home_qb_downgrade": [None],
+            "away_qb_downgrade": [None],
+        },
+        schema={
+            "pred": pl.Float64,
+            "home_qb_downgrade": pl.Float64,
+            "away_qb_downgrade": pl.Float64,
+        },
+    )
+    out = apply_qb_adjustment(preds, k=15.0)
+    assert out["pred"].to_list() == pytest.approx([3.0])
+
+
+def test_backtest_qb_adjust_k_requires_qb_change():
+    from g_nfl.ml.evaluate import backtest
+
+    with pytest.raises(ValueError, match="qb_change"):
+        backtest([2023], qb_change=False, qb_adjust_k=10.0)
