@@ -106,3 +106,21 @@ def load_snap_counts(
         [_load_cached("snap_counts", s, Path(cache_dir), refresh) for s in seasons],
         how="vertical_relaxed",
     )
+
+
+def load_players(
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> pl.DataFrame:
+    """Master player table, career-spanning (no season split).
+
+    Used as the `gsis_id` <-> `pfr_id` crosswalk between injuries and
+    snap counts (`features.availability`).
+    """
+    path = Path(cache_dir) / "players.parquet"
+    if path.exists() and not refresh:
+        return pl.read_parquet(path)
+    df = nfl.load_players()
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    df.write_parquet(path)
+    return df

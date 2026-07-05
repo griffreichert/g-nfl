@@ -31,6 +31,7 @@ from g_nfl.ml.data import (
     DEFAULT_CACHE_DIR,
     load_injuries,
     load_pbp,
+    load_players,
     load_schedule,
     load_snap_counts,
 )
@@ -355,6 +356,7 @@ def backtest(
     qb_adjust_k: float | None = None,
     continuity: bool = False,
     ml_odds: bool = False,
+    availability: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> tuple[pl.DataFrame, str]:
@@ -382,13 +384,16 @@ def backtest(
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     injuries = (
         load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
-        if (with_injuries or qb_change)
+        if (with_injuries or qb_change or availability)
         else None
     )
     snaps = (
         load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh)
-        if continuity
+        if (continuity or availability)
         else None
+    )
+    players = (
+        load_players(cache_dir=cache_dir, refresh=refresh) if availability else None
     )
     ml_margins = None
     if ml_odds:
@@ -415,8 +420,11 @@ def backtest(
         qb_ctx=qb_ctx,
         qb_change=injuries if qb_change else None,
         snaps=snaps,
+        continuity=continuity,
         ml_odds=ml_odds,
         ml_margins=ml_margins,
+        availability=injuries if availability else None,
+        players=players,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -450,6 +458,7 @@ def backtest(
             "qb_adjust_k": qb_adjust_k,
             "continuity": continuity,
             "ml_odds": ml_odds,
+            "availability": availability,
         },
     )
     return preds, report
@@ -519,6 +528,14 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 moneyline-implied spread + divergence from posted line",
     )
     parser.add_argument(
+        "--availability",
+        action="store_true",
+        help=(
+            "L4 availability-weighted unit snap-value lost (#39 lever 2), "
+            "by OL/skill/front-7/secondary"
+        ),
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -547,6 +564,7 @@ def main(argv: list[str] | None = None) -> None:
         qb_adjust_k=args.qb_adjust_k,
         continuity=args.continuity,
         ml_odds=args.ml_odds,
+        availability=args.availability,
         refresh=args.refresh,
     )
     print(report)
@@ -584,6 +602,7 @@ def main(argv: list[str] | None = None) -> None:
                     "qb_adjust_k": args.qb_adjust_k,
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
+                    "availability": args.availability,
                     **resolved_params,
                 }
             )

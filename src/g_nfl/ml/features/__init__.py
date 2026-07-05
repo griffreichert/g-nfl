@@ -12,6 +12,7 @@ Modules:
 import numpy as np
 import polars as pl
 
+from g_nfl.ml.features.availability import add_availability
 from g_nfl.ml.features.context import add_schedule_context
 from g_nfl.ml.features.continuity import add_continuity
 from g_nfl.ml.features.injuries import add_injuries
@@ -40,8 +41,11 @@ def build_features(
     qb_ctx: bool = False,
     qb_change: pl.DataFrame | None = None,
     snaps: pl.DataFrame | None = None,
+    continuity: bool = False,
     ml_odds: bool = False,
     ml_margins: np.ndarray | None = None,
+    availability: pl.DataFrame | None = None,
+    players: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -62,13 +66,20 @@ def build_features(
     injuries DataFrame to turn it on (None leaves the matrix unchanged,
     same toggle convention as ``snaps``). Needs the same prior-season
     ``pbp`` lookback as ``qb_ctx`` to warm the EWMA.
-    ``snaps`` (L4) joins each team's lagged O-line continuity index
-    (see `continuity.add_continuity`); None leaves the matrix unchanged.
+    ``snaps`` is the raw snap-counts DataFrame, shared data for two
+    independent L4 toggles: ``continuity`` (O-line lineup stability,
+    `continuity.add_continuity`) and ``availability`` (below). Pass
+    ``snaps`` whenever either is on.
     ``ml_odds`` (L4) attaches the moneyline-implied spread + its divergence
     from the posted line (see `odds.add_ml_odds`); market data, no lag.
     ``ml_margins`` calibrates the implied-spread margin distribution from a
     deep, strictly-prior reference (passed by the caller); None falls back to
     self-calibration on the matrix's own completed games.
+    ``availability`` (L4, #39 lever 2) is the raw injuries DataFrame used as
+    the toggle (same convention as ``qb_change`` — keeps it independent of
+    the L3 ``injuries`` lever); attaches availability-weighted unit
+    snap-value lost (see `availability.add_availability`); needs ``snaps``,
+    ``injuries``, and ``players`` (the gsis_id/pfr_id crosswalk) all passed.
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -96,8 +107,10 @@ def build_features(
         matrix = add_qb_context(matrix, pbp)
     if qb_change is not None:
         matrix = add_qb_change(matrix, pbp, qb_change)
-    if snaps is not None:
+    if continuity:
         matrix = add_continuity(matrix, snaps)
     if ml_odds:
         matrix = add_ml_odds(matrix, reg_schedule, margins=ml_margins)
+    if availability is not None:
+        matrix = add_availability(matrix, snaps, availability, players)
     return matrix
