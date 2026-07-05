@@ -18,6 +18,7 @@ from g_nfl.ml.features.injuries import add_injuries
 from g_nfl.ml.features.matrix import build_game_matrix
 from g_nfl.ml.features.plays import play_features
 from g_nfl.ml.features.qb import add_qb_context
+from g_nfl.ml.features.qb_change import add_qb_change
 from g_nfl.ml.features.team_week import team_week_stats
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS, add_windows
 from g_nfl.ml.odds import add_ml_odds
@@ -37,6 +38,7 @@ def build_features(
     injuries: pl.DataFrame | None = None,
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
+    qb_change: pl.DataFrame | None = None,
     snaps: pl.DataFrame | None = None,
     ml_odds: bool = False,
     ml_margins: np.ndarray | None = None,
@@ -55,6 +57,11 @@ def build_features(
     ``qb_ctx`` (L4) attaches each team's starting-QB lagged EWMA/volume
     keyed on the player (see `qb.add_qb_context`); requires ``pbp`` to
     carry prior-season lookback to warm the EWMA.
+    ``qb_change`` (L4) attaches the injury-report-triggered QB-change
+    delta (see `qb_change.add_qb_change`); pass the raw player-level
+    injuries DataFrame to turn it on (None leaves the matrix unchanged,
+    same toggle convention as ``snaps``). Needs the same prior-season
+    ``pbp`` lookback as ``qb_ctx`` to warm the EWMA.
     ``snaps`` (L4) joins each team's lagged O-line continuity index
     (see `continuity.add_continuity`); None leaves the matrix unchanged.
     ``ml_odds`` (L4) attaches the moneyline-implied spread + its divergence
@@ -87,6 +94,8 @@ def build_features(
         matrix = add_schedule_context(matrix, reg_schedule)
     if qb_ctx:
         matrix = add_qb_context(matrix, pbp)
+    if qb_change is not None:
+        matrix = add_qb_change(matrix, pbp, qb_change)
     if snaps is not None:
         matrix = add_continuity(matrix, snaps)
     if ml_odds:

@@ -350,6 +350,7 @@ def backtest(
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
     qb_history: int = 3,
+    qb_change: bool = False,
     continuity: bool = False,
     ml_odds: bool = False,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
@@ -358,19 +359,21 @@ def backtest(
     """Full backtest: load data, walk forward, score; returns the
     per-game predictions and the markdown report.
 
-    ``qb_ctx`` loads ``qb_history`` extra contiguous seasons of pbp before
-    the earliest eval season to warm the per-QB EWMA; the matrix rows stay
-    eval-season only (schedule is loaded for ``seasons`` alone), so the
-    training set is identical to the baseline — a clean A/B.
+    ``qb_ctx``/``qb_change`` load ``qb_history`` extra contiguous seasons of
+    pbp before the earliest eval season to warm the per-QB EWMA; the matrix
+    rows stay eval-season only (schedule is loaded for ``seasons`` alone), so
+    the training set is identical to the baseline — a clean A/B.
     """
     pbp_seasons = (
-        list(range(min(seasons) - qb_history, max(seasons) + 1)) if qb_ctx else seasons
+        list(range(min(seasons) - qb_history, max(seasons) + 1))
+        if (qb_ctx or qb_change)
+        else seasons
     )
     pbp = load_pbp(pbp_seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     injuries = (
         load_injuries(seasons, cache_dir=cache_dir, refresh=refresh)
-        if with_injuries
+        if (with_injuries or qb_change)
         else None
     )
     snaps = (
@@ -398,9 +401,10 @@ def backtest(
         half_life=half_life,
         epa_splits=epa_splits,
         carryover_k=carryover_k,
-        injuries=injuries,
+        injuries=injuries if with_injuries else None,
         schedule_ctx=schedule_ctx,
         qb_ctx=qb_ctx,
+        qb_change=injuries if qb_change else None,
         snaps=snaps,
         ml_odds=ml_odds,
         ml_margins=ml_margins,
@@ -428,6 +432,7 @@ def backtest(
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
+            "qb_change": qb_change,
             "continuity": continuity,
             "ml_odds": ml_odds,
         },
@@ -478,6 +483,11 @@ def main(argv: list[str] | None = None) -> None:
         help="L4 starting-QB player-grain features (lagged EWMA + volume)",
     )
     parser.add_argument(
+        "--qb-change",
+        action="store_true",
+        help="L4 QB-change delta triggered by the injury report (Out/Doubtful)",
+    )
+    parser.add_argument(
         "--continuity",
         action="store_true",
         help="L4 O-line continuity index (lagged season-to-date lineup stability)",
@@ -512,6 +522,7 @@ def main(argv: list[str] | None = None) -> None:
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
+        qb_change=args.qb_change,
         continuity=args.continuity,
         ml_odds=args.ml_odds,
         refresh=args.refresh,
@@ -547,6 +558,7 @@ def main(argv: list[str] | None = None) -> None:
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
+                    "qb_change": args.qb_change,
                     "continuity": args.continuity,
                     "ml_odds": args.ml_odds,
                     **resolved_params,
