@@ -8,6 +8,12 @@ from polars.testing import assert_frame_equal, assert_series_equal
 from g_nfl.ml.features import build_features
 from g_nfl.ml.features.carryover import carryover_blend
 from g_nfl.ml.features.matrix import META_COLS, build_game_matrix
+from g_nfl.ml.features.opponent import (
+    STATS,
+    add_opponent_ratings,
+    fit_opponent_ratings,
+    team_games_frame,
+)
 from g_nfl.ml.features.plays import (
     EPA_SPLIT_COLS,
     HAVOC_COLS,
@@ -371,6 +377,12 @@ def test_future_weeks_do_not_leak(
     pert_c = build_features(perturbed, schedule_sample, carryover_k=2.0)
     assert_frame_equal(base_c.sort("game_id"), pert_c.sort("game_id"))
 
+    # opp_adjust mode too: week-w ratings only ever use weeks < w, so
+    # perturbing week 5 must not change any row's opponent-adjusted cols
+    base_o = build_features(pbp_sample, schedule_sample, opp_adjust=True)
+    pert_o = build_features(perturbed, schedule_sample, opp_adjust=True)
+    assert_frame_equal(base_o.sort("game_id"), pert_o.sort("game_id"))
+
 
 # ---- L3 injuries ----
 
@@ -452,6 +464,139 @@ def test_schedule_context_cols_and_values(
     assert (chk["rest_diff"] == chk["exp"]).all()
 
 
+# ---- L4 opponent-adjusted ratings ----
+
+
+def _team_game(
+    posteam: str, defteam: str, week: int, epa: float, season: int = 2023
+) -> tuple:
+    return (season, week, posteam, defteam, epa)
+
+
+def _synthetic_team_games(season: int = 2023) -> pl.DataFrame:
+    """4-team league where A and B have identical raw offensive epa, but
+    A's games came against a strong defense (D) and B's against a weak
+    one (C) — so an opponent-adjusted rating should separate them even
+    though the raw stat cannot. Extra rows (D vs A/C, C vs B) link the
+    two schedule clusters together without touching A/B's own raw mean
+    (computed only from A/B's *own* posteam rows)."""
+    rows = [
+        _team_game("A", "D", 1, 1.0, season),
+        _team_game("A", "D", 2, 1.0, season),
+        _team_game("B", "C", 1, 1.0, season),
+        _team_game("B", "C", 2, 1.0, season),
+        _team_game("D", "A", 1, 0.0, season),
+        _team_game("C", "B", 1, 0.0, season),
+        _team_game("C", "D", 1, -1.0, season),
+        _team_game("D", "C", 1, 1.0, season),
+    ]
+    return pl.DataFrame(
+        rows, schema=["season", "week", "posteam", "defteam", "epa"], orient="row"
+    )
+
+
+def test_opponent_ratings_adjust_for_strength_of_schedule():
+    team_games = _synthetic_team_games()
+
+    raw = team_games.group_by("posteam").agg(pl.col("epa").mean())
+    raw_a = raw.filter(pl.col("posteam") == "A")["epa"][0]
+    raw_b = raw.filter(pl.col("posteam") == "B")["epa"][0]
+    assert raw_a == pytest.approx(raw_b)  # raw stat can't tell them apart
+
+    fit = fit_opponent_ratings(
+        team_games, "epa", lam=1.0, prior_weight=0.0, season=2023, week=5
+    )
+    off_a = fit.filter(pl.col("team") == "A")["off_rating"][0]
+    off_b = fit.filter(pl.col("team") == "B")["off_rating"][0]
+    assert off_a > off_b  # adjustment reveals A faced the tougher schedule
+
+
+def test_opponent_ratings_shrink_toward_zero_with_large_lambda():
+    team_games = _synthetic_team_games()
+    loose = fit_opponent_ratings(
+        team_games, "epa", lam=0.1, prior_weight=0.0, season=2023, week=5
+    )
+    tight = fit_opponent_ratings(
+        team_games, "epa", lam=1e6, prior_weight=0.0, season=2023, week=5
+    )
+    loose_mag = loose["off_rating"].abs().sum()
+    tight_mag = tight["off_rating"].abs().sum()
+    assert tight_mag < loose_mag
+    assert tight_mag == pytest.approx(0.0, abs=1e-3)
+
+
+def test_opponent_ratings_prior_weight():
+    prior_games = _synthetic_team_games(season=2022)
+
+    # prior_weight=0 -> nothing to fit for week 1 of a fresh season (no
+    # current-season rows exist yet, week <= week - 1 == 0)
+    no_prior = fit_opponent_ratings(
+        prior_games, "epa", lam=1.0, prior_weight=0.0, season=2023, week=1
+    )
+    assert no_prior.height == 0
+
+    # prior_weight > 0 -> week-1 ratings are nonzero and reflect the prior
+    # season's strength-of-schedule-adjusted gap between A and B
+    with_prior = fit_opponent_ratings(
+        prior_games, "epa", lam=1.0, prior_weight=0.5, season=2023, week=1
+    )
+    assert with_prior.height > 0
+    off_a = with_prior.filter(pl.col("team") == "A")["off_rating"][0]
+    off_b = with_prior.filter(pl.col("team") == "B")["off_rating"][0]
+    assert off_a != pytest.approx(0.0)
+    assert off_a > off_b
+
+
+def test_opponent_ratings_prior_season_affects_week1_no_leak(
+    pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    """Mirrors the qb_ctx/carryover anti-leak style: mutating the *prior*
+    season is allowed to change week-1 ratings (it's legitimate input),
+    but week 1 stays null without any prior season loaded at all."""
+    no_prior = build_features(pbp_sample, schedule_sample, opp_adjust=True)
+    week1 = no_prior.filter(pl.col("week") == 1)
+    assert week1["home_epa_adj_off"].null_count() == week1.height
+
+    prior = pbp_sample.with_columns(
+        pl.lit(2022).cast(pbp_sample.schema["season"]).alias("season")
+    )
+    combined = pl.concat([prior, pbp_sample], how="vertical_relaxed")
+    base = build_features(combined, schedule_sample, opp_adjust=True)
+    base_week1 = base.filter(pl.col("week") == 1)
+    assert base_week1["home_epa_adj_off"].null_count() == 0  # prior warms week 1
+
+    perturbed_prior = prior.with_columns((pl.col("epa") * 100 + 7).alias("epa"))
+    combined_pert = pl.concat([perturbed_prior, pbp_sample], how="vertical_relaxed")
+    pert = build_features(combined_pert, schedule_sample, opp_adjust=True)
+    pert_week1 = pert.filter(pl.col("week") == 1)
+
+    assert not base_week1.select("home_epa_adj_off", "away_epa_adj_off").equals(
+        pert_week1.select("home_epa_adj_off", "away_epa_adj_off")
+    )
+
+
+def test_opp_adjust_toggle(pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame):
+    base = build_features(pbp_sample, schedule_sample)
+    out = build_features(pbp_sample, schedule_sample, opp_adjust=True)
+
+    added = set(out.columns) - set(base.columns)
+    expected = {
+        f"{side}_{stat}_adj_{part}"
+        for side in ("home", "away")
+        for stat in STATS
+        for part in ("off", "def")
+    } | {"adj_rating_diff"}
+    assert added == expected
+    assert out.height == base.height  # join on (team, season, week) drops nothing
+
+
+def test_team_games_frame_grain(plays: pl.DataFrame):
+    tg = team_games_frame(plays)
+    keys = tg.select("season", "week", "posteam", "defteam")
+    assert keys.height == keys.unique().height
+    assert set(STATS) <= set(tg.columns)
+
+
 # ---- registry ----
 
 
@@ -465,3 +610,47 @@ def test_v1_team_feature_set(matrix: pl.DataFrame):
 def test_unknown_feature_set_raises():
     with pytest.raises(KeyError, match="unknown feature set"):
         get_feature_set("nope")
+
+
+@pytest.fixture(scope="module")
+def adj_matrix(windowed: pl.DataFrame, reg_schedule: pl.DataFrame, plays: pl.DataFrame):
+    matrix = build_game_matrix(windowed, reg_schedule)
+    return add_opponent_ratings(
+        matrix, team_games_frame(plays), lam=10.0, prior_weight=0.3
+    )
+
+
+def test_v2_adj_only_feature_set(adj_matrix: pl.DataFrame):
+    feature_cols = get_feature_set("v2_adj_only").columns(adj_matrix)
+    expected = {
+        f"{side}_{stat}_adj_{part}"
+        for side in ("home", "away")
+        for stat in STATS
+        for part in ("off", "def")
+    } | {"adj_rating_diff"}
+    assert set(feature_cols) == expected
+
+
+def test_v2_adj_only_errors_without_opp_adjust(matrix: pl.DataFrame):
+    with pytest.raises(ValueError, match="opp_adjust"):
+        get_feature_set("v2_adj_only").columns(matrix)
+
+
+def test_v2_adj_lean_feature_set(adj_matrix: pl.DataFrame):
+    feature_cols = get_feature_set("v2_adj_lean").columns(adj_matrix)
+    adj_cols = set(get_feature_set("v2_adj_only").columns(adj_matrix))
+    assert adj_cols <= set(feature_cols)
+    lean_only = set(feature_cols) - adj_cols
+    assert lean_only  # picked up some rate-stat core cols too
+    stems = [
+        "epa_mean",
+        "success_mean",
+        "cpoe_mean",
+        "pass_oe_mean",
+        "sack_mean",
+        "first_down_mean",
+    ]
+    for c in lean_only:
+        assert any(stem in c for stem in stems)
+        assert c.startswith(("home_", "away_"))
+        assert c.endswith("_season") or "_last_" in c

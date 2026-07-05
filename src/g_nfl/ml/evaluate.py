@@ -365,6 +365,9 @@ def backtest(
     continuity: bool = False,
     ml_odds: bool = False,
     availability: bool = False,
+    opp_adjust: bool = False,
+    opp_lambda: float = 10.0,
+    opp_prior_weight: float = 0.3,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
     target: str = "result",
@@ -375,7 +378,10 @@ def backtest(
     ``qb_ctx``/``qb_change`` load ``qb_history`` extra contiguous seasons of
     pbp before the earliest eval season to warm the per-QB EWMA; the matrix
     rows stay eval-season only (schedule is loaded for ``seasons`` alone), so
-    the training set is identical to the baseline — a clean A/B.
+    the training set is identical to the baseline — a clean A/B. ``opp_adjust``
+    needs at least 1 prior season of pbp so eval-season week-1 ratings have
+    a prior; it shares this extra-pbp-history mechanism rather than loading
+    its own copy.
 
     ``qb_adjust_k`` applies the explicit additive QB-change correction
     (`features.qb_change.apply_qb_adjustment`) to the walk-forward
@@ -384,9 +390,12 @@ def backtest(
     """
     if qb_adjust_k is not None and not qb_change:
         raise ValueError("qb_adjust_k requires qb_change=True")
+    extra_history = max(
+        qb_history if (qb_ctx or qb_change) else 0, 1 if opp_adjust else 0
+    )
     pbp_seasons = (
-        list(range(min(seasons) - qb_history, max(seasons) + 1))
-        if (qb_ctx or qb_change)
+        list(range(min(seasons) - extra_history, max(seasons) + 1))
+        if extra_history
         else seasons
     )
     pbp = load_pbp(pbp_seasons, cache_dir=cache_dir, refresh=refresh)
@@ -434,6 +443,9 @@ def backtest(
         ml_margins=ml_margins,
         availability=injuries if availability else None,
         players=players,
+        opp_adjust=opp_adjust,
+        opp_lambda=opp_lambda,
+        opp_prior_weight=opp_prior_weight,
     ).filter(pl.col("result").is_not_null())
 
     fs = get_feature_set(feature_set)
@@ -473,6 +485,9 @@ def backtest(
             "ml_odds": ml_odds,
             "availability": availability,
             "target": target,
+            "opp_adjust": opp_adjust,
+            "opp_lambda": opp_lambda,
+            "opp_prior_weight": opp_prior_weight,
         },
     )
     return preds, report
@@ -557,6 +572,23 @@ def main(argv: list[str] | None = None) -> None:
         "spread_line = market close)",
     )
     parser.add_argument(
+        "--opp-adjust",
+        action="store_true",
+        help="L4 opponent-adjusted offense/defense ratings (weighted ridge)",
+    )
+    parser.add_argument(
+        "--opp-lambda",
+        type=float,
+        default=10.0,
+        help="ridge penalty for opponent-adjusted ratings",
+    )
+    parser.add_argument(
+        "--opp-prior-weight",
+        type=float,
+        default=0.3,
+        help="sample weight on prior-season games in opponent-adjusted ratings",
+    )
+    parser.add_argument(
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
@@ -586,6 +618,9 @@ def main(argv: list[str] | None = None) -> None:
         continuity=args.continuity,
         ml_odds=args.ml_odds,
         availability=args.availability,
+        opp_adjust=args.opp_adjust,
+        opp_lambda=args.opp_lambda,
+        opp_prior_weight=args.opp_prior_weight,
         refresh=args.refresh,
         target=args.target,
     )
@@ -626,6 +661,9 @@ def main(argv: list[str] | None = None) -> None:
                     "ml_odds": args.ml_odds,
                     "availability": args.availability,
                     "target": args.target,
+                    "opp_adjust": args.opp_adjust,
+                    "opp_lambda": args.opp_lambda,
+                    "opp_prior_weight": args.opp_prior_weight,
                     **resolved_params,
                 }
             )

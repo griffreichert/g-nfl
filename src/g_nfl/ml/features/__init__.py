@@ -17,6 +17,7 @@ from g_nfl.ml.features.context import add_schedule_context
 from g_nfl.ml.features.continuity import add_continuity
 from g_nfl.ml.features.injuries import add_injuries
 from g_nfl.ml.features.matrix import build_game_matrix
+from g_nfl.ml.features.opponent import add_opponent_ratings, team_games_frame
 from g_nfl.ml.features.plays import play_features
 from g_nfl.ml.features.qb import add_qb_context
 from g_nfl.ml.features.qb_change import add_qb_change
@@ -46,6 +47,9 @@ def build_features(
     ml_margins: np.ndarray | None = None,
     availability: pl.DataFrame | None = None,
     players: pl.DataFrame | None = None,
+    opp_adjust: bool = False,
+    opp_lambda: float = 10.0,
+    opp_prior_weight: float = 0.3,
 ) -> pl.DataFrame:
     """Full pipeline: raw pbp + schedule -> game-level training matrix.
 
@@ -80,6 +84,10 @@ def build_features(
     the L3 ``injuries`` lever); attaches availability-weighted unit
     snap-value lost (see `availability.add_availability`); needs ``snaps``,
     ``injuries``, and ``players`` (the gsis_id/pfr_id crosswalk) all passed.
+    ``opp_adjust`` (L4) attaches opponent-adjusted offense/defense ratings
+    per stat (see `opponent.add_opponent_ratings`), fit strictly on weeks
+    before the game plus the prior season; requires ``pbp`` to carry prior-
+    season lookback to warm week-1 ratings (same mechanism as ``qb_ctx``).
     """
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
@@ -113,4 +121,8 @@ def build_features(
         matrix = add_ml_odds(matrix, reg_schedule, margins=ml_margins)
     if availability is not None:
         matrix = add_availability(matrix, snaps, availability, players)
+    if opp_adjust:
+        matrix = add_opponent_ratings(
+            matrix, team_games_frame(plays), opp_lambda, opp_prior_weight
+        )
     return matrix
