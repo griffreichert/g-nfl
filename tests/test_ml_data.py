@@ -55,3 +55,39 @@ def test_load_schedule_caches(tmp_path, monkeypatch, schedule_sample):
 def test_unknown_dataset_raises():
     with pytest.raises(ValueError, match="unknown dataset"):
         data._fetch("nope", 2023)
+
+
+def test_load_injuries_handles_schema_drift(tmp_path, monkeypatch):
+    """2024 has date_modified/game_type, no season_type; 2025 has
+    season_type/game_type, no date_modified (#42)."""
+    injuries_2024 = pl.DataFrame(
+        {
+            "season": [2024],
+            "game_type": ["REG"],
+            "team": ["KC"],
+            "week": [1],
+            "gsis_id": ["00-1"],
+            "date_modified": ["2024-09-01"],
+        }
+    )
+    injuries_2025 = pl.DataFrame(
+        {
+            "season": [2025],
+            "season_type": ["REG"],
+            "game_type": ["REG"],
+            "team": ["BUF"],
+            "week": [1],
+            "gsis_id": ["00-2"],
+        }
+    )
+    samples = {2024: injuries_2024, 2025: injuries_2025}
+
+    def fake_fetch(dataset: str, season: int) -> pl.DataFrame:
+        return samples[season]
+
+    monkeypatch.setattr(data, "_fetch", fake_fetch)
+
+    out = data.load_injuries([2024, 2025], cache_dir=tmp_path)
+    assert out.height == 2
+    assert out["game_type"].null_count() == 0
+    assert set(out["game_type"].unique().to_list()) == {"REG"}
