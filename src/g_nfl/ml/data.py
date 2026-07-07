@@ -76,10 +76,15 @@ def load_injuries(
     healthy. Key columns: gsis_id, team, week, position, report_status
     (Out/Doubtful/Questionable, null = listed but no game designation),
     practice_status.
+
+    Schema drifts across seasons (2025 adds `season_type`, drops
+    `date_modified`; `game_type` is present in both) so this concats
+    diagonally by column name instead of position — extra/missing columns
+    null-fill rather than erroring.
     """
     return pl.concat(
         [_load_cached("injuries", s, Path(cache_dir), refresh) for s in seasons],
-        how="vertical_relaxed",
+        how="diagonal_relaxed",
     )
 
 
