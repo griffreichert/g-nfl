@@ -306,6 +306,68 @@ def test_sharpness_metrics_market_rmse_zero_when_line_is_perfect():
     assert pooled["mae_market"] == pytest.approx(0.0)
 
 
+def test_slice_band_boundaries():
+    """Week/spread/disagreement band edges (#45): value exactly on a
+    boundary falls into the band the issue's inclusive-lower-bound wording
+    implies (e.g. week 5 -> "5-12", spread 7 -> "gte7")."""
+    df = pl.DataFrame(
+        {
+            "week": [4, 5, 12, 13],
+            "pred": [0.0, 0.0, 0.0, 3.0],
+            "spread_line": [2.999, 3.0, 6.5, 0.0],
+        }
+    ).with_columns(
+        week_band=eval_mod._week_band_expr(),
+        spread_band=eval_mod._spread_band_expr(),
+    )
+    assert df["week_band"].to_list() == ["1-4", "5-12", "5-12", "13-plus"]
+    assert df["spread_band"].to_list() == ["lt3", "3-6.5", "3-6.5", "lt3"]
+
+    edge = pl.DataFrame(
+        {"week": [1], "pred": [7.0], "spread_line": [7.0]}
+    ).with_columns(spread_band=eval_mod._spread_band_expr())
+    assert edge["spread_band"].to_list() == ["gte7"]
+
+    disagreement_edge = pl.DataFrame(
+        {"pred": [7.0, 7.001], "spread_line": [0.0, 0.0]}
+    ).with_columns(disagreement_band=eval_mod._disagreement_band_expr())
+    assert disagreement_edge["disagreement_band"].to_list() == ["3-7", "gt7"]
+
+
+def test_slice_metrics_per_band():
+    preds = pl.DataFrame(
+        {
+            "season": [2023] * 5,
+            "week": [1, 6, 6, 14, 14],
+            "pred": [3.0, -1.0, 0.0, 5.0, 4.0],
+            "spread_line": [0.0, 2.0, 0.0, 4.0, 0.0],
+            "result": [0.0, 3.0, 0.0, 0.0, 0.0],
+            "div_game": [0, 1, 0, 1, 0],
+        }
+    )
+    slices = eval_mod.slice_metrics(preds)
+
+    week = slices["week"].sort("week_band")
+    assert dict(zip(week["week_band"], week["n_games"], strict=True)) == {
+        "1-4": 1,
+        "5-12": 2,
+        "13-plus": 2,
+    }
+
+    div = slices["divisional"].sort("divisional_band")
+    assert dict(zip(div["divisional_band"], div["n_games"], strict=True)) == {
+        "div": 2,
+        "non-div": 3,
+    }
+    div_row = div.filter(pl.col("divisional_band") == "div").row(0, named=True)
+    # div games: (pred=-1, close=2, result=3) and (pred=5, close=4, result=0)
+    # close errs: -3, 1 -> mae_vs_close (3+1)/2
+    assert div_row["mae_vs_close"] == pytest.approx((3 + 1) / 2)
+
+    disagreement = slices["disagreement"]
+    assert disagreement["n_games"].sum() == 5
+
+
 def test_backtest_cli_end_to_end(
     tmp_path, monkeypatch, pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
 ):
