@@ -183,6 +183,86 @@ def sharpness_metrics(preds: pl.DataFrame) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def _week_band_expr() -> pl.Expr:
+    w = pl.col("week")
+    return (
+        pl.when(w <= 4)
+        .then(pl.lit("1-4"))
+        .when(w <= 12)
+        .then(pl.lit("5-12"))
+        .otherwise(pl.lit("13-plus"))
+    )
+
+
+def _spread_band_expr() -> pl.Expr:
+    abs_spread = pl.col("spread_line").abs()
+    return (
+        pl.when(abs_spread < 3)
+        .then(pl.lit("lt3"))
+        .when(abs_spread < 7)
+        .then(pl.lit("3-6.5"))
+        .otherwise(pl.lit("gte7"))
+    )
+
+
+def _disagreement_band_expr() -> pl.Expr:
+    abs_disagreement = (pl.col("pred") - pl.col("spread_line")).abs()
+    return (
+        pl.when(abs_disagreement < 3)
+        .then(pl.lit("lt3"))
+        .when(abs_disagreement <= 7)
+        .then(pl.lit("3-7"))
+        .otherwise(pl.lit("gt7"))
+    )
+
+
+# (slice key, band column, display label, band order for stable table rows)
+SLICE_DIMS: list[tuple[str, str, str, list[str]]] = [
+    ("week", "week_band", "week", ["1-4", "5-12", "13-plus"]),
+    ("spread", "spread_band", "|close spread|", ["lt3", "3-6.5", "gte7"]),
+    ("divisional", "divisional_band", "matchup", ["non-div", "div"]),
+    (
+        "disagreement",
+        "disagreement_band",
+        "|pred - close|",
+        ["lt3", "3-7", "gt7"],
+    ),
+]
+
+
+def _slice_table(preds: pl.DataFrame, band_col: str, order: list[str]) -> pl.DataFrame:
+    """Sharpness metrics (``_sharpness_row``) grouped by an existing band
+    column, one row per band in `order` (empty bands skipped)."""
+    rows = [
+        {band_col: band, **_sharpness_row(sub)}
+        for band in order
+        if (sub := preds.filter(pl.col(band_col) == band)).height
+    ]
+    return pl.DataFrame(rows)
+
+
+def slice_metrics(preds: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    """Per-slice sharpness tables (#45): the same ``_sharpness_row`` metrics
+    as ``sharpness_metrics``, grouped by week band / close-spread magnitude
+    / divisional matchup / model-vs-close disagreement instead of season —
+    slices point at which feature lever to build next.
+
+    `preds` must already have ``div_game`` joined on (see ``backtest``).
+    """
+    banded = preds.with_columns(
+        week_band=_week_band_expr(),
+        spread_band=_spread_band_expr(),
+        divisional_band=pl.when(pl.col("div_game") == 1)
+        .then(pl.lit("div"))
+        .otherwise(pl.lit("non-div")),
+        disagreement_band=_disagreement_band_expr(),
+    )
+    return {
+        key: _slice_table(banded, band_col, order)
+        for key, band_col, _, order in SLICE_DIMS
+    }
+
+
 def _score_picks(preds: pl.DataFrame) -> pl.DataFrame:
     """Add edge / push / win columns; drop edge == 0 (no side to bet)."""
     return (
@@ -286,6 +366,7 @@ def format_report(
     top_n: pl.DataFrame,
     reg: dict[str, float],
     sharpness: pl.DataFrame,
+    slices: dict[str, pl.DataFrame],
     config: dict[str, Any],
 ) -> str:
     """Markdown backtest summary."""
@@ -319,6 +400,28 @@ def format_report(
     ]
     for r in sharpness.iter_rows(named=True):
         lines.append(f"| {r['season']} | {r['n_games']} | {_sharpness_row_cells(r)}")
+    lines += [
+        "",
+        "## Error breakdown by slice",
+        "",
+        "Same metrics as the sharpness table above, grouped by slice instead "
+        "of season (#45) — a failing slice points at which feature lever to "
+        "build next.",
+    ]
+    for key, band_col, label, _ in SLICE_DIMS:
+        lines += [
+            "",
+            f"**{label}**",
+            "",
+            f"| {label} | n | RMSE model | RMSE market | gap | MAE vs close | "
+            "RMSE vs close | tail>3 | tail>7 |",
+            "|-------:|--:|-----------:|------------:|----:|-------------:|"
+            "--------------:|-------:|-------:|",
+        ]
+        for r in slices[key].iter_rows(named=True):
+            lines.append(
+                f"| {r[band_col]} | {r['n_games']} | {_sharpness_row_cells(r)}"
+            )
     lines += [
         "",
         "## Betting (1 unit at -110)",
@@ -461,12 +564,16 @@ def backtest(
         preds = apply_qb_adjustment(
             preds.join(downgrades, on="game_id", how="left"), qb_adjust_k
         ).drop("home_qb_downgrade", "away_qb_downgrade")
+    # #45 slices need div_game; joined here rather than kept as a feature so
+    # it's available regardless of the schedule_ctx toggle
+    preds = preds.join(schedule.select("game_id", "div_game"), on="game_id", how="left")
     report = format_report(
         preds,
         betting_metrics(preds, edge_thresholds),
         top_n_metrics(preds),
         regression_metrics(preds),
         sharpness_metrics(preds),
+        slice_metrics(preds),
         config={
             "feature_set": fs.name,
             "seasons_loaded": list(seasons),
@@ -707,6 +814,19 @@ def main(argv: list[str] | None = None) -> None:
                     mlflow.log_metric("bet_all_ats_pct", bet_all["ats_pct"])
                 if bet_all["roi"] is not None:
                     mlflow.log_metric("bet_all_roi", bet_all["roi"])
+            slices = slice_metrics(preds)
+            for key, band_col, _, _order in SLICE_DIMS:
+                for r in slices[key].iter_rows(named=True):
+                    prefix = f"slice_{key}_{r[band_col]}"
+                    mlflow.log_metrics(
+                        {
+                            f"{prefix}_n_games": r["n_games"],
+                            f"{prefix}_gap_rmse": r["gap_rmse"],
+                            f"{prefix}_mae_vs_close": r["mae_vs_close"],
+                            f"{prefix}_rmse_vs_result": r["rmse_model"],
+                            f"{prefix}_tail_gt7_pct": r["tail_gt7_pct"],
+                        }
+                    )
             tn = top_n_metrics(preds)
             for n in [1, 3, 5]:
                 row = tn.filter(pl.col("top_n") == n).row(0, named=True)
