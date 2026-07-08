@@ -31,6 +31,12 @@ DEFAULT_MIN_WEEK = 4
 # notebook training seasons
 DEFAULT_SEASONS = [2018, 2019, 2022, 2023, 2024, 2025]
 DEFAULT_OUTPUT_DIR = Path(__file__).parents[3] / "data" / "ml_models"
+# champion config, holdout-confirmed (reports/BASELINES.md): close target
+# (#39) + prior-season carryover (#47) + shallow trees. Bare train ships this;
+# evaluate.backtest keeps bare defaults so A/Bs state their own flags.
+DEFAULT_TARGET = "spread_line"
+DEFAULT_CARRYOVER_K: float | None = 8.0
+CHAMPION_PARAMS = {"max_depth": 3}
 
 
 def load_params_config(path: Path | str) -> dict[str, Any]:
@@ -48,24 +54,33 @@ def train(
     *,
     min_week: int = DEFAULT_MIN_WEEK,
     rolling_weeks: int = DEFAULT_ROLLING_WEEKS,
+    target: str = DEFAULT_TARGET,
+    carryover_k: float | None = DEFAULT_CARRYOVER_K,
     output_dir: Path | str = DEFAULT_OUTPUT_DIR,
     cache_dir: Path | str = DEFAULT_CACHE_DIR,
     refresh: bool = False,
 ) -> Path:
-    """Train the spread model on completed games; returns the artifact dir."""
+    """Train the spread model on completed games; returns the artifact dir.
+
+    ``target``/``carryover_k`` default to the champion config; ``result``
+    still gates which games count as completed either way."""
     pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
 
     matrix = build_features(
-        pbp, schedule, rolling_weeks=rolling_weeks, min_week=min_week
-    ).filter(pl.col("result").is_not_null())
+        pbp,
+        schedule,
+        rolling_weeks=rolling_weeks,
+        min_week=min_week,
+        carryover_k=carryover_k,
+    ).filter(pl.col("result").is_not_null() & pl.col(target).is_not_null())
 
     fs = get_feature_set(feature_set)
     feature_cols = fs.columns(matrix)
     X = matrix.select(feature_cols).to_numpy()
-    y = matrix["result"].to_numpy()
+    y = matrix[target].to_numpy()
 
-    model = SpreadModel(params)
+    model = SpreadModel({**CHAMPION_PARAMS, **(params or {})})
     model.fit(X, y)
 
     trained_at = datetime.now(UTC)
@@ -77,6 +92,8 @@ def train(
         "params": model.params,
         "rolling_weeks": rolling_weeks,
         "min_week": min_week,
+        "target": target,
+        "carryover_k": carryover_k,
         "n_games": matrix.height,
         "trained_at": trained_at.isoformat(),
     }
@@ -93,6 +110,18 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--min-week", type=int, default=DEFAULT_MIN_WEEK)
     parser.add_argument("--rolling-weeks", type=int, default=DEFAULT_ROLLING_WEEKS)
+    parser.add_argument(
+        "--target",
+        default=DEFAULT_TARGET,
+        choices=["spread_line", "result"],
+        help="training label (champion: spread_line, the denoised close)",
+    )
+    parser.add_argument(
+        "--carryover-k",
+        type=float,
+        default=DEFAULT_CARRYOVER_K,
+        help="prior-season carryover pseudo-games (#47); pass 0 to disable",
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--refresh", action="store_true", help="refetch source data, ignore cache"
@@ -109,6 +138,8 @@ def main(argv: list[str] | None = None) -> None:
         params,
         min_week=args.min_week,
         rolling_weeks=args.rolling_weeks,
+        target=args.target,
+        carryover_k=args.carryover_k or None,
         output_dir=args.output_dir,
         refresh=args.refresh,
     )
@@ -130,6 +161,8 @@ def main(argv: list[str] | None = None) -> None:
                     "feature_set": meta["feature_set"],
                     "seasons": str(meta["seasons"]),
                     "min_week": meta["min_week"],
+                    "target": meta["target"],
+                    "carryover_k": meta["carryover_k"],
                     "rolling_weeks": meta["rolling_weeks"],
                     "n_games": meta["n_games"],
                     **meta["params"],

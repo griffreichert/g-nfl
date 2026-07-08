@@ -66,6 +66,9 @@ def test_train_produces_loadable_model(
     assert metadata["seasons"] == [2023]
     assert metadata["params"]["n_estimators"] == 10
     assert metadata["min_week"] == train_mod.DEFAULT_MIN_WEEK
+    # champion config (#39/#47) rides the defaults into the artifact
+    assert metadata["target"] == "spread_line"
+    assert metadata["carryover_k"] == train_mod.DEFAULT_CARRYOVER_K
     # fixture has results for all games, so n_games = games from min_week on
     expected_games = schedule_sample.filter(
         pl.col("week") >= train_mod.DEFAULT_MIN_WEEK
@@ -74,7 +77,10 @@ def test_train_produces_loadable_model(
 
     model, meta = load_artifact(artifact_dir)
     matrix = build_features(
-        pbp_sample, schedule_sample, min_week=train_mod.DEFAULT_MIN_WEEK
+        pbp_sample,
+        schedule_sample,
+        min_week=train_mod.DEFAULT_MIN_WEEK,
+        carryover_k=meta["carryover_k"],
     )
     preds = model.predict(matrix.select(meta["feature_cols"]).to_numpy())
     assert preds.shape == (matrix.height,)

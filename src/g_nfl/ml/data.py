@@ -26,6 +26,8 @@ def _fetch(dataset: str, season: int) -> pl.DataFrame:
         return nfl.load_rosters_weekly(seasons=[season])
     if dataset == "snap_counts":
         return nfl.load_snap_counts(seasons=[season])
+    if dataset == "draft_picks":
+        return nfl.load_draft_picks(seasons=[season])
     raise ValueError(f"unknown dataset {dataset!r}")
 
 
@@ -109,6 +111,21 @@ def load_snap_counts(
     """Per-game snap counts (realized workload; pfr player ids)."""
     return pl.concat(
         [_load_cached("snap_counts", s, Path(cache_dir), refresh) for s in seasons],
+        how="vertical_relaxed",
+    )
+
+
+def load_draft_picks(
+    seasons: list[int],
+    cache_dir: Path | str = DEFAULT_CACHE_DIR,
+    refresh: bool = False,
+) -> pl.DataFrame:
+    """Draft picks (round, team, player) for the given seasons, cached
+    per season. ``team`` carries historic abbrevs (OAK/SD/STL, ...) —
+    run through ``standardize_teams`` before joining onto current-team
+    features."""
+    return pl.concat(
+        [_load_cached("draft_picks", s, Path(cache_dir), refresh) for s in seasons],
         how="vertical_relaxed",
     )
 
