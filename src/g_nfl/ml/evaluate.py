@@ -29,6 +29,7 @@ import polars as pl
 
 from g_nfl.ml.data import (
     DEFAULT_CACHE_DIR,
+    load_draft_picks,
     load_injuries,
     load_pbp,
     load_players,
@@ -459,6 +460,7 @@ def backtest(
     half_life: float | None = None,
     epa_splits: bool = False,
     carryover_k: float | None = None,
+    carryover_c: float | None = None,
     with_injuries: bool = False,
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
@@ -490,9 +492,16 @@ def backtest(
     (`features.qb_change.apply_qb_adjustment`) to the walk-forward
     predictions before any metric is computed, so sharpness/betting/top-n
     all see the adjusted line. Requires ``qb_change=True``.
+
+    ``carryover_c`` (#47) discounts L2 carryover by per-team-season
+    discontinuity (new QB / new coach / round-1 infusion); requires
+    ``carryover_k`` set. Draft picks are loaded for the eval ``seasons``
+    only (the discontinuity signal is about the *current* season's draft).
     """
     if qb_adjust_k is not None and not qb_change:
         raise ValueError("qb_adjust_k requires qb_change=True")
+    if carryover_c is not None and carryover_k is None:
+        raise ValueError("carryover_c requires carryover_k set")
     extra_history = max(
         qb_history if (qb_ctx or qb_change) else 0, 1 if opp_adjust else 0
     )
@@ -516,6 +525,11 @@ def backtest(
     players = (
         load_players(cache_dir=cache_dir, refresh=refresh) if availability else None
     )
+    draft = (
+        load_draft_picks(seasons, cache_dir=cache_dir, refresh=refresh)
+        if carryover_c is not None
+        else None
+    )
     ml_margins = None
     if ml_odds:
         ref_seasons = list(range(MARGIN_REF_START, min(seasons)))
@@ -536,6 +550,8 @@ def backtest(
         half_life=half_life,
         epa_splits=epa_splits,
         carryover_k=carryover_k,
+        carryover_c=carryover_c,
+        draft=draft,
         injuries=injuries if with_injuries else None,
         schedule_ctx=schedule_ctx,
         qb_ctx=qb_ctx,
@@ -583,6 +599,7 @@ def backtest(
             "half_life": half_life,
             "epa_splits": epa_splits,
             "carryover_k": carryover_k,
+            "carryover_c": carryover_c,
             "with_injuries": with_injuries,
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
@@ -626,6 +643,12 @@ def main(argv: list[str] | None = None) -> None:
         type=float,
         default=None,
         help="L2 prior-season carryover, pseudo-games of prior (omit = off)",
+    )
+    parser.add_argument(
+        "--carryover-c",
+        type=float,
+        default=None,
+        help="L2 carryover continuity discount (c ** disc_count); requires --carryover-k",
     )
     parser.add_argument(
         "--injuries",
@@ -717,6 +740,7 @@ def main(argv: list[str] | None = None) -> None:
         half_life=args.half_life,
         epa_splits=args.epa_splits,
         carryover_k=args.carryover_k,
+        carryover_c=args.carryover_c,
         with_injuries=args.injuries,
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
@@ -759,6 +783,7 @@ def main(argv: list[str] | None = None) -> None:
                     "half_life": args.half_life,
                     "epa_splits": args.epa_splits,
                     "carryover_k": args.carryover_k,
+                    "carryover_c": args.carryover_c,
                     "with_injuries": args.injuries,
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,

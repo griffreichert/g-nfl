@@ -23,6 +23,7 @@ def add_windows(
     rolling_weeks: int = DEFAULT_ROLLING_WEEKS,
     half_life: float | None = None,
     carryover_k: float | None = None,
+    carryover_continuity: float | pl.DataFrame = 1.0,
 ) -> pl.DataFrame:
     """Per-team windowed stats on a full team-week grid.
 
@@ -33,9 +34,10 @@ def add_windows(
     decay): each rate (``*_mean``) stat gets one exponentially-weighted
     ``_ewm`` column instead — half-life in *games*, volume sums dropped.
     ``carryover_k`` (flat path only) appends prior-season-carryover
-    ``_carry`` rate cols (see `carryover.add_carryover`). Either way columns
-    are forward-filled over team/season so bye weeks carry the previous
-    week's values.
+    ``_carry`` rate cols (see `carryover.add_carryover`); ``carryover_continuity``
+    (#47) passes through to it unchanged (flat scalar or a per-team-season
+    DataFrame). Either way columns are forward-filled over team/season so
+    bye weeks carry the previous week's values.
     """
     if half_life is not None:
         return _decayed_windows(weekly, schedule, half_life)
@@ -56,7 +58,7 @@ def add_windows(
     )
 
     if carryover_k is not None:
-        rolled = add_carryover(rolled, carryover_k)
+        rolled = add_carryover(rolled, carryover_k, carryover_continuity)
 
     all_weeks = schedule.select("season", "week").unique()
     all_teams = rolled.select("team").unique()

@@ -57,6 +57,19 @@ def standardize_teams(team):
         "PHL": "PHI",
         "WSH": "WAS",
         "WFT": "WAS",
+        # franchise relocations: historic draft/roster data pre-move
+        "OAK": "LV",
+        "SD": "LAC",
+        "STL": "LA",
+        # nflreadpy draft_picks uses PFR-style 3-letter codes
+        "GNB": "GB",
+        "KAN": "KC",
+        "LVR": "LV",
+        "NOR": "NO",
+        "NWE": "NE",
+        "SDG": "LAC",
+        "SFO": "SF",
+        "TAM": "TB",
     }
     team = team_map.get(team, team)
     assert team in nfl_teams, print(team, "not in dict")

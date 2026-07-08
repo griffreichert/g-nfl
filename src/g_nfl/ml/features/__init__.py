@@ -13,6 +13,10 @@ import numpy as np
 import polars as pl
 
 from g_nfl.ml.features.availability import add_availability
+from g_nfl.ml.features.carryover import (
+    continuity_from_discontinuity,
+    team_discontinuity,
+)
 from g_nfl.ml.features.context import add_schedule_context
 from g_nfl.ml.features.continuity import add_continuity
 from g_nfl.ml.features.injuries import add_injuries
@@ -37,6 +41,8 @@ def build_features(
     half_life: float | None = None,
     epa_splits: bool = False,
     carryover_k: float | None = None,
+    carryover_c: float | None = None,
+    draft: pl.DataFrame | None = None,
     injuries: pl.DataFrame | None = None,
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
@@ -58,6 +64,11 @@ def build_features(
     ``epa_splits`` adds the L2 pass/rush/early-down EPA features.
     ``carryover_k`` (flat path) adds prior-season-carryover ``_carry`` rate
     cols (pseudo-games of prior; see `carryover.add_carryover`).
+    ``carryover_c`` (#47) discounts that carryover per-team-season by
+    discontinuity (new QB / new coach / round-1 infusion — see
+    `carryover.team_discontinuity`); requires ``carryover_k`` set and
+    ``draft`` passed (that season's round-1 picks), None keeps the flat
+    continuity=1.0 baseline.
     ``injuries`` (L3) joins home/away team-week injury burden, no lag
     (see `injuries.add_injuries`); None leaves the matrix unchanged.
     ``schedule_ctx`` (L3) appends rest/day-of-week/division context, no lag
@@ -89,15 +100,22 @@ def build_features(
     before the game plus the prior season; requires ``pbp`` to carry prior-
     season lookback to warm week-1 ratings (same mechanism as ``qb_ctx``).
     """
+    if carryover_c is not None and carryover_k is None:
+        raise ValueError("carryover_c requires carryover_k set")
     reg_schedule = schedule.filter(pl.col("game_type") == "REG")
     plays = play_features(pbp, wp_filter, epa_splits=epa_splits)
     weekly = team_week_stats(plays)
+    carryover_continuity: float | pl.DataFrame = 1.0
+    if carryover_c is not None:
+        disc = team_discontinuity(pbp, reg_schedule, draft)
+        carryover_continuity = continuity_from_discontinuity(disc, carryover_c)
     windowed = add_windows(
         weekly,
         reg_schedule,
         rolling_weeks,
         half_life=half_life,
         carryover_k=carryover_k,
+        carryover_continuity=carryover_continuity,
     )
     matrix = build_game_matrix(
         windowed,
