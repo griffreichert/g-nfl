@@ -6,7 +6,7 @@ import plotly.express as px
 from g_nfl.utils.paths import HOMERS_PATH
 from src import old_utils
 
-PROCESSED_FILE_PATH = f"{HOMERS_PATH}/homers-processed.pkl"
+PROCESSED_FILE_PATH = HOMERS_PATH / "homers-processed.pkl"
 
 
 def process_picks(df: pd.DataFrame, week, season) -> pd.DataFrame:

@@ -1,4 +1,3 @@
-import os
 import urllib.request
 
 import nflreadpy as nfl
@@ -19,9 +18,9 @@ def get_logo_url(team: str, size: int = 25):
 
 def fetch_logos():
     # if the path to the logos directory does not exist, create it
-    if not os.path.exists(LOGO_PATH):
+    if not LOGO_PATH.exists():
         print("fetching team logos...")
-        os.makedirs(LOGO_PATH, exist_ok=True)
+        LOGO_PATH.mkdir(parents=True, exist_ok=True)
         logos = nfl.load_teams().select(["team_abbr", "team_logo_espn"])
 
         # get the logos for each team and store them to tif files in the logo path directory "<team>.tif"

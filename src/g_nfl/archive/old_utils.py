@@ -1,4 +1,3 @@
-import os
 import re
 from collections import defaultdict
 
@@ -79,8 +78,7 @@ def download_team_pngs():
     base_url = "https://a.espncdn.com/i/teamlogos/nfl/500/"
 
     # Create the local directory if it doesn't exist
-    if not os.path.exists(LOGO_PATH):
-        os.makedirs(LOGO_PATH)
+    LOGO_PATH.mkdir(parents=True, exist_ok=True)
 
     # Iterate through the list of teams, download logos, and save them locally
     for team in nfl_teams:
