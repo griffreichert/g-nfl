@@ -13,6 +13,13 @@ season isn't cold). Nothing from week ``w`` or later ever enters the
 fit, so joining the (season, week) rating onto that week's matrix row
 needs no additional lag (same pattern as `injuries.add_injuries`). Off
 by default (see `build_features` ``opp_adjust``).
+
+Sign convention note: ``def_rating`` here is EPA *allowed* (higher =
+worse defense). ``ml/market_ratings.py`` (#50) has its own
+``def_rating`` that means the opposite — points *prevented* below
+average, higher = better — so it reads like a normal power rating. The
+two are not interchangeable; check which module a ``def_rating`` came
+from before using it.
 """
 
 import numpy as np
