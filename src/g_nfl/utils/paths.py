@@ -1,19 +1,12 @@
-import os
 from pathlib import Path
 
-PROJECT_DIR = Path(os.getcwd().split("nfl-betting/")[0] + "nfl-betting/")
+PROJECT_DIR = Path(__file__).parents[3]
 
-BIN_PATH = PROJECT_DIR / "bin"
-LOGO_PATH = BIN_PATH / "logos"
+LOGO_PATH = PROJECT_DIR / "bin" / "logos"
 
 DATA_PATH = PROJECT_DIR / "data"
 
-BETTING_PATH = DATA_PATH / "betting"
-
 HOMERS_PATH = DATA_PATH / "homers"
-
-PFF_PROP_PATH = DATA_PATH / "pff-props"
-PFF_RATING_PATH = DATA_PATH / "pff-ratings"
 
 INPREDICABLE_PATH = DATA_PATH / "inpredictable"
 

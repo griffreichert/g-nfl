@@ -1,4 +1,3 @@
-import os
 import re
 from io import BytesIO
 
@@ -48,8 +47,8 @@ def scrape_inpredictable(week: int, season: int) -> None:
     )
 
     # dont overwrite an existing file
-    file_path = f"{INPREDICABLE_PATH}/inpredictable-{season}-wk{week}.csv"
-    if os.path.isfile(file_path):
+    file_path = INPREDICABLE_PATH / f"inpredictable-{season}-wk{week}.csv"
+    if file_path.exists():
         print(f"{file_path} exists!")
     else:
         # write the file to the correct path
@@ -69,8 +68,8 @@ def scrape_unabated(week: int, season: int) -> None:
     df = utils.clean_df_columns(df)
     assert df.shape[0] == 32
     # dont overwrite an existing file
-    file_path = f"{UNABATED_PATH}/unabated-{season}-wk{week}.csv"
-    if os.path.isfile(file_path):
+    file_path = UNABATED_PATH / f"unabated-{season}-wk{week}.csv"
+    if file_path.exists():
         print(f"{file_path} exists!")
     else:
         # write the file to the correct path
@@ -105,8 +104,8 @@ def scrape_espn(week: int, season: int) -> None:
     assert df.shape[0] == 32
 
     # dont overwrite an existing file
-    file_path = f"{ESPN_PATH}/espn-{season}-wk{week}.csv"
-    if os.path.isfile(file_path):
+    file_path = ESPN_PATH / f"espn-{season}-wk{week}.csv"
+    if file_path.exists():
         print(f"{file_path} exists!")
     else:
         # write the file to the correct path
@@ -136,8 +135,8 @@ def scrape_nfelo(week: int, season: int) -> None:
     assert df.shape[0] == 32
 
     # dont overwrite an existing file
-    file_path = f"{NFELO_PATH}/nfelo-{season}-wk{week}.csv"
-    if os.path.isfile(file_path):
+    file_path = NFELO_PATH / f"nfelo-{season}-wk{week}.csv"
+    if file_path.exists():
         print(f"{file_path} exists!")
     else:
         # write the file to the correct path
