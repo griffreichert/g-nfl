@@ -3,10 +3,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-import requests
 from sklearn.linear_model import LinearRegression, Ridge
-
-from g_nfl.utils.paths import LOGO_PATH
 
 ############################
 #                          #
@@ -71,27 +68,6 @@ def standardize_teams(team):
     team = team_map.get(team, team)
     assert team in nfl_teams, print(team, "not in dict")
     return team
-
-
-def download_team_pngs():
-    # Base URL for the team logos and local directory
-    base_url = "https://a.espncdn.com/i/teamlogos/nfl/500/"
-
-    # Create the local directory if it doesn't exist
-    LOGO_PATH.mkdir(parents=True, exist_ok=True)
-
-    # Iterate through the list of teams, download logos, and save them locally
-    for team in nfl_teams:
-        team = team.lower()
-        url = f"{base_url}{team}.png"
-        response = requests.get(url)
-        if response.status_code == 200:
-            # Save the image to the local directory
-            with open(LOGO_PATH / f"{team}.png", "wb") as file:
-                file.write(response.content)
-        else:
-            print(f"Failed to download logo for {team}")
-    print(f"Logos downloaded to {LOGO_PATH}")
 
 
 ############################

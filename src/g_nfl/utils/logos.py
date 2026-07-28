@@ -17,16 +17,22 @@ def get_logo_url(team: str, size: int = 25):
 
 
 def fetch_logos():
-    # if the path to the logos directory does not exist, create it
-    if not LOGO_PATH.exists():
-        print("fetching team logos...")
-        LOGO_PATH.mkdir(parents=True, exist_ok=True)
-        logos = nfl.load_teams().select(["team_abbr", "team_logo_espn"])
+    LOGO_PATH.mkdir(parents=True, exist_ok=True)
+    logos = nfl.load_teams().select(["team_abbr", "team_logo_espn"])
 
-        # get the logos for each team and store them to tif files in the logo path directory "<team>.tif"
-        for team, logo_url in logos.iter_rows():
-            urllib.request.urlretrieve(logo_url, LOGO_PATH / f"{team}.tif")
-        print("successfully retrieved logos")
+    # only fetch teams whose logo is missing so a partial/empty dir gets topped up
+    missing = [
+        (team, logo_url)
+        for team, logo_url in logos.iter_rows()
+        if not (LOGO_PATH / f"{team}.png").exists()
+    ]
+    if not missing:
+        return
+
+    print("fetching team logos...")
+    for team, logo_url in missing:
+        urllib.request.urlretrieve(logo_url, LOGO_PATH / f"{team}.png")
+    print("successfully retrieved logos")
 
 
 def get_team_logo(
@@ -34,6 +40,6 @@ def get_team_logo(
 ) -> OffsetImage:
     team = team.upper()
     # Open the image with PIL and resize it
-    image = Image.open(str(LOGO_PATH / f"{team}.tif"))
+    image = Image.open(str(LOGO_PATH / f"{team}.png"))
     image = image.resize(size, Image.Resampling.LANCZOS)
     return OffsetImage(np.asarray(image), alpha=alpha, zoom=1.0)
