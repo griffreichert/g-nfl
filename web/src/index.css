@@ -1,1 +1,144 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* Theme is applied as an explicit `light` / `dark` class on <html> (see lib/theme.tsx),
+   resolved from the stored preference or the system one. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Cville 16 palette (#62). Amber means "picked", violet means "best bet", and
+  green/red/grey are reserved for win/loss/push so an accent can never be misread
+  as a graded result. Team colour only ever appears inside a logo tile.
+*/
+:root {
+  --radius: 0.625rem;
+
+  --background: #f4f3f0;
+  --foreground: #16181c;
+  --card: #ffffff;
+  --card-foreground: #16181c;
+  --popover: #ffffff;
+  --popover-foreground: #16181c;
+  --primary: #b3600a;
+  --primary-foreground: #ffffff;
+  --secondary: #edebe6;
+  --secondary-foreground: #16181c;
+  --muted: #edebe6;
+  --muted-foreground: #5c5f66;
+  --accent: #f7e7cc;
+  --accent-foreground: #b3600a;
+  --destructive: #b3341f;
+  --border: #ddd9d1;
+  --input: #ddd9d1;
+  --ring: #b3600a;
+
+  /* pool semantics */
+  --pick: #b3600a;
+  --pick-soft: #f7e7cc;
+  --bb: #6b4ea8;
+  --bb-soft: #ebe3f7;
+  --win: #1e7a4c;
+  --loss: #b3341f;
+  --push: #8a8177;
+  --faint: #8a8579;
+
+  --chart-1: #b3600a;
+  --chart-2: #6b4ea8;
+  --chart-3: #0e7c66;
+  --chart-4: #2f6ba8;
+  --chart-5: #a03a63;
+}
+
+.dark {
+  --background: #14161a;
+  --foreground: #efede8;
+  --card: #1c1f24;
+  --card-foreground: #efede8;
+  --popover: #1c1f24;
+  --popover-foreground: #efede8;
+  --primary: #f0a93f;
+  --primary-foreground: #14161a;
+  --secondary: #23272e;
+  --secondary-foreground: #efede8;
+  --muted: #23272e;
+  --muted-foreground: #9ba0a8;
+  --accent: #3a2c14;
+  --accent-foreground: #f0a93f;
+  --destructive: #f0705a;
+  --border: #2e333b;
+  --input: #2e333b;
+  --ring: #f0a93f;
+
+  --pick: #f0a93f;
+  --pick-soft: #3a2c14;
+  --bb: #b49ce8;
+  --bb-soft: #2a2340;
+  --win: #3fbf7f;
+  --loss: #f0705a;
+  --push: #7e858e;
+  --faint: #6e747c;
+
+  --chart-1: #f0a93f;
+  --chart-2: #b49ce8;
+  --chart-3: #4fc3a1;
+  --chart-4: #7fb2e5;
+  --chart-5: #e58bb0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-pick: var(--pick);
+  --color-pick-soft: var(--pick-soft);
+  --color-bb: var(--bb);
+  --color-bb-soft: var(--bb-soft);
+  --color-win: var(--win);
+  --color-loss: var(--loss);
+  --color-push: var(--push);
+  --color-faint: var(--faint);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* every number in this app is monospace and column-aligned */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, "Roboto Mono", monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* spreads, pool points, records — always tabular */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
