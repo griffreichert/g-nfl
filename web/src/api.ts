@@ -1,4 +1,12 @@
-import type { AppConfig, GameLine, Pick, PickRecord, StandingsResponse, WeeksResponse } from './types'
+import type {
+  AnalyticsResponse,
+  AppConfig,
+  GameLine,
+  Pick,
+  PickRecord,
+  StandingsResponse,
+  WeeksResponse,
+} from './types'
 
 // In production VITE_API_URL points at the Render backend; in dev the Vite
 // proxy forwards /api to localhost:8000.
@@ -30,6 +38,7 @@ export const api = {
       `/api/picks?season=${season}&week=${week}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`
     ),
   standings: (season: number) => get<StandingsResponse>(`/api/standings?season=${season}`),
+  analytics: (season: number) => get<AnalyticsResponse>(`/api/analytics?season=${season}`),
   savePicks: (season: number, week: number, picker: string, picks: Pick[]) =>
     send<{ saved: number }>('POST', '/api/picks', { season, week, picker, picks }),
   updatePoolSpread: (season: number, week: number, game_id: string, spread: number) =>

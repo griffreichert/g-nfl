@@ -67,3 +67,45 @@ export interface StandingsResponse {
   graded_through_week: number | null
   standings: PickerStanding[]
 }
+
+export interface CutRow {
+  key: string
+  picks: number
+  games: number
+  /** naive per-pick rate, carried so the inflation stays visible */
+  pick_pct: number | null
+  /** the honest one: per distinct game, votes on a game collapsed to one */
+  pct: number | null
+  shrunk_pct: number | null
+  units: number
+  z: number | null
+}
+
+export interface Cut {
+  name: string
+  label: string
+  note: string
+  rows: CutRow[]
+}
+
+export interface TeamAppetite {
+  team: string
+  available: number
+  picked_games: number
+  picks: number
+  appetite: number | null
+  votes_per_pick: number | null
+  pct: number | null
+  units: number
+}
+
+export interface AnalyticsResponse {
+  season: number
+  picks: number
+  games: number
+  votes_per_game: number
+  base_pct: number
+  break_even_pct: number
+  cuts: Cut[]
+  teams: TeamAppetite[]
+}

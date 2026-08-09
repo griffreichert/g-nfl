@@ -1,10 +1,11 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import MakePicks from './pages/MakePicks'
 import Field from './pages/Field'
 import ManageSpreads from './pages/ManageSpreads'
 import Standings from './pages/Standings'
+import Analytics from './pages/Analytics'
 import Help from './pages/Help'
 
 const tabs = [
@@ -12,6 +13,7 @@ const tabs = [
   { to: '/view', label: 'Team', icon: Users },
   { to: '/standings', label: 'Standings', icon: LineChart },
   { to: '/spreads', label: 'Lines', icon: Ruler },
+  { to: '/analytics', label: 'Analytics', icon: ChartColumn },
 ]
 
 export default function App() {
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="/view" element={<Field />} />
           <Route path="/standings" element={<Standings />} />
           <Route path="/spreads" element={<ManageSpreads />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/help" element={<Help />} />
         </Routes>
       </main>
