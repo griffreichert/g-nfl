@@ -399,3 +399,66 @@ export const byScore =
     (best.get(b.game.game_id) ?? 0) - (best.get(a.game.game_id) ?? 0) ||
     b.contention - a.contention ||
     a.game.away_team.localeCompare(b.game.away_team)
+
+
+/**
+ * The entry Reichert submits each week: one best bet at 2pts, five regulars at
+ * 1pt, and the Monday game. All on distinct games (notes/SCORING.md), which one
+ * pick per game gives us for free.
+ */
+export type SlotType = 'best_bet' | 'regular' | 'mnf'
+export type SlotPick = { team: string; type: SlotType }
+export type Slate = Record<string, SlotPick>
+/** A room decision that overrules the proposal; null means "we took this off". */
+export type Overrides = Record<string, SlotPick | null>
+
+export const MAX_REGULAR = 5
+
+export const slotCounts = (slate: Slate) => {
+  const v = Object.values(slate)
+  return {
+    regular: v.filter((x) => x.type === 'regular').length,
+    bb: v.filter((x) => x.type === 'best_bet').length,
+    mnf: v.filter((x) => x.type === 'mnf').length,
+  }
+}
+
+/**
+ * What one tap on a side does, as a patch over the current slate.
+ *
+ * Unpicked, regular, best bet, unpicked — the same cycle the picks page uses.
+ * Two rules the room expects and would otherwise have to discover:
+ *
+ * - Tapping the *other* side of a game already in the entry switches sides and
+ *   keeps the slot. It does not silently demote a best bet to a regular.
+ * - Promoting a second side to best bet demotes the incumbent to a regular
+ *   rather than refusing. The swap is net-zero on the regular count, so it can
+ *   never overflow the entry.
+ *
+ * Returns an empty patch when the tap is a no-op (a full slate, new game).
+ */
+export function cycleSlot(slate: Slate, gameId: string, team: string, isMnf: boolean): Overrides {
+  const now = slate[gameId]
+  const counts = slotCounts(slate)
+
+  if (isMnf) return { [gameId]: now?.team === team ? null : { team, type: 'mnf' } }
+
+  if (!now || now.team !== team) {
+    if (!now && counts.regular >= MAX_REGULAR && counts.bb > 0) return {}
+    return {
+      [gameId]: {
+        team,
+        type: now ? now.type : counts.regular < MAX_REGULAR ? 'regular' : 'best_bet',
+      },
+    }
+  }
+
+  if (now.type === 'regular') {
+    const patch: Overrides = { [gameId]: { team, type: 'best_bet' } }
+    const incumbent = Object.entries(slate).find(([, v]) => v.type === 'best_bet')
+    if (incumbent) patch[incumbent[0]] = { ...incumbent[1], type: 'regular' }
+    return patch
+  }
+
+  return { [gameId]: null }
+}

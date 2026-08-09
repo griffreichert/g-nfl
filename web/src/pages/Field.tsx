@@ -9,17 +9,23 @@ import {
   bestSide,
   buildAttachment,
   buildConsensus,
+  cycleSlot,
   byScore,
   partRating,
   findBlocs,
   isAtsPick,
   isVoter,
+  MAX_REGULAR,
+  slotCounts,
   scoreSide,
   spreadFor,
   TEAM_2025,
   TEAM_PICKER,
   type ConsensusRow,
+  type Overrides,
   type Score,
+  type Slate,
+  type SlotType,
   type SidePick,
 } from '@/lib/consensus'
 import BandChart from '@/components/BandChart'
@@ -34,18 +40,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-/**
- * The entry Reichert submits each week: one best bet at 2pts, five regulars at
- * 1pt, and the Monday game. All on distinct games (notes/SCORING.md), which one
- * pick per game gives us for free.
- */
-type SlotType = 'best_bet' | 'regular' | 'mnf'
-type SlotPick = { team: string; type: SlotType }
-type Slate = Record<string, SlotPick>
-/** A room decision that overrules the proposal; null means "we took this off". */
-type Overrides = Record<string, SlotPick | null>
-
-const MAX_REGULAR = 5
+/** The two side pools. Separate objectives, separate games, own state. */
+type Pool = 'underdog' | 'survivor'
+type Special = { game_id: string; team: string } | null
 
 const pickerOrder = (a: string, b: string) =>
   a === TEAM_PICKER ? 1 : b === TEAM_PICKER ? -1 : a.localeCompare(b)
@@ -365,6 +362,55 @@ function Survivor({
   )
 }
 
+/**
+ * A side pool: one team from a candidate list. Deliberately plainer than the
+ * ATS board — neither pool is scored, so showing a rating here would imply a
+ * model that does not exist.
+ */
+function PoolPicker({
+  title,
+  hint,
+  options,
+  chosen,
+  onPick,
+}: {
+  title: string
+  hint: string
+  options: { game: GameLine; team: string; spread: number | null; disabled?: boolean }[]
+  chosen: Special
+  onPick: (value: Special) => void
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <h2 className="text-sm font-bold">{title}</h2>
+      <p className="mb-2 text-xs text-muted-foreground">{hint}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const on = chosen?.team === o.team && chosen?.game_id === o.game.game_id
+          return (
+            <button
+              key={`${o.game.game_id}_${o.team}`}
+              type="button"
+              disabled={o.disabled}
+              onClick={() => onPick(on ? null : { game_id: o.game.game_id, team: o.team })}
+              title={o.disabled ? 'Already spent this season' : undefined}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-sm transition-colors disabled:opacity-35 ${
+                on
+                  ? 'border-pick bg-pick-soft font-semibold'
+                  : 'border-border/60 hover:border-border'
+              }`}
+            >
+              <img src={teamLogo(o.team)} alt="" className="size-5" />
+              {o.team}
+              <span className="tabular text-xs text-muted-foreground">{fmtSpread(o.spread)}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /** One slot of the entry: filled, or how many are still open. */
 function Slot({ label, have, need }: { label: string; have: number; need: number }) {
   const done = have === need
@@ -390,6 +436,12 @@ export default function Field() {
     overrides: {},
   })
   const [saved, setSaved] = useState<{ key: string; msg: string } | null>(null)
+  // Underdog and survivor are separate pools on their own games, so they cannot
+  // live in the slate (which is keyed by game and holds one ATS pick each).
+  const [extras, setExtras] = useState<{ key: string; picks: Partial<Record<Pool, Special>> }>({
+    key: '',
+    picks: {},
+  })
 
   useEffect(() => {
     if (season === null || week === null) return
@@ -483,36 +535,69 @@ export default function Field() {
     return merged
   }, [proposal, edits, weekKey])
 
-  const counts = useMemo(() => {
-    const v = Object.values(slate)
-    return {
-      regular: v.filter((x) => x.type === 'regular').length,
-      bb: v.filter((x) => x.type === 'best_bet').length,
-      mnf: v.filter((x) => x.type === 'mnf').length,
-    }
-  }, [slate])
+  const counts = useMemo(() => slotCounts(slate), [slate])
 
   /**
-   * Tap a side to move it through the slots, the same cycle the picks page uses:
-   * unpicked, regular, best bet, unpicked. The Monday game only ever holds MNF.
+   * Whatever TEAM already submitted, unless the room has changed it since. No
+   * proposal here: the dog is outright-win EV against spread size and survivor
+   * is a season-long allocation, and the board's rating models neither.
    */
-  const cycle = (row: ConsensusRow, team: string) => {
-    const id = row.game.game_id
-    const now = slate[id]
-    let next: SlotPick | null
-    if (row.game.is_mnf) {
-      next = now?.team === team ? null : { team, type: 'mnf' }
-    } else if (!now || now.team !== team) {
-      if (!now && counts.regular >= MAX_REGULAR && counts.bb > 0) return
-      next = { team, type: counts.regular < MAX_REGULAR ? 'regular' : 'best_bet' }
-    } else if (now.type === 'regular') {
-      next = counts.bb > 0 ? null : { team, type: 'best_bet' }
-    } else {
-      next = null
+  const extra = (pool: Pool): Special => {
+    if (extras.key === weekKey && pool in extras.picks) return extras.picks[pool] ?? null
+    const p = picks.find((x) => x.picker === TEAM_PICKER && x.pick_type === pool)
+    return p ? { game_id: p.game_id, team: p.team_picked } : null
+  }
+  const underdog = extra('underdog')
+  const survivor = extra('survivor')
+
+  const pickExtra = (pool: Pool, value: Special) => {
+    setExtras((cur) => ({
+      key: weekKey,
+      picks: { ...(cur.key === weekKey ? cur.picks : {}), [pool]: value },
+    }))
+  }
+
+  /** Every dog on the board, biggest first — the payout is the spread itself. */
+  const dogs = useMemo(
+    () =>
+      games
+        .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
+        .map((x) => ({ ...x, spread: spreadFor(x.game, x.team) }))
+        .filter((x) => x.spread !== null && x.spread > 0)
+        .sort((a, b) => (b.spread ?? 0) - (a.spread ?? 0)),
+    [games],
+  )
+
+  /**
+   * Survivor is about our own inventory, not the field's: a team TEAM has
+   * already spent this season is gone, whatever anyone else did with it.
+   */
+  const spent = useMemo(() => {
+    const used = new Set(config?.survivor_used_teams ?? [])
+    for (const p of seasonPicks ?? []) {
+      if (p.pick_type === 'survivor' && p.picker === TEAM_PICKER && p.week !== week) {
+        used.add(p.team_picked)
+      }
     }
+    return used
+  }, [seasonPicks, config, week])
+
+  const favourites = useMemo(
+    () =>
+      games
+        .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
+        .map((x) => ({ ...x, spread: spreadFor(x.game, x.team) }))
+        .filter((x) => x.spread !== null && x.spread < 0)
+        .sort((a, b) => (a.spread ?? 0) - (b.spread ?? 0)),
+    [games],
+  )
+
+  const cycle = (row: ConsensusRow, team: string) => {
+    const patch = cycleSlot(slate, row.game.game_id, team, row.game.is_mnf)
+    if (Object.keys(patch).length === 0) return
     setEdits((cur) => ({
       key: weekKey,
-      overrides: { ...(cur.key === weekKey ? cur.overrides : {}), [id]: next },
+      overrides: { ...(cur.key === weekKey ? cur.overrides : {}), ...patch },
     }))
   }
 
@@ -526,6 +611,18 @@ export default function Field() {
         pick_type: v.type,
         spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
       }))
+      for (const [pool, choice] of [
+        ['underdog', underdog],
+        ['survivor', survivor],
+      ] as const) {
+        if (!choice) continue
+        payload.push({
+          game_id: choice.game_id,
+          team_picked: choice.team,
+          pick_type: pool,
+          spread: games.find((g) => g.game_id === choice.game_id)?.market_spread ?? null,
+        })
+      }
       const res = await api.savePicks(season, week, TEAM_PICKER, payload)
       setSaved({ key: weekKey, msg: `Submitted ${res.saved} picks as TEAM` })
     } catch (e) {
@@ -603,6 +700,8 @@ export default function Field() {
                 <Slot label="Best bet" have={counts.bb} need={1} />
                 <Slot label="Regulars" have={counts.regular} need={MAX_REGULAR} />
                 <Slot label="MNF" have={counts.mnf} need={1} />
+                <Slot label="Dog" have={underdog ? 1 : 0} need={1} />
+                <Slot label="Survivor" have={survivor ? 1 : 0} need={1} />
               </span>
               <Button size="sm" className="ml-auto" onClick={saveSlate} disabled={saving}>
                 {saving ? 'Saving…' : 'Submit as TEAM'}
@@ -646,6 +745,24 @@ export default function Field() {
                 />
               ))}
             </div>
+
+            <PoolPicker
+              title="Underdog"
+              hint="One dog. If it wins outright we score its spread, so the biggest number that can actually win is the play. Nothing if it loses."
+              options={dogs}
+              chosen={underdog}
+              onPick={(v) => pickExtra('underdog', v)}
+            />
+
+            <PoolPicker
+              title="Survivor"
+              hint={`One team to win outright. Teams we have already spent are greyed out${
+                spent.size ? `: ${[...spent].sort().join(', ')}` : ''
+              }.`}
+              options={favourites.map((f) => ({ ...f, disabled: spent.has(f.team) }))}
+              chosen={survivor}
+              onPick={(v) => pickExtra('survivor', v)}
+            />
 
             <div className="rounded-lg border border-border bg-card p-3">
               <h2 className="text-sm font-bold">Where we win and lose</h2>

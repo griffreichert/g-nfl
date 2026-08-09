@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   bandFor,
+  cycleSlot,
   buildAttachment,
   buildConsensus,
   byContention,
@@ -235,4 +236,56 @@ test('a side breakdown sums to the rating it shows', () => {
   const score = scoreSide(row, 'GB', new Map())
   const summed = 5 + score.parts.reduce((s, p) => s + partRating(p.value, score.slope), 0)
   assert.equal(Math.round(summed * 100) / 100, Math.round(score.rating * 100) / 100)
+})
+
+test('cycleSlot walks a side through the slots', () => {
+  const g = 'g1'
+  assert.deepEqual(cycleSlot({}, g, 'GB', false), { g1: { team: 'GB', type: 'regular' } })
+  const asRegular = { g1: { team: 'GB', type: 'regular' as const } }
+  assert.deepEqual(cycleSlot(asRegular, g, 'GB', false), { g1: { team: 'GB', type: 'best_bet' } })
+  const asBest = { g1: { team: 'GB', type: 'best_bet' as const } }
+  assert.deepEqual(cycleSlot(asBest, g, 'GB', false), { g1: null })
+})
+
+test('switching sides keeps the slot the game already held', () => {
+  // The help page promises this. Without it, tapping across a best bet
+  // silently demoted it to a regular and the 2pt slot went quiet.
+  const slate = { g1: { team: 'GB', type: 'best_bet' as const } }
+  assert.deepEqual(cycleSlot(slate, 'g1', 'CAR', false), {
+    g1: { team: 'CAR', type: 'best_bet' },
+  })
+})
+
+test('promoting a second best bet demotes the incumbent', () => {
+  const slate = {
+    g1: { team: 'GB', type: 'best_bet' as const },
+    g2: { team: 'PHI', type: 'regular' as const },
+  }
+  const patch = cycleSlot(slate, 'g2', 'PHI', false)
+  assert.deepEqual(patch, {
+    g2: { team: 'PHI', type: 'best_bet' },
+    g1: { team: 'GB', type: 'regular' },
+  })
+  // the swap is net-zero on the regular count, so the entry cannot overflow
+  const after = { ...slate, ...patch }
+  assert.equal(Object.values(after).filter((v) => v.type === 'best_bet').length, 1)
+  assert.equal(Object.values(after).filter((v) => v.type === 'regular').length, 1)
+})
+
+test('the Monday game only ever holds MNF', () => {
+  assert.deepEqual(cycleSlot({}, 'g1', 'LA', true), { g1: { team: 'LA', type: 'mnf' } })
+  const held = { g1: { team: 'LA', type: 'mnf' as const } }
+  assert.deepEqual(cycleSlot(held, 'g1', 'LA', true), { g1: null })
+  assert.deepEqual(cycleSlot(held, 'g1', 'ATL', true), { g1: { team: 'ATL', type: 'mnf' } })
+})
+
+test('a full entry refuses a new game but still allows swaps', () => {
+  const slate: Record<string, { team: string; type: 'regular' | 'best_bet' }> = {
+    bb: { team: 'A', type: 'best_bet' },
+  }
+  for (let i = 0; i < 5; i++) slate[`r${i}`] = { team: 'T' + i, type: 'regular' }
+  assert.deepEqual(cycleSlot(slate, 'new', 'X', false), {})
+  assert.deepEqual(cycleSlot(slate, 'r0', 'OTHER', false), {
+    r0: { team: 'OTHER', type: 'regular' },
+  })
 })

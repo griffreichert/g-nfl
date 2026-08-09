@@ -77,15 +77,16 @@ export default function Help() {
             first tap — the side becomes a <b className="text-foreground">Regular</b>
           </Step>
           <Step n="2.">
-            second tap — it becomes the <b className="text-foreground">Best bet</b>, if the best
-            bet is still free
+            second tap — it becomes the <b className="text-foreground">Best bet</b>. If another
+            game was holding the best bet, that one steps down to a regular rather than being
+            thrown out
           </Step>
           <Step n="3.">third tap — it comes off the entry</Step>
         </ol>
         <p>
-          Tapping the <i>other</i> side of a game you have already used just switches sides and
-          keeps the slot. The Monday game only ever holds MNF, so there it is one tap on, one tap
-          off.
+          Tapping the <i>other</i> side of a game you have already used switches sides and keeps
+          whatever slot that game held — a best bet stays a best bet. The Monday game only ever
+          holds MNF, so there it is one tap on, one tap off.
         </p>
         <p>
           Once all seven slots are full the games you haven't used go dim — take something off
@@ -93,14 +94,13 @@ export default function Help() {
           sides. The counter at the top of the page tells you what is still open, and{' '}
           <b className="text-foreground">Submit as TEAM</b> saves the whole entry.
         </p>
-        <p className="rounded-md border border-border p-2">
-          <b className="text-foreground">Underdog and survivor are not on this page yet.</b> For
-          now, submit those for TEAM on the{' '}
-          <Link to="/picks" className="text-primary underline-offset-4 hover:underline">
-            Picks
-          </Link>{' '}
-          page by choosing TEAM as the name. They are separate pools with different objectives, so
-          the rating below does not apply to them.
+        <p>
+          <b className="text-foreground">Underdog</b> and{' '}
+          <b className="text-foreground">Survivor</b> have their own rows below the games — tap a
+          team to pick it, tap it again to clear. Survivor greys out every team we have already
+          spent this season, so you cannot burn one twice. Neither carries a rating: they are
+          separate pools with different objectives, and the model behind the rating does not
+          describe either of them.
         </p>
       </Section>
 
