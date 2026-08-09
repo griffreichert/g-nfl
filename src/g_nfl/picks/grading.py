@@ -4,10 +4,16 @@ Pure functions over plain dicts — runs on the deployed API, so no
 polars/pandas (analysis-group deps stay out of core).
 
 Conventions:
-- ``spread`` on a pick is the game's market line at pick time, in the
-  same convention as nflverse ``spread_line``: positive = home team
-  favored by that many points (the app stores ``market_spread`` on
-  every pick row).
+- A pick records a *decision* (game, side, slot). The line it grades
+  against is a property of the game, not of the pick, so it is resolved
+  at grade time from the lines tables: pool spread where we have one,
+  market line otherwise. This matters because people pick before the
+  Friday pool lines are posted — the line stored on the row at that
+  moment is either stale or missing, and grading off it silently drops
+  the pick. ``spread`` on the row is kept only as a record of what the
+  picker saw.
+- Lines use the nflverse ``spread_line`` convention: positive = home
+  team favored by that many points.
 - A game result row carries ``result`` = home score - away score.
 - ATS pick types (regular, best_bet, mnf): picked home team covers
   when result > spread, picked away team covers when result < spread,
@@ -33,10 +39,17 @@ STRAIGHT_UP_PICK_TYPES = {"survivor", "underdog"}
 RECORD_PICK_TYPES = {"regular", "best_bet"}
 
 
-def grade_pick(pick: dict[str, Any], result: float | None) -> str:
+def grade_pick(
+    pick: dict[str, Any],
+    result: float | None,
+    line: float | None = None,
+) -> str:
     """Outcome of one pick: win / loss / push / pending / no_spread.
 
     `result` is the game's home margin, or None if not played yet.
+    `line` is the spread this pick grades against, resolved by the caller
+    from the lines tables. Falls back to the line stored on the row when
+    the caller has nothing, which keeps older callers working.
     """
     if result is None:
         return "pending"
@@ -51,7 +64,7 @@ def grade_pick(pick: dict[str, Any], result: float | None) -> str:
         home_won = result > 0
         return "win" if picked_home == home_won else "loss"
 
-    spread = pick.get("spread")
+    spread = line if line is not None else pick.get("spread")
     if spread is None:
         return "no_spread"
     margin_vs_spread = result - spread
@@ -82,18 +95,43 @@ def _units(record: dict[str, Any]) -> float:
     return record["wins"] * WIN_PROFIT - record["losses"]
 
 
+def resolve_lines(
+    pool_rows: list[dict[str, Any]], market_rows: list[dict[str, Any]]
+) -> dict[str, float]:
+    """game_id -> the line picks grade against: pool where we have one,
+    market otherwise.
+
+    The pool posts on Friday and people pick before that, so a pick made
+    on Tuesday cannot carry the line it will be graded on. Only the side
+    is the picker's decision; the line belongs to the game.
+    """
+    lines: dict[str, float] = {}
+    for row in market_rows:
+        if row.get("spread") is not None:
+            lines[row["game_id"]] = row["spread"]
+    # pool wins wherever it exists, so it is applied second
+    for row in pool_rows:
+        if row.get("spread") is not None:
+            lines[row["game_id"]] = row["spread"]
+    return lines
+
+
 def picker_standings(
-    picks: list[dict[str, Any]], results: dict[str, float | None]
+    picks: list[dict[str, Any]],
+    results: dict[str, float | None],
+    lines: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     """Season standings per picker, with a weekly cumulative trend.
 
     `picks` are pick rows (picker, game_id, team_picked, pick_type,
-    spread, week); `results` maps game_id -> home margin (None or
-    missing = not played). Returns one dict per picker, sorted by ATS
-    units descending: headline ATS record/units over regular+best_bet,
+    week); `results` maps game_id -> home margin (None or missing = not
+    played); `lines` maps game_id -> the spread to grade against, from
+    `resolve_lines`. Returns one dict per picker, sorted by ATS units
+    descending: headline ATS record/units over regular+best_bet,
     per-pick-type records, and a `weekly` list with cumulative units
     and win% week by week.
     """
+    lines = lines or {}
     by_picker: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for p in picks:
         by_picker[p["picker"]].append(p)
@@ -106,7 +144,7 @@ def picker_standings(
         no_spread = 0
 
         for p in picker_picks:
-            outcome = grade_pick(p, results.get(p["game_id"]))
+            outcome = grade_pick(p, results.get(p["game_id"]), lines.get(p["game_id"]))
             if outcome == "no_spread":
                 no_spread += 1
                 continue

@@ -2,6 +2,11 @@ import type { GameLine, PickRecord, PickType } from '../types'
 
 /** The entry Reichert actually submits — an output, so it never votes in the consensus. */
 export const TEAM_PICKER = 'TEAM'
+/** Scratch profile for exercising the save path against real data. */
+export const TEST_PICKER = 'TEST'
+/** Neither of these is an opinion, so neither counts toward the field. */
+const NON_VOTING = new Set([TEAM_PICKER, TEST_PICKER])
+export const isVoter = (picker: string) => !NON_VOTING.has(picker)
 
 /** Pool points a pick is worth (#62): best bet 2, regular and MNF 1 each.
  *  Survivor and underdog are separate pools and never enter the spread consensus. */
@@ -78,7 +83,7 @@ export function spreadFor(game: GameLine, team: string) {
 export function findBlocs(picks: PickRecord[], threshold = 0.9, minGames = 10): string[][] {
   const byPicker = new Map<string, Map<string, string>>()
   for (const p of picks) {
-    if (!isAtsPick(p.pick_type) || p.picker === TEAM_PICKER) continue
+    if (!isAtsPick(p.pick_type) || !isVoter(p.picker)) continue
     const m = byPicker.get(p.picker) ?? new Map()
     m.set(p.game_id, p.team_picked)
     byPicker.set(p.picker, m)
@@ -152,7 +157,7 @@ export function buildConsensus(
   const rows = games.map((game): ConsensusRow => {
     const gamePicks = byGame.get(game.game_id) ?? []
     const team = gamePicks.find((p) => p.picker === TEAM_PICKER)
-    const field = gamePicks.filter((p) => p.picker !== TEAM_PICKER)
+    const field = gamePicks.filter((p) => isVoter(p.picker))
 
     const points = (t: string) =>
       field
@@ -251,7 +256,7 @@ const FIELD_BASE = 48.5
 export function buildAttachment(seasonPicks: PickRecord[]): Map<string, number> {
   const counts = new Map<string, number>()
   for (const p of seasonPicks) {
-    if (!isAtsPick(p.pick_type) || p.picker === TEAM_PICKER) continue
+    if (!isAtsPick(p.pick_type) || !isVoter(p.picker)) continue
     const key = `${p.picker}|${p.team_picked}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }

@@ -12,6 +12,7 @@ import {
   partRating,
   findBlocs,
   isAtsPick,
+  isVoter,
   scoreSide,
   spreadFor,
   TEAM_2025,
@@ -538,7 +539,7 @@ export default function Field() {
 
   // Who still owes us a slate. The call can't settle a game nobody has voted on.
   const missing = (config?.pickers ?? []).filter(
-    (p) => p !== TEAM_PICKER && !pickers.includes(p),
+    (p) => isVoter(p) && !pickers.includes(p),
   )
 
   const bandCounts = useMemo(() => {

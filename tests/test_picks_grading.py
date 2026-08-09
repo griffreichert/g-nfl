@@ -3,7 +3,12 @@ pending games, and standings aggregation."""
 
 import pytest
 
-from g_nfl.picks.grading import WIN_PROFIT, grade_pick, picker_standings
+from g_nfl.picks.grading import (
+    WIN_PROFIT,
+    grade_pick,
+    picker_standings,
+    resolve_lines,
+)
 
 # game: away DET @ home KC, spread +4 = KC favored by 4
 GAME = "2023_01_DET_KC"
@@ -151,3 +156,56 @@ class TestPickerStandings:
         standings = picker_standings(picks, {GAME: 7})
         assert standings[0]["no_spread"] == 1
         assert standings[0]["ats"]["wins"] == 0
+
+
+def test_resolve_lines_prefers_pool_and_falls_back_to_market():
+    lines = resolve_lines(
+        pool_rows=[{"game_id": "g1", "spread": 3.5}, {"game_id": "g3", "spread": None}],
+        market_rows=[
+            {"game_id": "g1", "spread": 7.0},
+            {"game_id": "g2", "spread": 1.0},
+            {"game_id": "g3", "spread": -2.0},
+        ],
+    )
+    # pool wins where we have it, market fills the rest, a null pool row
+    # does not blank out the market line behind it
+    assert lines == {"g1": 3.5, "g2": 1.0, "g3": -2.0}
+
+
+def test_pick_grades_on_the_resolved_line_not_the_stored_one():
+    # Someone picked on Tuesday, before the Friday pool line existed, so the
+    # row carries nothing. Grading off the row silently dropped this pick.
+    pick = {
+        "game_id": "2025_17_CAR_GB",
+        "team_picked": "GB",
+        "pick_type": "regular",
+        "spread": None,
+    }
+    assert grade_pick(pick, result=10.0) == "no_spread"
+    assert grade_pick(pick, result=10.0, line=3.5) == "win"
+    assert grade_pick(pick, result=10.0, line=13.5) == "loss"
+    assert grade_pick(pick, result=10.0, line=10.0) == "push"
+
+    # A stale line on the row never beats the one we resolved for the game.
+    stale = {**pick, "spread": 13.5}
+    assert grade_pick(stale, result=10.0, line=3.5) == "win"
+
+
+def test_standings_grade_against_supplied_lines():
+    picks = [
+        {
+            "picker": "TEST",
+            "game_id": "2025_17_CAR_GB",
+            "team_picked": "GB",
+            "pick_type": "regular",
+            "spread": None,
+            "week": 17,
+        }
+    ]
+    results = {"2025_17_CAR_GB": 10.0}
+    # no lines: ungradeable, exactly as before
+    assert picker_standings(picks, results)[0]["no_spread"] == 1
+    # with the pool line resolved, it grades
+    graded = picker_standings(picks, results, {"2025_17_CAR_GB": 3.5})[0]
+    assert graded["ats"]["wins"] == 1
+    assert graded["no_spread"] == 0
