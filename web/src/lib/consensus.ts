@@ -15,8 +15,9 @@ const WEIGHT: Partial<Record<PickType, number>> = { best_bet: 2, regular: 1, mnf
 export const isAtsPick = (t: PickType) => t in WEIGHT
 
 /**
- * Spread bands crossed with venue, from `scratch/recompute_board_constants.py`.
- * 2025, 677 graded ATS picks by the field over 225 distinct games.
+ * Spread bands crossed with venue. 2025, 677 graded ATS picks by the field over
+ * 225 distinct games. Rebuild method + full table in `notes/pick-analytics.md`
+ * ("Corrected board constants").
  *
  * These replace a set of per-pick rates that were badly overstated. The room
  * puts 3.0 votes on the average game, so a per-pick group-by counts the same
