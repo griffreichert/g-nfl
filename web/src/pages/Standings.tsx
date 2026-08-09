@@ -95,6 +95,9 @@ function TrendChart({ standings }: { standings: PickerStanding[] }) {
                 type="monotone"
                 dataKey={s.picker}
                 stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                // 8 pickers, 5 colours: on the second lap of the palette the
+                // line goes dashed so two people are never the same amber.
+                strokeDasharray={i >= CHART_COLORS.length ? '5 3' : undefined}
                 strokeWidth={2}
                 dot={false}
                 connectNulls
@@ -106,8 +109,14 @@ function TrendChart({ standings }: { standings: PickerStanding[] }) {
           {series.map((s, i) => (
             <span key={s.picker} className="flex items-center gap-1">
               <span
-                className="w-3 h-0.5 inline-block"
-                style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                className="inline-block h-0.5 w-3"
+                style={
+                  i >= CHART_COLORS.length
+                    ? {
+                        backgroundImage: `repeating-linear-gradient(to right, ${CHART_COLORS[i % CHART_COLORS.length]} 0 4px, transparent 4px 7px)`,
+                      }
+                    : { background: CHART_COLORS[i % CHART_COLORS.length] }
+                }
               />
               {s.picker}
             </span>
@@ -168,10 +177,10 @@ function StandingsTable({ standings, breakEven }: { standings: PickerStanding[];
       }),
       ...(
         [
-          ['best_bet', '⭐️ Best bet'],
-          ['survivor', '💀 Survivor'],
-          ['underdog', '🐶 Dog'],
-          ['mnf', '🌙 MNF'],
+          ['best_bet', 'Best bet'],
+          ['survivor', 'Survivor'],
+          ['underdog', 'Dog'],
+          ['mnf', 'MNF'],
         ] as const
       ).map(([type, header]) =>
         col.accessor((r) => r.by_type[type], {
@@ -248,13 +257,14 @@ export default function Standings() {
 
   const breakEven = data ? data.break_even_pct : 110 / 210
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-3">🏆 Standings</h1>
+  const empty = !error && data?.season === season && data.standings.length === 0
 
-      <div className="flex gap-2 items-center mb-4">
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Standings</h1>
         <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger className="w-28">
+          <SelectTrigger size="sm" className="w-24">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -265,17 +275,31 @@ export default function Standings() {
             ))}
           </SelectContent>
         </Select>
-        {data?.graded_through_week != null && (
-          <span className="text-sm text-muted-foreground">
-            results through week {data.graded_through_week}
-          </span>
-        )}
       </div>
 
-      {error && <p className="text-destructive">{error}</p>}
-      {!error && data?.season !== season && <p>Loading…</p>}
+      {data?.graded_through_week != null && (
+        <p className="text-sm text-muted-foreground">
+          Results through week {data.graded_through_week}.
+        </p>
+      )}
 
-      {!error && data?.season === season && (
+      {/* Results live in a table the backend may not have yet (#65). An empty
+          board is the honest answer, not a stack trace. */}
+      {(error || empty) && (
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <p className="font-medium">No graded results yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Standings appear once game results are loaded for {season}.
+          </p>
+          {error && <p className="mt-3 text-xs text-muted-foreground">{error}</p>}
+        </div>
+      )}
+      {!error && !data && <p className="text-muted-foreground">Loading…</p>}
+      {!error && data && data.season !== season && (
+        <p className="text-muted-foreground">Loading…</p>
+      )}
+
+      {!error && !empty && data?.season === season && (
         <>
           <TrendChart standings={data.standings} />
           <StandingsTable standings={data.standings} breakEven={breakEven} />

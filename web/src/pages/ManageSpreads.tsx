@@ -2,13 +2,21 @@ import { useEffect, useState } from 'react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine } from '../types'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export default function ManageSpreads() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [games, setGames] = useState<GameLine[]>([])
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [status, setStatus] = useState<string | null>(null)
+  const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
 
   const load = () => {
     if (season === null || week === null) return
@@ -17,66 +25,109 @@ export default function ManageSpreads() {
       setDrafts(Object.fromEntries(g.map((x) => [x.game_id, x.pool_spread?.toString() ?? ''])))
     })
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(load, [season, week])
 
   const saveOne = async (g: GameLine) => {
     const raw = drafts[g.game_id]
     const spread = Number(raw)
     if (raw === '' || Number.isNaN(spread)) {
-      setStatus(`Invalid spread for ${g.away_team} @ ${g.home_team}`)
+      setStatus({ kind: 'err', msg: `Invalid spread for ${g.away_team} @ ${g.home_team}` })
       return
     }
     if (season === null || week === null) return
     try {
       await api.updatePoolSpread(season, week, g.game_id, spread)
-      setStatus(`✅ Saved ${g.away_team} @ ${g.home_team}: ${fmtSpread(spread)}`)
+      setStatus({ kind: 'ok', msg: `Saved ${g.away_team} @ ${g.home_team}: ${fmtSpread(spread)}` })
       load()
     } catch (e) {
-      setStatus(`❌ ${e}`)
+      setStatus({ kind: 'err', msg: String(e) })
     }
   }
 
-  if (configError) return <p className="text-red-600">Failed to load config: {configError}</p>
+  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
   if (!config || season === null || week === null) return <p>Loading…</p>
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-3">⚙️ Manage Pool Spreads</h1>
-
-      <div className="flex gap-2 mb-4">
-        <select value={season} onChange={(e) => setSeason(Number(e.target.value))} className="border rounded-md px-2 py-1.5 bg-white">
-          {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={week} onChange={(e) => setWeek(Number(e.target.value))} className="border rounded-md px-2 py-1.5 bg-white">
-          {weeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
-        </select>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Lines</h1>
+        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
+          <SelectTrigger size="sm" className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {seasons.map((s) => (
+              <SelectItem key={s} value={String(s)}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {weeks.map((w) => (
+              <SelectItem key={w} value={String(w)}>
+                Week {w}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {status && <p className="text-sm bg-gray-100 rounded-md px-3 py-2 mb-3">{status}</p>}
+      <p className="text-sm text-muted-foreground">
+        Pool spread is what picks grade against. Blank means the market line stands.
+      </p>
 
-      <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
-        {games.map((g) => (
-          <div key={g.game_id} className="flex items-center gap-2 px-3 py-2 text-sm">
-            <img src={teamLogo(g.away_team)} className="w-6 h-6" alt="" />
-            <span className="flex-1 whitespace-nowrap">
-              {g.away_team} @ {g.home_team}
-              <span className="text-gray-500 ml-2 hidden sm:inline">market {fmtSpread(g.market_spread)}</span>
-            </span>
-            <input
-              type="number"
-              step="0.5"
-              value={drafts[g.game_id] ?? ''}
-              placeholder="pool"
-              onChange={(e) => setDrafts((d) => ({ ...d, [g.game_id]: e.target.value }))}
-              className="border rounded-md px-2 py-1 w-20 text-right"
-            />
-            <button onClick={() => saveOne(g)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md">
-              Save
-            </button>
-            <img src={teamLogo(g.home_team)} className="w-6 h-6" alt="" />
-          </div>
-        ))}
+      {status && (
+        <p
+          className={`rounded-md px-3 py-2 text-sm ${
+            status.kind === 'ok' ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
+          }`}
+        >
+          {status.msg}
+        </p>
+      )}
+
+      <div className="divide-y divide-border rounded-lg border border-border bg-card">
+        {games.map((g) => {
+          const saved = g.pool_spread?.toString() ?? ''
+          const dirty = (drafts[g.game_id] ?? '') !== saved
+          return (
+            <div key={g.game_id} className="flex items-center gap-2 px-2 py-2 text-sm sm:px-3">
+              <img src={teamLogo(g.away_team)} className="size-6 shrink-0" alt="" />
+              <span className="flex-1 truncate whitespace-nowrap">
+                {g.away_team} @ {g.home_team}
+                <span className="tabular ml-2 hidden text-muted-foreground sm:inline">
+                  market {fmtSpread(g.market_spread)}
+                </span>
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                inputMode="decimal"
+                value={drafts[g.game_id] ?? ''}
+                placeholder={fmtSpread(g.market_spread)}
+                onChange={(e) => setDrafts((d) => ({ ...d, [g.game_id]: e.target.value }))}
+                aria-label={`Pool spread for ${g.away_team} at ${g.home_team}`}
+                className="tabular h-8 w-20 rounded-md border border-input bg-transparent px-2 text-right text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+              {/* Only the row you actually changed offers a save — 16 live green
+                  buttons is noise, and it makes an unsaved edit obvious. */}
+              <Button
+                size="sm"
+                variant={dirty ? 'default' : 'outline'}
+                disabled={!dirty}
+                onClick={() => saveOne(g)}
+              >
+                Save
+              </Button>
+              <img src={teamLogo(g.home_team)} className="size-6 shrink-0" alt="" />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
