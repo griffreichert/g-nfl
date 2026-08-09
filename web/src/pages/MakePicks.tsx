@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface GamePick {
   team_picked: string
@@ -104,7 +113,8 @@ export default function MakePicks() {
     return { favorites: favs, underdogs: dogs }
   }, [games, config])
 
-  // Summary text matching the Streamlit app's copy-paste format
+  // Summary text matching the Streamlit app's copy-paste format. The emoji here
+  // are the message body pasted into the pool chat, not app chrome — leave them.
   const summary = useMemo(() => {
     if (!picker || week === null) return ''
     const lines: string[] = []
@@ -156,7 +166,7 @@ export default function MakePicks() {
     try {
       const res = await api.savePicks(season, week, picker, payload)
       await navigator.clipboard.writeText(summary).catch(() => {})
-      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks 📋 copied to clipboard` })
+      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks — summary copied to clipboard` })
     } catch (e) {
       setStatus({ kind: 'err', msg: `Failed to save: ${e}` })
     }
@@ -170,7 +180,7 @@ export default function MakePicks() {
     setStatus(null)
   }
 
-  if (configError) return <p className="text-red-600">Failed to load config: {configError}</p>
+  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
   if (!config || season === null || week === null) return <p>Loading…</p>
 
   const regularCount = Object.keys(picks).length
@@ -183,24 +193,25 @@ export default function MakePicks() {
     const otherSelected = isMnfGame ? mnf !== null && mnf !== team : !!pick && pick.team_picked !== team
     const disabled = !picker || otherSelected || (!isMnfGame && !selected && maxReached)
     const isBest = !isMnfGame && selected && pick?.pick_type === 'best_bet'
-    const label = `${isMnfGame ? '🌙 ' : isBest ? '⭐ ' : ''}${team}`
-    const cls = selected
-      ? isMnfGame
-        ? 'bg-purple-500 text-white'
-        : isBest
-          ? 'bg-violet-400 text-white font-bold'
-          : 'bg-green-600 text-white'
-      : disabled
-        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-        : 'bg-white border border-gray-300 hover:bg-gray-100'
+    // Amber means picked, violet means best bet — the same two accents the rest
+    // of the app uses. Never green/red: those are reserved for graded results.
+    const tone = !selected
+      ? ''
+      : isBest
+        ? 'bg-bb text-primary-foreground hover:bg-bb/90'
+        : 'bg-pick text-primary-foreground hover:bg-pick/90'
     return (
-      <button
+      <Button
+        variant={selected ? 'default' : 'outline'}
+        size="sm"
         onClick={() => clickTeam(g, team)}
         disabled={disabled}
-        className={`w-full px-2 py-1.5 rounded-md text-xs sm:text-sm whitespace-nowrap ${cls}`}
+        className={`w-full font-medium ${tone}`}
       >
-        {label}
-      </button>
+        {isMnfGame && selected && <Moon className="size-3.5" />}
+        {isBest && <Star className="size-3.5 fill-current" />}
+        {team}
+      </Button>
     )
   }
 
@@ -208,104 +219,173 @@ export default function MakePicks() {
     item: { team: string; opp: string; spread: number; id: string },
     selected: string | null,
     setSelected: (t: string | null) => void,
-    emoji: string
-  ) => (
-    <div key={`${item.id}_${item.team}`} className="flex items-center gap-2 py-1">
-      <img src={teamLogo(item.team)} className="w-7 h-7" alt="" />
-      <span className="flex-1 text-sm">
-        <b>{item.team}</b> ({fmtSpread(item.spread)}) vs {item.opp}
-      </span>
-      <button
-        onClick={() => setSelected(selected === item.team ? null : item.team)}
-        disabled={!picker}
-        className={`px-3 py-1 rounded-md text-sm ${
-          selected === item.team
-            ? 'bg-green-600 text-white'
-            : 'bg-white border border-gray-300 hover:bg-gray-100'
-        }`}
-      >
-        {selected === item.team ? `${emoji} ${item.team}` : item.team}
-      </button>
-    </div>
+    Icon: typeof Skull
+  ) => {
+    const on = selected === item.team
+    return (
+      <div key={`${item.id}_${item.team}`} className="flex items-center gap-2 py-1">
+        <img src={teamLogo(item.team)} className="size-6 shrink-0" alt="" />
+        <span className="flex-1 truncate text-sm">
+          <span className="font-semibold">{item.team}</span>{' '}
+          <span className="tabular text-muted-foreground">{fmtSpread(item.spread)}</span>{' '}
+          <span className="text-muted-foreground">vs {item.opp}</span>
+        </span>
+        <Button
+          variant={on ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setSelected(on ? null : item.team)}
+          disabled={!picker}
+          className={on ? 'w-24 bg-pick text-primary-foreground hover:bg-pick/90' : 'w-24'}
+        >
+          {on && <Icon className="size-3.5" />}
+          {on ? item.team : 'Pick'}
+        </Button>
+      </div>
+    )
+  }
+
+  const slot = (label: string, done: boolean) => (
+    <span className={done ? 'text-pick' : 'text-muted-foreground'}>
+      {done ? '●' : '○'} {label}
+    </span>
   )
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-3">🎯 Make Picks</h1>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        <select value={season} onChange={(e) => setSeason(Number(e.target.value))} className="border rounded-md px-2 py-1.5 bg-white">
-          {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={week} onChange={(e) => setWeek(Number(e.target.value))} className="border rounded-md px-2 py-1.5 bg-white">
-          {weeks.map((w) => <option key={w} value={w}>Week {w}</option>)}
-        </select>
-        <select value={picker} onChange={(e) => setPicker(e.target.value)} className="border rounded-md px-2 py-1.5 bg-white flex-1 min-w-32">
-          <option value="">👤 Choose your name…</option>
-          {config.pickers.map((p) => <option key={p} value={p}>👤 {p}</option>)}
-        </select>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Picks</h1>
+        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
+          <SelectTrigger size="sm" className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {seasons.map((s) => (
+              <SelectItem key={s} value={String(s)}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
+          <SelectTrigger size="sm" className="w-28">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {weeks.map((w) => (
+              <SelectItem key={w} value={String(w)}>
+                Week {w}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={picker || undefined} onValueChange={setPicker}>
+          <SelectTrigger size="sm" className="w-full sm:w-40">
+            <SelectValue placeholder="Your name" />
+          </SelectTrigger>
+          <SelectContent>
+            {config.pickers.map((p) => (
+              <SelectItem key={p} value={p}>
+                {p}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {status && (
-        <p className={`mb-3 text-sm rounded-md px-3 py-2 ${status.kind === 'ok' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+        <p
+          className={`rounded-md px-3 py-2 text-sm ${
+            status.kind === 'ok' ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
+          }`}
+        >
           {status.msg}
         </p>
       )}
 
-      {!picker && <p className="text-amber-700 bg-amber-100 rounded-md px-3 py-2 mb-3">👆 Select your name to start making picks</p>}
+      {!picker && (
+        <p className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+          Pick your name above to start.
+        </p>
+      )}
 
       {loading ? (
-        <p>Loading games…</p>
+        <p className="text-muted-foreground">Loading games…</p>
       ) : (
         <>
-          <p className="text-sm text-gray-600 mb-2">
-            <b>{regularCount}/{MAX_REGULAR_PICKS}</b> regular • {survivor ? '✅' : '⬜'} survivor • {underdog ? '✅' : '⬜'} underdog • {mnf ? '✅' : '⬜'} MNF
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <span className="tabular font-semibold">
+              {regularCount}/{MAX_REGULAR_PICKS}
+            </span>
+            <span className="text-muted-foreground">regular</span>
+            {slot('survivor', !!survivor)}
+            {slot('underdog', !!underdog)}
+            {slot('MNF', !!mnf)}
+          </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+          <div className="divide-y divide-border rounded-lg border border-border bg-card">
             {games.map((g) => (
-              <div key={g.game_id} className="grid grid-cols-[1.75rem_1fr_auto_1fr_1.75rem] items-center gap-1.5 sm:gap-2 px-2 py-2">
-                <img src={teamLogo(g.away_team)} className="w-7 h-7" alt="" />
+              <div
+                key={g.game_id}
+                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+              >
+                <img src={teamLogo(g.away_team)} className="size-6" alt="" />
                 {teamButton(g, g.away_team)}
-                <span className="text-xs sm:text-sm text-center whitespace-nowrap px-1">
-                  <b>{fmtSpread(g.pool_spread)}</b>
-                  <span className="hidden sm:inline"> / {fmtSpread(g.market_spread)}</span>
-                  <span className="hidden md:inline"> / {g.market_total ?? 'N/A'}</span>
+                <span className="tabular whitespace-nowrap px-1 text-center text-xs sm:text-sm">
+                  <span className="font-semibold">{fmtSpread(g.pool_spread)}</span>
+                  <span className="hidden text-muted-foreground sm:inline">
+                    {' '}
+                    / {fmtSpread(g.market_spread)}
+                  </span>
+                  <span className="hidden text-muted-foreground md:inline">
+                    {' '}
+                    / {g.market_total ?? '—'}
+                  </span>
                 </span>
                 {teamButton(g, g.home_team)}
-                <img src={teamLogo(g.home_team)} className="w-7 h-7" alt="" />
+                <img src={teamLogo(g.home_team)} className="size-6" alt="" />
               </div>
             ))}
           </div>
 
-          <h2 className="text-lg font-bold mt-6 mb-1">💀 Survivor Pool</h2>
-          <p className="text-sm text-gray-600 mb-2">Pick ONE favorite for the week</p>
-          {config.survivor_used_teams.length > 0 && (
-            <p className="text-xs text-gray-500 mb-2">🚫 Already used: {[...config.survivor_used_teams].sort().join(', ')}</p>
-          )}
-          <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
-            {favorites.filter((f) => !survivor || f.team === survivor).map((f) => poolRow(f, survivor, setSurvivor, '💀'))}
+          <div className="rounded-lg border border-border bg-card p-3">
+            <h2 className="flex items-center gap-1.5 text-sm font-bold">
+              <Skull className="size-4" /> Survivor
+            </h2>
+            <p className="mb-2 text-xs text-muted-foreground">
+              One favourite for the week.
+              {config.survivor_used_teams.length > 0 &&
+                ` Already used: ${[...config.survivor_used_teams].sort().join(', ')}.`}
+            </p>
+            {favorites
+              .filter((f) => !survivor || f.team === survivor)
+              .map((f) => poolRow(f, survivor, setSurvivor, Skull))}
           </div>
 
-          <h2 className="text-lg font-bold mt-6 mb-1">🐶 Underdog Pool</h2>
-          <p className="text-sm text-gray-600 mb-2">Pick ONE underdog for the week</p>
-          <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
-            {underdogs.filter((d) => !underdog || d.team === underdog).map((d) => poolRow(d, underdog, setUnderdog, '🐶'))}
+          <div className="rounded-lg border border-border bg-card p-3">
+            <h2 className="flex items-center gap-1.5 text-sm font-bold">
+              <Dog className="size-4" /> Underdog
+            </h2>
+            <p className="mb-2 text-xs text-muted-foreground">One underdog for the week.</p>
+            {underdogs
+              .filter((d) => !underdog || d.team === underdog)
+              .map((d) => poolRow(d, underdog, setUnderdog, Dog))}
           </div>
 
           {summary && (
-            <>
-              <h2 className="text-lg font-bold mt-6 mb-2">📋 Pick Summary</h2>
-              <pre className="bg-gray-900 text-gray-100 rounded-lg p-3 text-sm whitespace-pre-wrap">{summary}</pre>
-              <div className="flex gap-3 mt-3">
-                <button onClick={save} className="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-md">
-                  💾 Save Picks
-                </button>
-                <button onClick={clearAll} className="bg-white border border-gray-300 hover:bg-gray-100 px-4 py-2 rounded-md">
-                  🗑️ Clear All
-                </button>
+            <div className="rounded-lg border border-border bg-card p-3">
+              <h2 className="mb-2 text-sm font-bold">Summary</h2>
+              <pre className="overflow-x-auto rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">
+                {summary}
+              </pre>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" onClick={save}>
+                  Save picks
+                </Button>
+                <Button size="sm" variant="outline" onClick={clearAll}>
+                  <Trash2 className="size-3.5" /> Clear
+                </Button>
               </div>
-            </>
+            </div>
           )}
         </>
       )}
