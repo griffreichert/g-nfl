@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
+import { WORST_CELL, isWorstCell } from '@/lib/consensus'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
 import { Button } from '@/components/ui/button'
@@ -95,8 +96,13 @@ export default function MakePicks() {
           if (!existing && Object.keys(cur).length >= MAX_REGULAR_PICKS) return cur
           next[game.game_id] = { team_picked: team, pick_type: 'regular' }
         } else if (existing.pick_type === 'regular') {
-          const hasBestBet = Object.values(cur).some((p) => p.pick_type === 'best_bet')
-          next[game.game_id] = { team_picked: team, pick_type: hasBestBet ? 'regular' : 'best_bet' }
+          // Promote, demoting whoever held the slot -- the same swap the board
+          // does in cycleSlot(). Previously this wrote 'regular' back over
+          // itself whenever a best bet existed, so the side could not be
+          // promoted OR dropped: the tap did nothing at all.
+          const incumbent = Object.entries(cur).find(([, p]) => p.pick_type === 'best_bet')
+          if (incumbent) next[incumbent[0]] = { ...incumbent[1], pick_type: 'regular' }
+          next[game.game_id] = { team_picked: team, pick_type: 'best_bet' }
         } else {
           delete next[game.game_id]
         }
@@ -207,6 +213,25 @@ export default function MakePicks() {
 
   const mnfPickedHere = (g: GameLine) =>
     mnf !== null && (mnf === g.away_team || mnf === g.home_team)
+
+  /**
+   * The board has a rating to lean on; this page has nothing, and this page is
+   * where most picks get made. One flag, on the one cell that cost us real
+   * money in 2025, shown only once the pick is on the board so it reads as a
+   * second thought rather than a lecture.
+   */
+  const worstCellWarning = (g: GameLine) => {
+    const picked = g.is_mnf ? mnf : picks[g.game_id]?.team_picked
+    if (picked !== g.home_team) return null
+    if (!isWorstCell(effectiveSpread(g), true)) return null
+    return (
+      <p className="col-span-6 pt-1 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">Home {WORST_CELL.band}.</span>{' '}
+        Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} games, against a
+        league that covered {WORST_CELL.league}% here.
+      </p>
+    )
+  }
 
   const regularCount = Object.keys(picks).length
   const maxReached = regularCount >= MAX_REGULAR_PICKS
@@ -394,6 +419,7 @@ export default function MakePicks() {
                 >
                   <ChevronRight className="size-4" />
                 </Link>
+                {worstCellWarning(g)}
                 {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
                   <div className="col-span-6 pt-1">
                     {noteInput(

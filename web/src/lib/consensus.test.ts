@@ -8,6 +8,7 @@ import {
   byContention,
   findBlocs,
   isHomer,
+  isWorstCell,
   partRating,
   scoreSide,
   toRating,
@@ -305,4 +306,17 @@ test('a full entry refuses a new game but still allows swaps', () => {
   assert.deepEqual(cycleSlot(slate, 'r0', 'OTHER', false), {
     r0: { team: 'OTHER', type: 'regular' },
   })
+})
+
+test('isWorstCell fires only on home sides in the 3-7 band', () => {
+  // spread is home-perspective, so sign says who is favoured, not who we took
+  assert.ok(isWorstCell(5.5, true))     // home laying 5.5
+  assert.ok(isWorstCell(-5.5, true))    // home getting 5.5 — same band
+  assert.ok(!isWorstCell(5.5, false))   // road side of the same game is fine
+  assert.ok(!isWorstCell(2.5, true))    // close line
+  assert.ok(!isWorstCell(13.5, true))   // big line, a different cell
+  assert.ok(!isWorstCell(null, true))   // no line, nothing to say
+  // boundaries: 3 belongs to the close band, 7 to this one
+  assert.ok(!isWorstCell(3, true))
+  assert.ok(isWorstCell(7, true))
 })

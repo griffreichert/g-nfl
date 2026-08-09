@@ -53,6 +53,22 @@ export const BAND_VENUE: Record<string, { home: number; road: number }> = {
 
 export type Band = (typeof BANDS)[number]
 
+/**
+ * The single worst thing we buy: a home side laying or getting 3-7.
+ * 36.6% over 71 games in 2025 (z = -2.66), against a league that covered
+ * 44.6% in the same band — so it is our side selection, not the season.
+ * Worth -61 units on its own, which is most of what the room lost.
+ *
+ * Exposed as its own predicate rather than left implicit in the rating,
+ * because the pick pages have no rating on them and this is where the
+ * money actually leaves.
+ */
+export const WORST_CELL = { band: '3-7', pct: 36.6, games: 71, league: 44.6 } as const
+
+/** `spread` is home-perspective, the nflverse convention. */
+export const isWorstCell = (spread: number | null, pickedHome: boolean) =>
+  pickedHome && spread !== null && Math.abs(spread) > 3 && Math.abs(spread) <= 7
+
 export const bandFor = (spread: number | null): Band | null =>
   spread === null ? null : (BANDS.find((b) => Math.abs(spread) < b.max) ?? BANDS[BANDS.length - 1])
 
