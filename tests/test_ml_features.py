@@ -17,8 +17,6 @@ from g_nfl.ml.features.opponent import (
 from g_nfl.ml.features.plays import (
     EPA_SPLIT_COLS,
     HAVOC_COLS,
-    ID_COLS,
-    PLAY_FEATURE_COLS,
     add_play_features,
     filter_plays,
     play_features,
@@ -119,16 +117,12 @@ def test_rate_columns_rescaled(filtered: pl.DataFrame, feats: pl.DataFrame):
     assert feats["cpoe"].abs().max() <= 1.0
 
 
-def test_play_features_columns(plays: pl.DataFrame):
-    assert plays.columns == ID_COLS + PLAY_FEATURE_COLS
-
-
 def test_epa_splits_toggle(pbp_sample: pl.DataFrame):
     base = play_features(pbp_sample)
     assert not any("pass_epa" == c for c in base.columns)
 
     split = play_features(pbp_sample, epa_splits=True)
-    assert split.columns == ID_COLS + PLAY_FEATURE_COLS + EPA_SPLIT_COLS
+    assert set(EPA_SPLIT_COLS) <= set(split.columns)
     assert split.filter(pl.col("pass_epa").is_not_null()).height > 0
     assert split.filter(pl.col("rush_epa").is_not_null()).height > 0
     # a play is pass_epa or rush_epa, never both

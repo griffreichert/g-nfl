@@ -81,33 +81,6 @@ def qb_game_history(pbp: pl.DataFrame, half_life: float = QB_HALF_LIFE) -> pl.Da
     ).select("passer_player_id", "game_id", *QB_COLS)
 
 
-def _team_epa_ewm(pbp: pl.DataFrame, half_life: float) -> pl.DataFrame:
-    """Per (team, game) lagged EWMA of *whoever* dropped back for the team.
-
-    Same machinery as `qb_game_history` but grouped on ``posteam`` not the
-    passer — a team-grain QB-production baseline, lagged one game. The
-    downgrade feature is the starter's personal EWMA minus this: ~0 when
-    the usual QB plays, large-negative when a backup steps in.
-    """
-    db = (
-        _dropbacks(pbp)
-        .select("posteam", "game_id", "game_date", "play_id", "qb_epa")
-        .sort("posteam", "game_date", "play_id")
-        .with_columns(
-            ewm=pl.col("qb_epa")
-            .ewm_mean(half_life=half_life, ignore_nulls=True)
-            .over("posteam")
-        )
-    )
-    return (
-        db.group_by("posteam", "game_id", maintain_order=True)
-        .agg(game_date=pl.first("game_date"), team_qb_epa_ewm=pl.last("ewm"))
-        .sort("posteam", "game_date")
-        .with_columns(pl.col("team_qb_epa_ewm").shift(1).over("posteam"))
-        .select("posteam", "game_id", "team_qb_epa_ewm")
-    )
-
-
 def starters(pbp: pl.DataFrame) -> pl.DataFrame:
     """Each team's starting QB per game = the most-dropbacks passer."""
     return (
@@ -148,42 +121,4 @@ def add_qb_context(
         matrix.join(away, on=["game_id", "away_team"], how="left")
         .join(home, on=["game_id", "home_team"], how="left")
         .with_columns(pl.col(vol).fill_null(0))
-    )
-
-
-def add_qb_downgrade(
-    matrix: pl.DataFrame, pbp: pl.DataFrame, half_life: float = QB_HALF_LIFE
-) -> pl.DataFrame:
-    """Attach ``home_/away_qb_downgrade`` = starter EWMA minus team baseline.
-
-    Near 0 when the team's usual QB starts; large-negative when a weaker
-    backup starts (injury / mid-season change) and positive when an
-    upgrade starts. Isolates the player-grain *delta* the team aggregates
-    miss, instead of the (redundant) absolute starter level. Cold start
-    (no starter history) leaves it null; xgboost handles it.
-    """
-    hist = qb_game_history(pbp, half_life)
-    team = _team_epa_ewm(pbp, half_life)
-    team_game = (
-        starters(pbp)
-        .join(
-            hist.select("passer_player_id", "game_id", "qb_epa_ewm"),
-            on=["passer_player_id", "game_id"],
-            how="left",
-        )
-        .join(team, on=["posteam", "game_id"], how="left")
-        .select(
-            "game_id",
-            "posteam",
-            qb_downgrade=pl.col("qb_epa_ewm") - pl.col("team_qb_epa_ewm"),
-        )
-    )
-    away = team_game.rename(
-        {"posteam": "away_team", "qb_downgrade": "away_qb_downgrade"}
-    )
-    home = team_game.rename(
-        {"posteam": "home_team", "qb_downgrade": "home_qb_downgrade"}
-    )
-    return matrix.join(away, on=["game_id", "away_team"], how="left").join(
-        home, on=["game_id", "home_team"], how="left"
     )
