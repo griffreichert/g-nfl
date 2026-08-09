@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Cville 16 palette (#62). Amber means "picked", violet means "best bet", and
+  Cville 16 palette (#62). Blue means "picked", purple means "best bet", and
   green/red/grey are reserved for win/loss/push so an accent can never be misread
   as a graded result. Team colour only ever appears inside a logo tile.
 */
@@ -19,34 +19,34 @@
   --card-foreground: #16181c;
   --popover: #ffffff;
   --popover-foreground: #16181c;
-  --primary: #b3600a;
+  --primary: #1a5fd0;
   --primary-foreground: #ffffff;
   --secondary: #edebe6;
   --secondary-foreground: #16181c;
   --muted: #edebe6;
   --muted-foreground: #5c5f66;
-  --accent: #f7e7cc;
-  --accent-foreground: #b3600a;
+  --accent: #dce8fb;
+  --accent-foreground: #1a5fd0;
   --destructive: #b3341f;
   --border: #ddd9d1;
   --input: #ddd9d1;
-  --ring: #b3600a;
+  --ring: #1a5fd0;
 
   /* pool semantics */
-  --pick: #b3600a;
-  --pick-soft: #f7e7cc;
-  --bb: #6b4ea8;
-  --bb-soft: #ebe3f7;
+  --pick: #1a5fd0;
+  --pick-soft: #dce8fb;
+  --bb: #8a3fb0;
+  --bb-soft: #f2e6f9;
   --win: #1e7a4c;
   --loss: #b3341f;
   --push: #8a8177;
   --faint: #8a8579;
 
-  --chart-1: #b3600a;
-  --chart-2: #6b4ea8;
-  --chart-3: #0e7c66;
-  --chart-4: #2f6ba8;
-  --chart-5: #a03a63;
+  --chart-1: #1a5fd0;
+  --chart-2: #0e7c66;
+  --chart-3: #a03a63;
+  --chart-4: #7a6a1f;
+  --chart-5: #8a3fb0;
 }
 
 .dark {
@@ -56,33 +56,33 @@
   --card-foreground: #efede8;
   --popover: #1c1f24;
   --popover-foreground: #efede8;
-  --primary: #f0a93f;
+  --primary: #6aa8f5;
   --primary-foreground: #14161a;
   --secondary: #23272e;
   --secondary-foreground: #efede8;
   --muted: #23272e;
   --muted-foreground: #9ba0a8;
-  --accent: #3a2c14;
-  --accent-foreground: #f0a93f;
+  --accent: #16263f;
+  --accent-foreground: #6aa8f5;
   --destructive: #f0705a;
   --border: #2e333b;
   --input: #2e333b;
-  --ring: #f0a93f;
+  --ring: #6aa8f5;
 
-  --pick: #f0a93f;
-  --pick-soft: #3a2c14;
-  --bb: #b49ce8;
-  --bb-soft: #2a2340;
+  --pick: #6aa8f5;
+  --pick-soft: #16263f;
+  --bb: #cb9be8;
+  --bb-soft: #2e2340;
   --win: #3fbf7f;
   --loss: #f0705a;
   --push: #7e858e;
   --faint: #6e747c;
 
-  --chart-1: #f0a93f;
-  --chart-2: #b49ce8;
-  --chart-3: #4fc3a1;
-  --chart-4: #7fb2e5;
-  --chart-5: #e58bb0;
+  --chart-1: #6aa8f5;
+  --chart-2: #4fc3a1;
+  --chart-3: #e58bb0;
+  --chart-4: #c8b45c;
+  --chart-5: #cb9be8;
 }
 
 @theme inline {

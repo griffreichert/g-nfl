@@ -96,7 +96,7 @@ function TrendChart({ standings }: { standings: PickerStanding[] }) {
                 dataKey={s.picker}
                 stroke={CHART_COLORS[i % CHART_COLORS.length]}
                 // 8 pickers, 5 colours: on the second lap of the palette the
-                // line goes dashed so two people are never the same amber.
+                // line goes dashed so two people are never the same blue.
                 strokeDasharray={i >= CHART_COLORS.length ? '5 3' : undefined}
                 strokeWidth={2}
                 dot={false}
