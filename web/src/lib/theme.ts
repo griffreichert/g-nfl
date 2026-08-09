@@ -13,7 +13,7 @@ function apply(theme: Theme) {
 }
 
 export function useTheme() {
-  const [theme, set] = useState<Theme>(() => (localStorage.getItem(KEY) as Theme | null) ?? 'system')
+  const [theme, set] = useState<Theme>(() => (localStorage.getItem(KEY) as Theme | null) ?? 'dark')
 
   useEffect(() => {
     apply(theme)
