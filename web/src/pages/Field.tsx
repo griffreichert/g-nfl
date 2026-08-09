@@ -1,25 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Star } from 'lucide-react'
+import { Check, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
-import type { GameLine, PickRecord } from '../types'
+import type { GameLine, Pick, PickRecord } from '../types'
 import {
   BANDS,
   bestSide,
-  BREAK_EVEN,
   buildAttachment,
   buildConsensus,
   byScore,
+  partRating,
   findBlocs,
+  isAtsPick,
   scoreSide,
   spreadFor,
+  TEAM_2025,
   TEAM_PICKER,
   type ConsensusRow,
   type Score,
   type SidePick,
 } from '@/lib/consensus'
-import SplitBar from '@/components/SplitBar'
 import BandChart from '@/components/BandChart'
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -29,6 +31,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+
+/**
+ * The entry Reichert submits each week: one best bet at 2pts, five regulars at
+ * 1pt, and the Monday game. All on distinct games (notes/SCORING.md), which one
+ * pick per game gives us for free.
+ */
+type SlotType = 'best_bet' | 'regular' | 'mnf'
+type SlotPick = { team: string; type: SlotType }
+type Slate = Record<string, SlotPick>
+/** A room decision that overrules the proposal; null means "we took this off". */
+type Overrides = Record<string, SlotPick | null>
+
+const MAX_REGULAR = 5
 
 const pickerOrder = (a: string, b: string) =>
   a === TEAM_PICKER ? 1 : b === TEAM_PICKER ? -1 : a.localeCompare(b)
@@ -69,53 +84,89 @@ function toChips(picks: SidePick[], blocs: string[][]) {
   return out
 }
 
-/** Expected ATS% for a side, and how far that sits from the -110 break-even. */
-function ScorePill({ score }: { score: Score }) {
-  const good = score.total >= BREAK_EVEN
+/**
+ * 0-10, where 5 is the -110 break-even. Deliberately not a percentage: the
+ * numbers behind it are one season of hit rates and a printed rate reads like a
+ * win probability, which it is not.
+ */
+function Rating({ score }: { score: Score }) {
+  const good = score.rating >= 5
   return (
     <span
-      className={`tabular rounded px-1.5 py-0.5 text-xs font-semibold ${
+      className={`tabular rounded px-1.5 py-0.5 text-sm font-bold ${
         good ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
       }`}
       title={score.parts
-        .map((p) => `${p.label}: ${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}${p.measured ? '' : ' (judgement)'}`)
+        .map(
+          (p) =>
+            `${p.label}: ${partRating(p.value, score.slope) > 0 ? '+' : ''}${partRating(p.value, score.slope).toFixed(1)}${
+              p.measured ? '' : ' (judgement)'
+            }`,
+        )
         .join('\n')}
     >
-      {score.total.toFixed(1)}%
+      {score.rating.toFixed(1)}
     </span>
   )
+}
+
+/**
+ * Why this side rates where it does, in words — replacing the band tag and the
+ * split count. Home/road is left out: it moves every game and tells the room
+ * nothing it can act on. The judgement flags stay in, because a homer on a
+ * team he's already taken five times is precisely what the call is for.
+ */
+const reasonsFor = (score: Score) =>
+  score.parts
+    .filter((p) => p.label !== 'home side' && p.label !== 'road side')
+    .map((p) => p.label)
+
+const SLOT_LABEL: Record<SlotType, string> = {
+  best_bet: 'Best bet',
+  regular: 'Regular',
+  mnf: 'MNF',
 }
 
 function Side({
   team,
   spread,
   picks,
-  isTeamPick,
-  lead,
   score,
   blocs,
+  slot,
+  disabled,
+  onPick,
 }: {
   team: string
   spread: number | null
   picks: SidePick[]
-  isTeamPick: boolean
-  lead: boolean
   score: Score
   blocs: string[][]
+  slot: SlotType | null
+  disabled: boolean
+  onPick: () => void
 }) {
   return (
-    <div
-      className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md px-2 py-1.5 ${
-        lead ? 'bg-muted/60' : ''
+    <button
+      type="button"
+      onClick={onPick}
+      disabled={disabled && slot === null}
+      className={`flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border px-2 py-1.5 text-left transition-colors ${
+        slot
+          ? slot === 'best_bet'
+            ? 'border-bb bg-bb-soft'
+            : 'border-pick bg-pick-soft'
+          : 'border-transparent hover:border-border'
       }`}
     >
       <img src={teamLogo(team)} alt="" className={`size-6 ${picks.length ? '' : 'opacity-40'}`} />
       <span className="font-semibold">{team}</span>
       <span className="tabular text-sm text-muted-foreground">{fmtSpread(spread)}</span>
-      <ScorePill score={score} />
-      {isTeamPick && (
-        <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
-          TEAM
+      <Rating score={score} />
+      {slot && (
+        <span className="inline-flex items-center gap-1 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-bold text-background">
+          {slot === 'best_bet' && <Star className="size-3 fill-current" />}
+          {SLOT_LABEL[slot]}
         </span>
       )}
       <span className="ml-auto flex flex-wrap justify-end gap-1">
@@ -123,7 +174,7 @@ function Side({
           <Chip key={c.picks.join('+')} picks={c.picks} bb={c.bb} />
         ))}
       </span>
-    </div>
+    </button>
   )
 }
 
@@ -131,76 +182,55 @@ function GameCard({
   row,
   attachment,
   blocs,
+  slate,
+  full,
+  onPick,
 }: {
   row: ConsensusRow
   attachment: Map<string, number>
   blocs: string[][]
+  slate: Slate
+  full: boolean
+  onPick: (team: string) => void
 }) {
-  const split = row.blocOther > 0 && row.blocSide > 0
-  const otherSpread = spreadFor(row.game, row.other)
-  // Two weak signals stacked: a best bet on a game nobody is arguing about.
-  const warn = row.bb > 0 && !split
+  const chosen = slate[row.game.game_id]
+  // A full slate locks games we haven't used; a game already in the entry stays
+  // live so the room can switch sides without dismantling the slate first.
+  const locked = full && !chosen
+  const sides = [
+    { team: row.side, spread: row.spread, picks: row.sidePicks },
+    { team: row.other, spread: spreadFor(row.game, row.other), picks: row.otherPicks },
+  ]
+  const best = bestSide(row, attachment)
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="mb-2 flex items-center gap-2 text-xs">
-        <span
-          className={`rounded px-1.5 py-0.5 font-medium ${
-            row.band?.tone === 'good'
-              ? 'bg-win/15 text-win'
-              : row.band
-                ? 'bg-loss/15 text-loss'
-                : 'bg-muted text-muted-foreground'
-          }`}
-          title={
-            row.band
-              ? `2025: we hit ${row.band.pct}% on spreads of ${row.band.label} (n=${row.band.n})`
-              : 'No pool line yet'
-          }
-        >
-          {row.band ? `${row.band.label} · ${row.band.pct}%` : 'no line'}
-        </span>
-        {row.game.is_mnf && (
-          <span className="rounded bg-secondary px-1.5 py-0.5 text-secondary-foreground">MNF</span>
-        )}
-        <span className="ml-auto text-muted-foreground">
-          {split ? (
-            <span className="font-medium text-foreground">
-              split {row.blocSide}–{row.blocOther}
-            </span>
-          ) : (
-            `${row.blocSide} agree`
-          )}
-        </span>
-        {warn && (
-          <span title="Best bet on a game nobody is contesting — our two weakest historical signals stacked">
-            <AlertTriangle className="size-3.5 text-loss" />
-          </span>
-        )}
+    <div
+      className={`rounded-lg border bg-card p-2 ${
+        chosen ? 'border-foreground/25' : 'border-border'
+      } ${locked ? 'opacity-70' : ''}`}
+    >
+      <div className="flex flex-col gap-1">
+        {sides.map((s) => (
+          <Side
+            key={s.team}
+            team={s.team}
+            spread={s.spread}
+            picks={s.picks}
+            score={scoreSide(row, s.team, attachment)}
+            blocs={blocs}
+            slot={chosen?.team === s.team ? chosen.type : null}
+            disabled={locked}
+            onPick={() => onPick(s.team)}
+          />
+        ))}
       </div>
-
-      <div className="mb-2 flex flex-col gap-1">
-        <Side
-          team={row.side}
-          spread={row.spread}
-          picks={row.sidePicks}
-          isTeamPick={row.teamPick === row.side}
-          lead
-          score={scoreSide(row, row.side, attachment)}
-          blocs={blocs}
-        />
-        <Side
-          team={row.other}
-          spread={otherSpread}
-          picks={row.otherPicks}
-          isTeamPick={row.teamPick === row.other}
-          lead={false}
-          score={scoreSide(row, row.other, attachment)}
-          blocs={blocs}
-        />
-      </div>
-
-      <SplitBar row={row} />
+      <p className="mt-1.5 px-2 text-xs text-muted-foreground">
+        {row.game.is_mnf && <span className="font-medium text-foreground">Monday · </span>}
+        {reasonsFor(best.score).join(' · ')}
+        {row.teamPick && row.teamPick !== best.team && (
+          <span> · last submitted {row.teamPick}</span>
+        )}
+      </p>
     </div>
   )
 }
@@ -336,6 +366,17 @@ function Survivor({
   )
 }
 
+/** One slot of the entry: filled, or how many are still open. */
+function Slot({ label, have, need }: { label: string; have: number; need: number }) {
+  const done = have === need
+  return (
+    <span className={done ? 'flex items-center gap-1 text-foreground' : 'flex items-center gap-1 text-muted-foreground'}>
+      {done ? <Check className="size-3.5 text-win" /> : null}
+      {label} {have}/{need}
+    </span>
+  )
+}
+
 export default function Field() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
@@ -343,6 +384,13 @@ export default function Field() {
   const [games, setGames] = useState<GameLine[]>([])
   const [seasonPicks, setSeasonPicks] = useState<PickRecord[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  // Both are keyed by season+week so switching weeks drops them without an effect.
+  const [edits, setEdits] = useState<{ key: string; overrides: Overrides }>({
+    key: '',
+    overrides: {},
+  })
+  const [saved, setSaved] = useState<{ key: string; msg: string } | null>(null)
 
   useEffect(() => {
     if (season === null || week === null) return
@@ -380,13 +428,117 @@ export default function Field() {
   const rows = useMemo(() => {
     const built = buildConsensus(games, picks, blocs)
     const best = new Map(
-      built.map((r) => [r.game.game_id, bestSide(r, attachment).score.total]),
+      built.map((r) => [r.game.game_id, bestSide(r, attachment).score.rating]),
     )
     return built.sort(byScore(best))
   }, [games, picks, blocs, attachment])
   const pickers = useMemo(
     () => [...new Set(picks.map((p) => p.picker))].sort(pickerOrder),
     [picks],
+  )
+
+  /**
+   * Open the call with a slate already on the table. Arguing about a proposal is
+   * faster than starting from sixteen blank games, and the proposal is the
+   * ranking we already trust: the Monday game first because that slot is forced,
+   * then the best remaining side as the best bet, then five regulars.
+   *
+   * Anything TEAM already submitted for the week wins over the proposal — that
+   * is a decision the room made, and this page does not get to overwrite it.
+   */
+  const proposal = useMemo(() => {
+    const submitted: Slate = {}
+    for (const r of rows) {
+      const t = picks.find(
+        (p) => p.picker === TEAM_PICKER && p.game_id === r.game.game_id && isAtsPick(p.pick_type),
+      )
+      if (t) submitted[r.game.game_id] = { team: t.team_picked, type: t.pick_type as SlotType }
+    }
+    if (Object.keys(submitted).length > 0) return submitted
+
+    const out: Slate = {}
+    let regulars = 0
+    let bb = false
+    for (const r of rows) {
+      const best = bestSide(r, attachment)
+      if (r.game.is_mnf) out[r.game.game_id] = { team: best.team, type: 'mnf' }
+      else if (!bb) {
+        out[r.game.game_id] = { team: best.team, type: 'best_bet' }
+        bb = true
+      } else if (regulars < MAX_REGULAR) {
+        out[r.game.game_id] = { team: best.team, type: 'regular' }
+        regulars++
+      }
+    }
+    return out
+  }, [rows, picks, attachment])
+
+  const weekKey = `${season}-${week}`
+  const slate = useMemo(() => {
+    const merged: Slate = { ...proposal }
+    if (edits.key !== weekKey) return merged
+    for (const [id, v] of Object.entries(edits.overrides)) {
+      if (v === null) delete merged[id]
+      else merged[id] = v
+    }
+    return merged
+  }, [proposal, edits, weekKey])
+
+  const counts = useMemo(() => {
+    const v = Object.values(slate)
+    return {
+      regular: v.filter((x) => x.type === 'regular').length,
+      bb: v.filter((x) => x.type === 'best_bet').length,
+      mnf: v.filter((x) => x.type === 'mnf').length,
+    }
+  }, [slate])
+
+  /**
+   * Tap a side to move it through the slots, the same cycle the picks page uses:
+   * unpicked, regular, best bet, unpicked. The Monday game only ever holds MNF.
+   */
+  const cycle = (row: ConsensusRow, team: string) => {
+    const id = row.game.game_id
+    const now = slate[id]
+    let next: SlotPick | null
+    if (row.game.is_mnf) {
+      next = now?.team === team ? null : { team, type: 'mnf' }
+    } else if (!now || now.team !== team) {
+      if (!now && counts.regular >= MAX_REGULAR && counts.bb > 0) return
+      next = { team, type: counts.regular < MAX_REGULAR ? 'regular' : 'best_bet' }
+    } else if (now.type === 'regular') {
+      next = counts.bb > 0 ? null : { team, type: 'best_bet' }
+    } else {
+      next = null
+    }
+    setEdits((cur) => ({
+      key: weekKey,
+      overrides: { ...(cur.key === weekKey ? cur.overrides : {}), [id]: next },
+    }))
+  }
+
+  const saveSlate = async () => {
+    if (season === null || week === null) return
+    setSaving(true)
+    try {
+      const payload: Pick[] = Object.entries(slate).map(([game_id, v]) => ({
+        game_id,
+        team_picked: v.team,
+        pick_type: v.type,
+        spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+      }))
+      const res = await api.savePicks(season, week, TEAM_PICKER, payload)
+      setSaved({ key: weekKey, msg: `Submitted ${res.saved} picks as TEAM` })
+    } catch (e) {
+      setSaved({ key: weekKey, msg: `Failed to save: ${e}` })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Who still owes us a slate. The call can't settle a game nobody has voted on.
+  const missing = (config?.pickers ?? []).filter(
+    (p) => p !== TEAM_PICKER && !pickers.includes(p),
   )
 
   const bandCounts = useMemo(() => {
@@ -444,7 +596,37 @@ export default function Field() {
             <TabsTrigger value="survivor">Survivor</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="board" className="flex flex-col gap-4">
+          <TabsContent value="board" className="flex flex-col gap-3">
+            {/* What the call is here to produce, and how much of it is left. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card px-3 py-2">
+              <span className="text-sm font-bold">TEAM entry</span>
+              <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                <Slot label="Best bet" have={counts.bb} need={1} />
+                <Slot label="Regulars" have={counts.regular} need={MAX_REGULAR} />
+                <Slot label="MNF" have={counts.mnf} need={1} />
+              </span>
+              <Button size="sm" className="ml-auto" onClick={saveSlate} disabled={saving}>
+                {saving ? 'Saving…' : 'Submit as TEAM'}
+              </Button>
+            </div>
+
+            {saved?.key === weekKey && <p className="text-sm text-win">{saved.msg}</p>}
+
+            {/* Design consequence 5 from the analysis: the uncomfortable number
+                is the one that changes behaviour, so it sits where picks get made. */}
+            <p className="text-xs text-muted-foreground">
+              In 2025 TEAM took {TEAM_2025.rate}% of available pool points — last, behind every
+              one of us — and followed the majority on {TEAM_2025.rubberStamp} games.{' '}
+              <b>Averaging is what loses.</b> The entry below is a starting point to argue with,
+              not a vote to ratify.
+            </p>
+
+            {missing.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                No picks in yet from {missing.join(', ')}.
+              </p>
+            )}
+
             <div className="flex flex-col gap-2">
               {rows.map((r) => (
                 <GameCard
@@ -452,15 +634,19 @@ export default function Field() {
                   row={r}
                   attachment={attachment}
                   blocs={blocs}
+                  slate={slate}
+                  full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
+                  onPick={(team) => cycle(r, team)}
                 />
               ))}
             </div>
 
             <div className="rounded-lg border border-border bg-card p-3">
-              <h2 className="text-sm font-bold">Our ATS hit rate by spread size</h2>
+              <h2 className="text-sm font-bold">Where we win and lose</h2>
               <p className="mb-1 text-xs text-muted-foreground">
                 2025, 777 graded picks. Close games 57.1%, everything else under 45% — the only
-                split in our history significant at both tails.
+                split in our history significant at both tails, and the biggest single term in
+                the rating.
               </p>
               <BandChart counts={bandCounts} />
               <p className="text-xs text-muted-foreground">
@@ -470,11 +656,12 @@ export default function Field() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Every side carries an expected ATS%, best first. It is built from what graded out in
-              2025: spread band, contested or not, the best-bet slot, home or road. Agreement counts
-              against a side — the games we all agreed on went 45.2% and the contested ones 52.4%.
-              Homer and attachment terms are judgement, capped so they can only break a tie; hover a
-              score to see the breakdown. Full analysis in{' '}
+              Every side is rated 0-10, best first. <b>5.0 is break-even</b> at -110, so a side
+              under 5 costs us money over time. The rating is built from what graded out in 2025:
+              line size, whether the room is split, the best-bet slot, home or road. Agreement
+              counts <i>against</i> a side — the games we all agreed on went 45.2% and the ones we
+              argued about 52.4%. Homer and stuck-on-them are judgement, capped so they can only
+              break a tie; hover a rating for the breakdown. Full analysis in{' '}
               <code>notes/team-page-consensus-analysis.md</code>.
             </p>
           </TabsContent>

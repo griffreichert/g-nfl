@@ -228,6 +228,18 @@ export const HOMER_TEAMS: Record<string, string[]> = {
   Griffin: ['CLE'],
 }
 
+/**
+ * What the call was worth in 2025, from `notes/team-page-consensus-analysis.md`.
+ * TEAM took 39.5% of available pool points — last, behind every individual
+ * member — while following the field majority on 82 of its 83 games. The room
+ * is not being paid to average; it is being paid to disagree. This is the
+ * uncomfortable number and it belongs where the picks get made.
+ *
+ * ponytail: hard-coded alongside BANDS, same reasoning — one season, and it
+ * moves once a year. Recompute when 2026 grades out.
+ */
+export const TEAM_2025 = { rate: 39.5, rubberStamp: '82 of 83', best: 'bModel', bestRate: 54.0 }
+
 /** Break-even at -110, and the field's own rate across all 777 graded 2025 picks. */
 export const BREAK_EVEN = 52.4
 const FIELD_BASE = 48.5
@@ -256,35 +268,65 @@ const ATTACH_MIN = 4
 export const isHomer = (picker: string, team: string) =>
   (HOMER_TEAMS[picker] ?? []).includes(team)
 
+/**
+ * Homer and attachment are judgement, not history: nothing in the dataset
+ * grades them, so their combined effect is floored here. They exist to nudge a
+ * tie, never to outvote the spread band.
+ */
+const JUDGEMENT_FLOOR = -6
+
 export interface ScorePart {
   label: string
+  /** points of expected ATS%, signed against break-even */
   value: number
   /** false when the number is a judgement call rather than something we graded */
   measured: boolean
 }
 
 export interface Score {
-  /** expected ATS%, same units as the band rates */
-  total: number
-  /** points above (or below) the -110 break-even */
-  edge: number
+  /** 0-10. 5.0 is break-even at -110; above 5 is worth a slot. */
+  rating: number
+  /** rating points per point of expected ATS%, for rendering the breakdown */
+  slope: number
   parts: ScorePart[]
 }
 
 /**
- * What we'd expect this side to hit, built from `notes/team-page-consensus-analysis.md`.
- *
- * The measured terms are deltas against the field's own 48.5% across 2025:
- * spread band (the only cut significant at both tails), contested vs unanimous
- * (52.4% / 45.2%), the best-bet slot (41.4%), and home vs road (45.2% / 50.1%).
- * Note that agreement enters with a *minus* sign — the unanimous games are the
- * ones that lost. A score that rewarded headcount would be backwards here.
- *
- * Homer and attachment are judgement, not history: nothing in the dataset grades
- * them, so they are capped at JUDGEMENT_FLOOR and marked unmeasured in the
- * breakdown. They exist to nudge a tie, never to outvote the spread band.
+ * The best and worst a side can realistically look, in points of expected ATS%
+ * against break-even. Best is a close line the room is split on, taken on the
+ * road. Worst is a big line everyone agreed on at home, with a slot or a
+ * judgement flag on top.
  */
-const JUDGEMENT_FLOOR = -6
+const BEST_CASE = 10.2
+const WORST_CASE = 20
+
+/**
+ * Percentage points to a 0-10 rating, anchored so 5.0 is the -110 break-even.
+ *
+ * The underlying numbers are hit rates off one season, and a rate printed to a
+ * decimal invites more trust than n=238 has earned. The rating keeps the
+ * ordering and drops the false precision — nothing on the board claims to be a
+ * win probability.
+ *
+ * The two sides of 5 use different slopes on purpose. Losing sides run much
+ * further from break-even than winning ones do (a 7+ line is -10.2 on its own,
+ * before anything else), so a single slope pinned most of the board at 0.0 and
+ * threw away the ordering exactly where the room needs it: choosing the least
+ * bad of six mediocre games.
+ */
+export const toRating = (edgePoints: number) =>
+  edgePoints >= 0
+    ? Math.min(10, 5 + (edgePoints / BEST_CASE) * 5)
+    : Math.max(0, 5 + (edgePoints / WORST_CASE) * 5)
+
+/** Scale a part by the same slope the total used, so a breakdown adds up. */
+export const partRating = (value: number, slope: number) => value * slope
+
+const BAND_LABEL: Record<string, string> = {
+  '0-3': 'close line',
+  '3-7': 'mid line',
+  '7+': 'big line',
+}
 
 export function scoreSide(
   row: ConsensusRow,
@@ -297,48 +339,47 @@ export function scoreSide(
     if (value !== 0) parts.push({ label, value, measured })
   }
 
+  // Every term is a delta against break-even, so the breakdown sums to the pill.
   // Band and contention describe the game, so both sides carry them. Slot,
   // venue and the judgement terms are what actually separate the two sides.
-  parts.push({
-    label: row.band ? `spread ${row.band.label}` : 'no pool line',
-    value: row.band?.pct ?? FIELD_BASE,
-    measured: true,
-  })
+  add(
+    row.band ? BAND_LABEL[row.band.label] : 'no pool line',
+    (row.band?.pct ?? FIELD_BASE) - BREAK_EVEN,
+  )
 
   const contested = row.blocSide > 0 && row.blocOther > 0
-  add(contested ? 'contested' : 'unanimous', contested ? 3.9 : -3.3)
-  if (picks.some((p) => p.bb)) add('best bet slot', -7.1)
+  add(contested ? "we're split" : 'we all agree', contested ? 3.9 : -3.3)
+  if (picks.some((p) => p.bb)) add('best-bet slot', -7.1)
 
   const isHome = team === row.game.home_team
   add(isHome ? 'home side' : 'road side', isHome ? -3.3 : 1.6)
 
   // judgement terms, floored so they can never swamp the band
   const homers = picks.filter((p) => isHomer(p.picker, team))
-  const attached = picks.filter(
-    (p) => priorPicks(attachment, p.picker, team) >= ATTACH_MIN,
-  )
+  const attached = picks.filter((p) => priorPicks(attachment, p.picker, team) >= ATTACH_MIN)
   const judgement = Math.max(JUDGEMENT_FLOOR, homers.length * -3 + attached.length * -1.5)
   if (judgement !== 0) {
     const who = [
       homers.length ? `${homers.map((p) => p.picker).join(', ')} homer` : '',
-      attached.length ? `${attached.map((p) => p.picker).join(', ')} attached` : '',
+      attached.length ? `${attached.map((p) => p.picker).join(', ')} stuck on them` : '',
     ]
       .filter(Boolean)
       .join(' \u00b7 ')
     parts.push({ label: who, value: judgement, measured: false })
   }
 
-  const total = parts.reduce((sum, p) => sum + p.value, 0)
-  return { total, edge: total - BREAK_EVEN, parts }
+  const edge = parts.reduce((sum, p) => sum + p.value, 0)
+  const rating = toRating(edge)
+  return { rating, slope: edge === 0 ? 0 : (rating - 5) / edge, parts }
 }
 
 /** The better of the two sides — what this game is worth to the room at all. */
 export const bestSide = (row: ConsensusRow, attachment: Map<string, number>) => {
   const a = scoreSide(row, row.side, attachment)
   const b = scoreSide(row, row.other, attachment)
-  return a.total >= b.total
-    ? { team: row.side, score: a, otherScore: b }
-    : { team: row.other, score: b, otherScore: a }
+  return a.rating >= b.rating
+    ? { team: row.side, score: a, other: row.other, otherScore: b }
+    : { team: row.other, score: b, other: row.side, otherScore: a }
 }
 
 /**

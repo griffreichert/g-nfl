@@ -7,7 +7,9 @@ import {
   byContention,
   findBlocs,
   isHomer,
+  partRating,
   scoreSide,
+  toRating,
   spreadFor,
 } from './consensus.ts'
 import type { GameLine, PickRecord, PickType } from '../types.ts'
@@ -162,7 +164,7 @@ test('scoreRow leads with the spread band and penalises agreement', () => {
     pick('Harry', '2025_12_CAR_GB', 'CAR'),
   ])[0]
   const empty = new Map<string, number>()
-  assert.ok(scoreSide(close, 'GB', empty).total > scoreSide(big, 'GB', empty).total)
+  assert.ok(scoreSide(close, 'GB', empty).rating > scoreSide(big, 'GB', empty).rating)
 
   // Unanimous scores below contested on an otherwise identical game — the
   // whole point. If this flips, the board is selling consensus as confidence.
@@ -170,7 +172,7 @@ test('scoreRow leads with the spread band and penalises agreement', () => {
     pick('Ben', '2025_12_CAR_GB', 'GB'),
     pick('Harry', '2025_12_CAR_GB', 'GB'),
   ])[0]
-  assert.ok(scoreSide(unanimous, 'GB', empty).total < scoreSide(close, 'GB', empty).total)
+  assert.ok(scoreSide(unanimous, 'GB', empty).rating < scoreSide(close, 'GB', empty).rating)
 })
 
 test('scoreRow docks homer and attached votes, but never past the floor', () => {
@@ -180,7 +182,7 @@ test('scoreRow docks homer and attached votes, but never past the floor', () => 
     pick('Harry', gid, 'WAS'),
   ])[0]
   // Chuck is a CHI homer, so the CHI side is docked and the WAS side is not.
-  const clean = scoreSide(row, 'CHI', new Map()).total
+  const clean = scoreSide(row, 'CHI', new Map()).rating
   assert.ok(scoreSide(row, 'CHI', new Map()).parts.some((p) => !p.measured))
   assert.ok(scoreSide(row, 'WAS', new Map()).parts.every((p) => p.measured))
   assert.ok(isHomer('Chuck', 'CHI') && !isHomer('Chuck', 'WAS'))
@@ -189,10 +191,10 @@ test('scoreRow docks homer and attached votes, but never past the floor', () => 
   const attached = buildAttachment(
     Array.from({ length: 5 }, (_, i) => ({ ...pick('Chuck', `g${i}`, 'CHI'), week: i + 1 })),
   )
-  assert.ok(scoreSide(row, 'CHI', attached).total < clean)
+  assert.ok(scoreSide(row, 'CHI', attached).rating < clean)
 
-  // Judgement can never outweigh the 15-point spread-band spread.
-  assert.ok(clean - scoreSide(row, 'CHI', attached).total <= 6)
+  // Judgement can never outweigh the spread band: -6 points is 3 rating points.
+  assert.ok(clean - scoreSide(row, 'CHI', attached).rating <= 3)
 })
 
 test('buildAttachment counts a picker per team and ignores TEAM', () => {
@@ -206,4 +208,31 @@ test('buildAttachment counts a picker per team and ignores TEAM', () => {
   assert.equal(counts.get('Harry|CLE'), 2)
   assert.equal(counts.get('Harry|PIT'), 1)
   assert.equal(counts.get('TEAM|CLE'), undefined)
+})
+
+test('toRating anchors 5 at break-even and clamps to 0-10', () => {
+  assert.equal(toRating(0), 5)
+  assert.equal(toRating(-4), 4)
+  // A close line, contested, on the road is the best a side can look, and lands
+  // at the top of the scale.
+  assert.equal(toRating(57.1 - 52.4 + 3.9 + 1.6), 10)
+  assert.equal(toRating(99), 10)
+  assert.equal(toRating(-99), 0)
+
+  // The reason for the two slopes: a 7+ line is -10.2 before anything else is
+  // counted. On a single slope every big-line game pinned at 0.0 and the board
+  // lost the ordering among the games we are actually forced to choose between.
+  const bigLine = 42.2 - 52.4
+  assert.ok(toRating(bigLine) > 2)
+  assert.ok(toRating(bigLine - 3.3) < toRating(bigLine))
+})
+
+test('a side breakdown sums to the rating it shows', () => {
+  const row = buildConsensus([game('CAR', 'GB', 2.5)], [
+    pick('Ben', '2025_12_CAR_GB', 'GB'),
+    pick('Harry', '2025_12_CAR_GB', 'CAR'),
+  ])[0]
+  const score = scoreSide(row, 'GB', new Map())
+  const summed = 5 + score.parts.reduce((s, p) => s + partRating(p.value, score.slope), 0)
+  assert.equal(Math.round(summed * 100) / 100, Math.round(score.rating * 100) / 100)
 })
