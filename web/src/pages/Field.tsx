@@ -111,24 +111,18 @@ function Rating({ score }: { score: Score }) {
   )
 }
 
-/**
- * Why this side rates where it does, in words — replacing the band tag and the
- * split count. Home/road is left out: it moves every game and tells the room
- * nothing it can act on. The judgement flags stay in, because a homer on a
- * team he's already taken five times is precisely what the call is for.
- */
-const reasonsFor = (score: Score) =>
-  score.parts
-    .filter((p) => p.label !== 'home side' && p.label !== 'road side')
-    .map((p) => p.label)
-
 const SLOT_LABEL: Record<SlotType, string> = {
   best_bet: 'Best bet',
   regular: 'Regular',
   mnf: 'MNF',
 }
 
-function Side({
+/**
+ * One side of a game, laid out to mirror the picks page: away on the left,
+ * home on the right, facing each other. Rating and who is on it sit underneath
+ * the team rather than beside it, so the columns line up down the board.
+ */
+function SideCell({
   team,
   spread,
   picks,
@@ -136,6 +130,7 @@ function Side({
   blocs,
   slot,
   disabled,
+  home,
   onPick,
 }: {
   team: string
@@ -145,32 +140,41 @@ function Side({
   blocs: string[][]
   slot: SlotType | null
   disabled: boolean
+  home: boolean
   onPick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onPick}
-      disabled={disabled && slot === null}
-      className={`flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border px-2 py-1.5 text-left transition-colors ${
+      disabled={disabled}
+      className={`flex min-w-0 flex-col gap-1.5 rounded-md border p-2 transition-colors ${
+        home ? 'items-end text-right' : 'items-start text-left'
+      } ${
         slot
           ? slot === 'best_bet'
             ? 'border-bb bg-bb-soft'
             : 'border-pick bg-pick-soft'
-          : 'border-transparent hover:border-border'
+          : 'border-border/40 hover:border-border'
       }`}
     >
-      <img src={teamLogo(team)} alt="" className={`size-6 ${picks.length ? '' : 'opacity-40'}`} />
-      <span className="font-semibold">{team}</span>
-      <span className="tabular text-sm text-muted-foreground">{fmtSpread(spread)}</span>
-      <Rating score={score} />
-      {slot && (
-        <span className="inline-flex items-center gap-1 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-bold text-background">
-          {slot === 'best_bet' && <Star className="size-3 fill-current" />}
-          {SLOT_LABEL[slot]}
-        </span>
-      )}
-      <span className="ml-auto flex flex-wrap justify-end gap-1">
+      <span className={`flex items-center gap-1.5 ${home ? 'flex-row-reverse' : ''}`}>
+        <img src={teamLogo(team)} alt="" className={`size-6 ${picks.length ? '' : 'opacity-40'}`} />
+        <span className="font-semibold">{team}</span>
+        <span className="tabular text-sm text-muted-foreground">{fmtSpread(spread)}</span>
+      </span>
+
+      <span className={`flex items-center gap-1.5 ${home ? 'flex-row-reverse' : ''}`}>
+        <Rating score={score} />
+        {slot && (
+          <span className="inline-flex items-center gap-1 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-bold text-background">
+            {slot === 'best_bet' && <Star className="size-3 fill-current" />}
+            {SLOT_LABEL[slot]}
+          </span>
+        )}
+      </span>
+
+      <span className={`flex flex-wrap gap-1 ${home ? 'justify-end' : ''}`}>
         {toChips(picks, blocs).map((c) => (
           <Chip key={c.picks.join('+')} picks={c.picks} bb={c.bb} />
         ))}
@@ -198,11 +202,7 @@ function GameCard({
   // A full slate locks games we haven't used; a game already in the entry stays
   // live so the room can switch sides without dismantling the slate first.
   const locked = full && !chosen
-  const sides = [
-    { team: row.side, spread: row.spread, picks: row.sidePicks },
-    { team: row.other, spread: spreadFor(row.game, row.other), picks: row.otherPicks },
-  ]
-  const best = bestSide(row, attachment)
+  const { away_team: away, home_team: home } = row.game
 
   return (
     <div
@@ -210,28 +210,25 @@ function GameCard({
         chosen ? 'border-foreground/25' : 'border-border'
       } ${locked ? 'opacity-70' : ''}`}
     >
-      <div className="flex flex-col gap-1">
-        {sides.map((s) => (
-          <Side
-            key={s.team}
-            team={s.team}
-            spread={s.spread}
-            picks={s.picks}
-            score={scoreSide(row, s.team, attachment)}
+      {row.game.is_mnf && (
+        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">Monday night</p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {[away, home].map((team) => (
+          <SideCell
+            key={team}
+            team={team}
+            spread={spreadFor(row.game, team)}
+            picks={team === row.side ? row.sidePicks : row.otherPicks}
+            score={scoreSide(row, team, attachment)}
             blocs={blocs}
-            slot={chosen?.team === s.team ? chosen.type : null}
+            slot={chosen?.team === team ? chosen.type : null}
             disabled={locked}
-            onPick={() => onPick(s.team)}
+            home={team === home}
+            onPick={() => onPick(team)}
           />
         ))}
       </div>
-      <p className="mt-1.5 px-2 text-xs text-muted-foreground">
-        {row.game.is_mnf && <span className="font-medium text-foreground">Monday · </span>}
-        {reasonsFor(best.score).join(' · ')}
-        {row.teamPick && row.teamPick !== best.team && (
-          <span> · last submitted {row.teamPick}</span>
-        )}
-      </p>
     </div>
   )
 }
