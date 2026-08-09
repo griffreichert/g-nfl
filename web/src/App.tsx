@@ -3,6 +3,7 @@ import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, User
 import ThemeToggle from './components/ThemeToggle'
 import MakePicks from './pages/MakePicks'
 import Field from './pages/Field'
+import GameDetail from './pages/GameDetail'
 import ManageSpreads from './pages/ManageSpreads'
 import Standings from './pages/Standings'
 import Analytics from './pages/Analytics'
@@ -67,6 +68,8 @@ export default function App() {
           <Route path="/" element={<Navigate to="/view" replace />} />
           <Route path="/picks" element={<MakePicks />} />
           <Route path="/view" element={<Field />} />
+          {/* detail view, reached from a game row — deliberately not a tab */}
+          <Route path="/game/:gameId" element={<GameDetail />} />
           <Route path="/standings" element={<Standings />} />
           <Route path="/spreads" element={<ManageSpreads />} />
           <Route path="/analytics" element={<Analytics />} />

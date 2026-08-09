@@ -109,3 +109,67 @@ export interface AnalyticsResponse {
   cuts: Cut[]
   teams: TeamAppetite[]
 }
+
+export interface InjuryReport {
+  team: string
+  name: string
+  position: string | null
+  status: string | null
+  practice: string | null
+}
+
+export interface TeamWeekStat {
+  week: number
+  team: string
+  plays: number | null
+  off_epa_play: number | null
+  def_epa_play: number | null
+  off_success_rate: number | null
+  def_success_rate: number | null
+  off_explosive_rate: number | null
+  def_explosive_rate: number | null
+  off_pass_epa: number | null
+  off_rush_epa: number | null
+}
+
+export interface GamePick {
+  picker: string
+  team_picked: string
+  pick_type: PickType
+  note: string | null
+  outcome: string | null
+}
+
+/** Context fields are null until scripts/update_game_context.py runs for the week. */
+export interface GameDetail {
+  game_id: string
+  season: number
+  week: number
+  away_team: string
+  home_team: string
+  gameday: string | null
+  gametime: string | null
+  roof: string | null
+  surface: string | null
+  temp: number | null
+  wind: number | null
+  stadium: string | null
+  div_game: boolean | null
+  away_rest: number | null
+  home_rest: number | null
+  away_qb: string | null
+  home_qb: string | null
+  away_coach: string | null
+  home_coach: string | null
+  referee: string | null
+  injuries: InjuryReport[]
+  pool_spread: number | null
+  market_spread: number | null
+  market_total: number | null
+  away_score: number | null
+  home_score: number | null
+  result: number | null
+  graded_line: number | null
+  team_weeks: TeamWeekStat[]
+  picks: GamePick[]
+}

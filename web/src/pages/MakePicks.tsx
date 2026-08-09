@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
@@ -367,7 +368,7 @@ export default function MakePicks() {
             {games.map((g) => (
               <div
                 key={g.game_id}
-                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
               >
                 <img src={teamLogo(g.away_team)} className="size-6" alt="" />
                 {teamButton(g, g.away_team)}
@@ -384,8 +385,17 @@ export default function MakePicks() {
                 </span>
                 {teamButton(g, g.home_team)}
                 <img src={teamLogo(g.home_team)} className="size-6" alt="" />
+                {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
+                <Link
+                  to={`/game/${g.game_id}`}
+                  aria-label={`Detail for ${g.away_team} at ${g.home_team}`}
+                  title="Game detail"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRight className="size-4" />
+                </Link>
                 {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
-                  <div className="col-span-5 pt-1">
+                  <div className="col-span-6 pt-1">
                     {noteInput(
                       noteKey(g.game_id, g.is_mnf ? 'mnf' : picks[g.game_id].pick_type),
                       `${g.away_team} at ${g.home_team}`

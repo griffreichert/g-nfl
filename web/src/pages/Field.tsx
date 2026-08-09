@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, Star } from 'lucide-react'
+import { Check, ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
@@ -212,9 +212,20 @@ function GameCard({
         chosen ? 'border-foreground/25' : 'border-border'
       } ${locked ? 'opacity-70' : ''}`}
     >
-      {row.game.is_mnf && (
-        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">Monday night</p>
-      )}
+      <div className="flex items-center px-2 pb-1">
+        {row.game.is_mnf && (
+          <p className="text-[11px] font-medium text-muted-foreground">Monday night</p>
+        )}
+        {/* Its own control: tapping a side is a pick, so the card can't be a link. */}
+        <Link
+          to={`/game/${row.game.game_id}`}
+          aria-label={`Detail for ${away} at ${home}`}
+          title="Game detail"
+          className="ml-auto flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          detail <ChevronRight className="size-3.5" />
+        </Link>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {[away, home].map((team) => (
           <SideCell

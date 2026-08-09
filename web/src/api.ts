@@ -1,6 +1,7 @@
 import type {
   AnalyticsResponse,
   AppConfig,
+  GameDetail,
   GameLine,
   Pick,
   PickRecord,
@@ -37,6 +38,7 @@ export const api = {
     get<PickRecord[]>(
       `/api/picks?season=${season}&week=${week}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`
     ),
+  game: (gameId: string) => get<GameDetail>(`/api/games/${encodeURIComponent(gameId)}`),
   standings: (season: number) => get<StandingsResponse>(`/api/standings?season=${season}`),
   analytics: (season: number) => get<AnalyticsResponse>(`/api/analytics?season=${season}`),
   savePicks: (season: number, week: number, picker: string, picks: Pick[]) =>
