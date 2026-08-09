@@ -61,6 +61,7 @@ const game = (over: Partial<GameDetail> = {}): GameDetail => ({
   home_score: null,
   result: null,
   graded_line: null,
+  graded_line_source: null,
   team_weeks: [],
   picks: [],
   ...over,
