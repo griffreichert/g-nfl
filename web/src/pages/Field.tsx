@@ -188,6 +188,8 @@ function GameCard({
   slate,
   full,
   onPick,
+  note,
+  onNote,
 }: {
   row: ConsensusRow
   attachment: Map<string, number>
@@ -195,6 +197,8 @@ function GameCard({
   slate: Slate
   full: boolean
   onPick: (team: string) => void
+  note: string
+  onNote: (v: string) => void
 }) {
   const chosen = slate[row.game.game_id]
   // A full slate locks games we haven't used; a game already in the entry stays
@@ -227,6 +231,18 @@ function GameCard({
           />
         ))}
       </div>
+      {/* The meeting's reasoning is the thing nothing else records — grading can
+          reconstruct what we picked, never why. Only on games in the entry. */}
+      {chosen && (
+        <input
+          type="text"
+          value={note}
+          placeholder="Why? (optional)"
+          onChange={(e) => onNote(e.target.value)}
+          aria-label={`Note for ${away} at ${home}`}
+          className="mt-2 h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+        />
+      )}
     </div>
   )
 }
@@ -601,6 +617,26 @@ export default function Field() {
     }))
   }
 
+  // Keyed like the API keys a pick, so a survivor note and a regular note on
+  // the same game stay separate.
+  const noteKeyFor = (gameId: string, type: Pick['pick_type']) =>
+    type === 'regular' || type === 'best_bet' ? gameId : `${type}_${gameId}`
+
+  // Saved notes are derived from the fetched picks and typing is held as an
+  // overlay, the same shape `edits` uses for the slate. Deriving avoids an
+  // effect that would clobber what someone is mid-sentence on when picks refetch.
+  const savedNotes = useMemo(() => {
+    const saved: Record<string, string> = {}
+    for (const p of picks) {
+      if (p.picker === TEAM_PICKER && p.note) {
+        saved[noteKeyFor(p.game_id, p.pick_type)] = p.note
+      }
+    }
+    return saved
+  }, [picks])
+  const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
+  const notes = { ...savedNotes, ...noteEdits }
+
   const saveSlate = async () => {
     if (season === null || week === null) return
     setSaving(true)
@@ -610,6 +646,7 @@ export default function Field() {
         team_picked: v.team,
         pick_type: v.type,
         spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+        note: notes[noteKeyFor(game_id, v.type)]?.trim() || null,
       }))
       for (const [pool, choice] of [
         ['underdog', underdog],
@@ -621,6 +658,7 @@ export default function Field() {
           team_picked: choice.team,
           pick_type: pool,
           spread: games.find((g) => g.game_id === choice.game_id)?.market_spread ?? null,
+          note: notes[noteKeyFor(choice.game_id, pool)]?.trim() || null,
         })
       }
       const res = await api.savePicks(season, week, TEAM_PICKER, payload)
@@ -742,6 +780,8 @@ export default function Field() {
                   slate={slate}
                   full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
                   onPick={(team) => cycle(r, team)}
+                  note={notes[r.game.game_id] ?? ''}
+                  onNote={(v) => setNoteEdits((n) => ({ ...n, [r.game.game_id]: v }))}
                 />
               ))}
             </div>

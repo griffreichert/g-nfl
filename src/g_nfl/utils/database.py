@@ -37,20 +37,22 @@ class PicksDatabase:
             Number of picks saved
         """
         try:
-            # If replace is True, delete existing picks for this picker/season/week
+            # Replace is insert-then-delete, never delete-then-insert: if the
+            # insert fails (bad column, network) a prior delete would have
+            # already wiped the picker's week with nothing to put back. The
+            # old rows are captured by id here and removed only after the new
+            # ones land. Worst case is leftover duplicates, which is fixable.
+            stale_ids: list[int] = []
             if replace:
-                print(
-                    f"DEBUG: Deleting existing picks for season={season}, week={week}, picker={picker}"
-                )
-                delete_result = (
+                existing = (
                     self.client.table("picks")
-                    .delete()
+                    .select("id")
                     .eq("season", season)
                     .eq("week", week)
                     .eq("picker", picker)
                     .execute()
                 )
-                print(f"DEBUG: Delete result: {delete_result}")
+                stale_ids = [row["id"] for row in existing.data]
 
             # Prepare picks data for insertion
             picks_data = []
@@ -81,6 +83,9 @@ class PicksDatabase:
                         else "regular"
                     ),
                     "picker": picker,
+                    "note": (
+                        pick_data.get("note") if isinstance(pick_data, dict) else None
+                    ),
                 }
                 picks_data.append(pick_record)
                 print(f"DEBUG: Prepared pick record: {pick_record}")
@@ -91,6 +96,9 @@ class PicksDatabase:
             print("DEBUG: Attempting to insert picks into 'picks' table")
             result = self.client.table("picks").insert(picks_data).execute()
             print(f"DEBUG: Insert result: {result}")
+
+            if stale_ids:
+                self.client.table("picks").delete().in_("id", stale_ids).execute()
 
             return len(picks_data)
 

@@ -27,6 +27,8 @@ export interface Pick {
   team_picked: string
   pick_type: PickType
   spread: number | null
+  /** why this pick was made, captured at pick time (#70) */
+  note?: string | null
 }
 
 export interface PickRecord extends Pick {

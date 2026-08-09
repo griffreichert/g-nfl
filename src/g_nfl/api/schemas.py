@@ -34,6 +34,8 @@ class Pick(BaseModel):
     team_picked: str
     pick_type: PickType
     spread: float | None = None
+    # why this pick was made, captured at pick time (#70)
+    note: str | None = None
 
 
 class PickRecord(Pick):

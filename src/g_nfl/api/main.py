@@ -155,6 +155,7 @@ def save_picks(req: SavePicksRequest):
             "team_picked": p.team_picked,
             "pick_type": p.pick_type,
             "spread": p.spread,
+            "note": p.note,
         }
 
     db = PicksDatabase()
