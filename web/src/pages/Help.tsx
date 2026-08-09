@@ -119,22 +119,20 @@ export default function Help() {
         <p>Hover or tap a rating to see exactly what built it. The terms are:</p>
         <ul className="flex flex-col gap-1">
           <li>
-            <b className="text-foreground">Line size</b> — the big one.{' '}
+            <b className="text-foreground">Line size and venue</b> — the only measured term left.{' '}
             {BANDS.map((b) => `${b.label} hit ${b.pct}%`).join(', ')} across{' '}
-            {BANDS.reduce((n, b) => n + b.n, 0)} graded picks. We handle close games and we do not
-            handle big numbers.
+            {BANDS.reduce((n, b) => n + b.n, 0)} graded games, and it splits further by venue: a
+            home side in the 3-7 band is 41.8%, a road side in the same band 52.1%. Home teams
+            getting or laying a field goal to a touchdown are the single worst thing we buy.
           </li>
           <li>
-            <b className="text-foreground">Split or agreed</b> — agreement counts{' '}
-            <i>against</i> a side. The games we all agreed on went 45.2%; the ones we argued about
-            went 52.4%.
-          </li>
-          <li>
-            <b className="text-foreground">Best-bet slot</b> — our best bets hit 41.4%. Naming a
-            pick our most confident has been an anti-signal.
-          </li>
-          <li>
-            <b className="text-foreground">Home or road</b> — home picks 45.2%, road 50.1%.
+            <b className="text-foreground">What used to be here</b> — split-or-agreed, the
+            best-bet slot, and home-or-road on its own were all terms in this rating until the
+            record was recomputed per game rather than per pick. The room puts three votes on the
+            average game, so a per-pick rate counts one game three times and makes every split
+            look sharper than it is. Shrunk for sample size, those three sat on the field's base
+            rate exactly. They were removed rather than shrunk, because a term worth zero should
+            not be shown as if it were worth something.
           </li>
           <li>
             <b className="text-foreground">Homer</b> and{' '}
@@ -169,9 +167,11 @@ export default function Help() {
           argue with, not a vote to ratify.
         </p>
         <p className="text-xs">
-          All of it comes from one season, 777 graded picks. Only the line-size split clears
-          statistical significance; everything else is directional. Full working in{' '}
-          <code>notes/team-page-consensus-analysis.md</code>.
+          That part still holds — it is about how an averaged entry gets built, not about which
+          games cover. What does not hold is anything that used a per-pick rate: one season is 225
+          distinct games, and only line size crossed with venue survives being counted properly
+          and shrunk for sample size. Everything else is directional at best. Full working in{' '}
+          <code>notes/pick-analytics.md</code>.
         </p>
       </Section>
     </div>

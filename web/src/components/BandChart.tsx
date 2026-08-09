@@ -2,8 +2,10 @@ import { Bar, BarChart, Cell, LabelList, ReferenceLine, ResponsiveContainer, XAx
 import { BANDS } from '@/lib/consensus'
 
 /**
- * Our 2025 ATS hit rate by spread size. The one cut in the data that was
- * significant at both tails, so it is the one chart on the page.
+ * Our 2025 ATS hit rate by spread size, per game and shrunk for sample size.
+ * The only cut with anything left in it after that correction, so it is the
+ * one chart on the page. Note the whole chart sits under break-even: the top
+ * band is the least bad, not good.
  */
 export default function BandChart({ counts }: { counts: Record<string, number> }) {
   const data = BANDS.map((b) => ({

@@ -15,19 +15,41 @@ const WEIGHT: Partial<Record<PickType, number>> = { best_bet: 2, regular: 1, mnf
 export const isAtsPick = (t: PickType) => t in WEIGHT
 
 /**
- * Spread bands, from `notes/team-page-consensus-analysis.md`.
- * 2025, 777 graded ATS picks by the eight of us, graded on the pool line.
- * The only cut in that dataset significant at both tails, and the reason the
- * board is banded at all.
+ * Spread bands crossed with venue, from `scratch/recompute_board_constants.py`.
+ * 2025, 677 graded ATS picks by the field over 225 distinct games.
+ *
+ * These replace a set of per-pick rates that were badly overstated. The room
+ * puts 3.0 votes on the average game, so a per-pick group-by counts the same
+ * game three times and inflates every z-score by roughly sqrt(3). Rates here
+ * are per game (a game we split 4-2 counts once, as 0.667) and then shrunk
+ * toward the field's own 47.4% by sample size, so a thin cell cannot shout.
+ *
+ * What survived the correction: line size, and only in combination with venue.
+ * What did not: the best-bet slot, venue on its own, and — the uncomfortable
+ * one — whether the room was split. Those terms are gone from the rating
+ * rather than kept at a smaller weight, because shrinkage put all three exactly
+ * on the base rate. See `notes/pick-analytics.md`.
  *
  * ponytail: hard-coded rather than served from an endpoint — one season, and
- * it moves once a year. Recompute with scratch/analysis when 2026 grades out.
+ * it moves once a year. Recompute when 2026 grades out.
  */
 export const BANDS = [
-  { max: 3, label: '0-3', pct: 57.1, n: 238, tone: 'good' },
-  { max: 7, label: '3-7', pct: 44.0, n: 365, tone: 'bad' },
-  { max: Infinity, label: '7+', pct: 42.2, n: 174, tone: 'bad' },
+  { max: 3, label: '0-3', pct: 52.0, n: 92, tone: 'good' },
+  { max: 7, label: '3-7', pct: 45.1, n: 92, tone: 'bad' },
+  { max: Infinity, label: '7+', pct: 44.0, n: 41, tone: 'bad' },
 ] as const
+
+/**
+ * Shrunk ATS% by band and venue — the one cut with anything left in it.
+ * Home teams laying or getting 3-7 are the single worst thing we do: 36.6%
+ * over 71 games raw (z = -2.66), and the league covered 44.6% in that band,
+ * so this is our side selection, not the season.
+ */
+export const BAND_VENUE: Record<string, { home: number; road: number }> = {
+  '0-3': { home: 50.9, road: 49.4 },
+  '3-7': { home: 41.8, road: 52.1 },
+  '7+': { home: 48.6, road: 42.4 },
+}
 
 export type Band = (typeof BANDS)[number]
 
@@ -245,9 +267,9 @@ export const HOMER_TEAMS: Record<string, string[]> = {
  */
 export const TEAM_2025 = { rate: 39.5, rubberStamp: '82 of 83', best: 'bModel', bestRate: 54.0 }
 
-/** Break-even at -110, and the field's own rate across all 777 graded 2025 picks. */
+/** Break-even at -110, and the field's own rate over 225 graded 2025 games. */
 export const BREAK_EVEN = 52.4
-const FIELD_BASE = 48.5
+const FIELD_BASE = 47.4
 
 /**
  * How many times this season a picker has already taken a given team.
@@ -345,19 +367,19 @@ export function scoreSide(
   }
 
   // Every term is a delta against break-even, so the breakdown sums to the pill.
-  // Band and contention describe the game, so both sides carry them. Slot,
-  // venue and the judgement terms are what actually separate the two sides.
-  add(
-    row.band ? BAND_LABEL[row.band.label] : 'no pool line',
-    (row.band?.pct ?? FIELD_BASE) - BREAK_EVEN,
-  )
-
-  const contested = row.blocSide > 0 && row.blocOther > 0
-  add(contested ? "we're split" : 'we all agree', contested ? 3.9 : -3.3)
-  if (picks.some((p) => p.bb)) add('best-bet slot', -7.1)
-
+  // One measured term now, not four: line size crossed with venue. The slot,
+  // venue-alone and split-vs-unanimous terms that used to sit here all shrank
+  // onto the base rate once games stopped being counted once per vote, so
+  // keeping them at any weight would be fitting noise. See BANDS.
   const isHome = team === row.game.home_team
-  add(isHome ? 'home side' : 'road side', isHome ? -3.3 : 1.6)
+  const bandLabel = row.band ? BAND_LABEL[row.band.label] : null
+  const measured = row.band
+    ? BAND_VENUE[row.band.label][isHome ? 'home' : 'road']
+    : FIELD_BASE
+  add(
+    bandLabel ? `${bandLabel}, ${isHome ? 'home' : 'road'}` : 'no pool line',
+    measured - BREAK_EVEN,
+  )
 
   // judgement terms, floored so they can never swamp the band
   const homers = picks.filter((p) => isHomer(p.picker, team))

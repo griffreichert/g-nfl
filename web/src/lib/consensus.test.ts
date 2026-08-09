@@ -154,26 +154,43 @@ test('no picks at all yields no rows, not a crash', () => {
   assert.deepEqual(findBlocs([]), [])
 })
 
-test('scoreRow leads with the spread band and penalises agreement', () => {
-  // The one thing 2025 says loudly: close games hit, big numbers do not.
-  const close = buildConsensus([game('CAR', 'GB', 2.5)], [
-    pick('Ben', '2025_12_CAR_GB', 'GB'),
-    pick('Harry', '2025_12_CAR_GB', 'CAR'),
-  ])[0]
-  const big = buildConsensus([game('CAR', 'GB', 13.5)], [
-    pick('Ben', '2025_12_CAR_GB', 'GB'),
-    pick('Harry', '2025_12_CAR_GB', 'CAR'),
-  ])[0]
+test('scoreRow is driven by line size crossed with venue', () => {
   const empty = new Map<string, number>()
+  const gid = '2025_12_CAR_GB'
+  const both = [pick('Ben', gid, 'GB'), pick('Harry', gid, 'CAR')]
+
+  // The one thing 2025 still says after clustering: close games hit, big
+  // numbers do not.
+  const close = buildConsensus([game('CAR', 'GB', 2.5)], both)[0]
+  const big = buildConsensus([game('CAR', 'GB', 13.5)], both)[0]
   assert.ok(scoreSide(close, 'GB', empty).rating > scoreSide(big, 'GB', empty).rating)
 
-  // Unanimous scores below contested on an otherwise identical game — the
-  // whole point. If this flips, the board is selling consensus as confidence.
-  const unanimous = buildConsensus([game('CAR', 'GB', 2.5)], [
-    pick('Ben', '2025_12_CAR_GB', 'GB'),
-    pick('Harry', '2025_12_CAR_GB', 'GB'),
+  // Home in the 3-7 band is the worst cell in the record, and it is worse
+  // than the road side of the same game. If this flips, the band/venue term
+  // has been wired up backwards.
+  const mid = buildConsensus([game('CAR', 'GB', 5.5)], both)[0]
+  assert.ok(scoreSide(mid, 'GB', empty).rating < scoreSide(mid, 'CAR', empty).rating)
+})
+
+test('agreement no longer moves the rating', () => {
+  // It used to: unanimous scored below contested. Per game and shrunk, split
+  // vs unanimous sat exactly on the base rate, so the term was removed rather
+  // than kept small. The board still sorts contested first — that is ordering,
+  // not a claim that disagreement covers.
+  const empty = new Map<string, number>()
+  const gid = '2025_12_CAR_GB'
+  const split = buildConsensus([game('CAR', 'GB', 2.5)], [
+    pick('Ben', gid, 'GB'),
+    pick('Harry', gid, 'CAR'),
   ])[0]
-  assert.ok(scoreSide(unanimous, 'GB', empty).rating < scoreSide(close, 'GB', empty).rating)
+  const unanimous = buildConsensus([game('CAR', 'GB', 2.5)], [
+    pick('Ben', gid, 'GB'),
+    pick('Harry', gid, 'GB'),
+  ])[0]
+  assert.equal(
+    scoreSide(unanimous, 'GB', empty).rating,
+    scoreSide(split, 'GB', empty).rating,
+  )
 })
 
 test('scoreRow docks homer and attached votes, but never past the floor', () => {

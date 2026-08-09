@@ -807,9 +807,9 @@ export default function Field() {
             <div className="rounded-lg border border-border bg-card p-3">
               <h2 className="text-sm font-bold">Where we win and lose</h2>
               <p className="mb-1 text-xs text-muted-foreground">
-                2025, 777 graded picks. Close games 57.1%, everything else under 45% — the only
-                split in our history significant at both tails, and the biggest single term in
-                the rating.
+                2025, 225 graded games. Close lines 52%, 3-7 45%, 7+ 44% — and the worst cell in
+                the record is a home team laying or getting 3-7, at 37%. The instruction is avoid
+                big numbers, not close games are good: 52% is still under break-even.
               </p>
               <BandChart counts={bandCounts} />
               <p className="text-xs text-muted-foreground">
@@ -820,12 +820,13 @@ export default function Field() {
 
             <p className="text-xs text-muted-foreground">
               Every side is rated 0-10, best first. <b>5.0 is break-even</b> at -110, so a side
-              under 5 costs us money over time. The rating is built from what graded out in 2025:
-              line size, whether the room is split, the best-bet slot, home or road. Agreement
-              counts <i>against</i> a side — the games we all agreed on went 45.2% and the ones we
-              argued about 52.4%. Homer and stuck-on-them are judgement, capped so they can only
-              break a tie; hover a rating for the breakdown. Full analysis in{' '}
-              <code>notes/team-page-consensus-analysis.md</code>.
+              under 5 costs us money over time. One measured term builds it: line size crossed
+              with home or road. The rating used to carry three more — the best-bet slot, venue on
+              its own, whether the room was split — and all three vanished when the numbers were
+              recomputed per game instead of per pick. We put three votes on the average game, so
+              counting picks counted the same game three times. Homer and stuck-on-them are
+              judgement, capped so they can only break a tie; hover a rating for the breakdown.
+              Full working in <code>notes/pick-analytics.md</code>.
             </p>
           </TabsContent>
 
