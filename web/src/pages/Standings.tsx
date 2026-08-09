@@ -1,11 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { api } from '../api'
 import { useConfig, useSeasonWeek } from '../hooks'
 import type { PickerStanding, StandingsResponse } from '../types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-const PICKER_COLORS = [
-  '#16a34a', '#2563eb', '#dc2626', '#9333ea', '#ea580c',
-  '#0891b2', '#ca8a04', '#db2777',
+const CHART_COLORS = [
+  'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)',
+  'var(--chart-4)', 'var(--chart-5)',
 ]
 
 const fmtPct = (p: number | null) => (p === null ? '—' : `${(p * 100).toFixed(1)}%`)
@@ -16,57 +41,189 @@ const fmtRecord = (r: { wins: number; losses: number; pushes: number }) =>
 /** Cumulative units by week, one line per picker, zero line dashed */
 function TrendChart({ standings }: { standings: PickerStanding[] }) {
   const series = standings.filter((s) => s.weekly.length > 0)
-  const { weeks, lo, hi } = useMemo(() => {
-    const allWeeks = series.flatMap((s) => s.weekly.map((w) => w.week))
-    const allUnits = series.flatMap((s) => s.weekly.map((w) => w.cum_units))
+  const { rows, weeks } = useMemo(() => {
+    const byWeek = new Map<number, Record<string, number>>()
+    for (const s of series) {
+      for (const w of s.weekly) {
+        const row = byWeek.get(w.week) ?? { week: w.week }
+        row[s.picker] = w.cum_units
+        byWeek.set(w.week, row)
+      }
+    }
     return {
-      weeks: [...new Set(allWeeks)].sort((a, b) => a - b),
-      lo: Math.min(0, ...allUnits),
-      hi: Math.max(0, ...allUnits),
+      rows: [...byWeek.values()].sort((a, b) => a.week - b.week),
+      weeks: byWeek.size,
     }
   }, [series])
 
-  if (series.length === 0 || weeks.length < 2) return null
-
-  const W = 640
-  const H = 220
-  const PAD = { top: 10, right: 8, bottom: 22, left: 36 }
-  const x = (week: number) =>
-    PAD.left + ((week - weeks[0]) / (weeks[weeks.length - 1] - weeks[0])) * (W - PAD.left - PAD.right)
-  const y = (units: number) =>
-    hi === lo ? H / 2 : PAD.top + ((hi - units) / (hi - lo)) * (H - PAD.top - PAD.bottom)
+  if (series.length === 0 || weeks < 2) return null
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
-      <h2 className="font-bold mb-2 text-sm">Cumulative units by week (1u per pick at -110)</h2>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-        <line x1={PAD.left} x2={W - PAD.right} y1={y(0)} y2={y(0)} stroke="#9ca3af" strokeDasharray="4 3" />
-        <text x={4} y={y(0) + 4} fontSize={11} fill="#6b7280">0u</text>
-        {weeks.map((w) => (
-          <text key={w} x={x(w)} y={H - 6} fontSize={10} fill="#6b7280" textAnchor="middle">
-            {w}
-          </text>
-        ))}
-        {series.map((s, i) => {
-          const color = PICKER_COLORS[i % PICKER_COLORS.length]
-          const pts = s.weekly.map((w) => `${x(w.week)},${y(w.cum_units)}`).join(' ')
-          const last = s.weekly[s.weekly.length - 1]
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle className="text-sm">Cumulative units by week (1u per pick at -110)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+            <CartesianGrid stroke="var(--border)" vertical={false} />
+            <XAxis
+              dataKey="week"
+              tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+              stroke="var(--border)"
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+              stroke="var(--border)"
+              width={44}
+            />
+            <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 3" />
+            <Tooltip
+              contentStyle={{
+                background: 'var(--popover)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                color: 'var(--popover-foreground)',
+                fontSize: 12,
+              }}
+              formatter={(v) => fmtUnits(Number(v))}
+              labelFormatter={(w) => `Week ${w}`}
+            />
+            {series.map((s, i) => (
+              <Line
+                key={s.picker}
+                type="monotone"
+                dataKey={s.picker}
+                stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                // 8 pickers, 5 colours: on the second lap of the palette the
+                // line goes dashed so two people are never the same blue.
+                strokeDasharray={i >= CHART_COLORS.length ? '5 3' : undefined}
+                strokeWidth={2}
+                dot={false}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs">
+          {series.map((s, i) => (
+            <span key={s.picker} className="flex items-center gap-1">
+              <span
+                className="inline-block h-0.5 w-3"
+                style={
+                  i >= CHART_COLORS.length
+                    ? {
+                        backgroundImage: `repeating-linear-gradient(to right, ${CHART_COLORS[i % CHART_COLORS.length]} 0 4px, transparent 4px 7px)`,
+                      }
+                    : { background: CHART_COLORS[i % CHART_COLORS.length] }
+                }
+              />
+              {s.picker}
+            </span>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+const col = createColumnHelper<PickerStanding>()
+
+function StandingsTable({ standings, breakEven }: { standings: PickerStanding[]; breakEven: number }) {
+  const columns = useMemo(
+    () => [
+      col.accessor('picker', {
+        header: 'Picker',
+        cell: (c) => <span className="font-bold">{c.getValue()}</span>,
+      }),
+      col.accessor('ats', {
+        header: 'ATS',
+        cell: (c) => {
+          const ats = c.getValue()
           return (
-            <g key={s.picker}>
-              <polyline points={pts} fill="none" stroke={color} strokeWidth={2} />
-              <circle cx={x(last.week)} cy={y(last.cum_units)} r={3} fill={color} />
-            </g>
+            <span className="tabular">
+              {fmtRecord(ats)}
+              {ats.pending > 0 && <span className="text-muted-foreground"> ({ats.pending} pend)</span>}
+            </span>
           )
-        })}
-      </svg>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs">
-        {series.map((s, i) => (
-          <span key={s.picker} className="flex items-center gap-1">
-            <span className="w-3 h-0.5 inline-block" style={{ background: PICKER_COLORS[i % PICKER_COLORS.length] }} />
-            {s.picker}
-          </span>
-        ))}
-      </div>
+        },
+      }),
+      col.accessor((r) => r.ats.win_pct, {
+        id: 'win_pct',
+        header: 'Win%',
+        cell: (c) => {
+          const pct = c.getValue()
+          return (
+            <span
+              className={`tabular ${pct !== null ? (pct > breakEven ? 'text-win' : 'text-loss') : ''}`}
+            >
+              {fmtPct(pct)}
+            </span>
+          )
+        },
+      }),
+      col.accessor('units', {
+        header: 'Units',
+        cell: (c) => {
+          const u = c.getValue()
+          return (
+            <span
+              className={`tabular font-medium ${u > 0 ? 'text-win' : u < 0 ? 'text-loss' : ''}`}
+            >
+              {fmtUnits(u)}
+            </span>
+          )
+        },
+      }),
+      ...(
+        [
+          ['best_bet', 'Best bet'],
+          ['survivor', 'Survivor'],
+          ['underdog', 'Dog'],
+          ['mnf', 'MNF'],
+        ] as const
+      ).map(([type, header]) =>
+        col.accessor((r) => r.by_type[type], {
+          id: type,
+          header,
+          cell: (c) => {
+            const rec = c.getValue()
+            return <span className="tabular text-muted-foreground">{rec ? fmtRecord(rec) : '—'}</span>
+          },
+        }),
+      ),
+    ],
+    [breakEven],
+  )
+
+  const table = useReactTable({ data: standings, columns, getCoreRowModel: getCoreRowModel() })
+
+  return (
+    <div className="bg-card rounded-lg border border-border overflow-x-auto">
+      <Table>
+        <TableHeader>
+          {table.getHeaderGroups().map((group) => (
+            <TableRow key={group.id}>
+              {group.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
+        </TableHeader>
+        <TableBody>
+          {table.getRowModel().rows.map((row) => (
+            <TableRow key={row.id}>
+              {row.getVisibleCells().map((cell) => (
+                <TableCell key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -95,68 +252,59 @@ export default function Standings() {
     }
   }, [season])
 
-  if (configError) return <p className="text-red-600">Failed to load config: {configError}</p>
+  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
   if (!config || season === null) return <p>Loading…</p>
 
   const breakEven = data ? data.break_even_pct : 110 / 210
 
-  return (
-    <div>
-      <h1 className="text-2xl font-bold mb-3">🏆 Standings</h1>
+  const empty = !error && data?.season === season && data.standings.length === 0
 
-      <div className="flex gap-2 items-center mb-4">
-        <select value={season} onChange={(e) => setSeason(Number(e.target.value))} className="border rounded-md px-2 py-1.5 bg-white">
-          {seasons.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
-        {data?.graded_through_week != null && (
-          <span className="text-sm text-gray-500">results through week {data.graded_through_week}</span>
-        )}
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Standings</h1>
+        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
+          <SelectTrigger size="sm" className="w-24">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {seasons.map((s) => (
+              <SelectItem key={s} value={String(s)}>
+                {s}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      {error && <p className="text-red-600">{error}</p>}
-      {!error && data?.season !== season && <p>Loading…</p>}
+      {data?.graded_through_week != null && (
+        <p className="text-sm text-muted-foreground">
+          Results through week {data.graded_through_week}.
+        </p>
+      )}
 
-      {!error && data?.season === season && (
+      {/* Results live in a table the backend may not have yet (#65). An empty
+          board is the honest answer, not a stack trace. */}
+      {(error || empty) && (
+        <div className="rounded-lg border border-border bg-card p-6 text-center">
+          <p className="font-medium">No graded results yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Standings appear once game results are loaded for {season}.
+          </p>
+          {error && <p className="mt-3 text-xs text-muted-foreground">{error}</p>}
+        </div>
+      )}
+      {!error && !data && <p className="text-muted-foreground">Loading…</p>}
+      {!error && data && data.season !== season && (
+        <p className="text-muted-foreground">Loading…</p>
+      )}
+
+      {!error && !empty && data?.season === season && (
         <>
           <TrendChart standings={data.standings} />
+          <StandingsTable standings={data.standings} breakEven={breakEven} />
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 border-b border-gray-200">
-                  <th className="px-3 py-2">Picker</th>
-                  <th className="px-3 py-2">ATS</th>
-                  <th className="px-3 py-2">Win%</th>
-                  <th className="px-3 py-2">Units</th>
-                  <th className="px-3 py-2">⭐️ Best bet</th>
-                  <th className="px-3 py-2">💀 Survivor</th>
-                  <th className="px-3 py-2">🐶 Dog</th>
-                  <th className="px-3 py-2">🌙 MNF</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.standings.map((s) => (
-                  <tr key={s.picker} className="border-b border-gray-100 last:border-0">
-                    <td className="px-3 py-2 font-bold">{s.picker}</td>
-                    <td className="px-3 py-2">{fmtRecord(s.ats)}{s.ats.pending > 0 && <span className="text-gray-400"> ({s.ats.pending} pend)</span>}</td>
-                    <td className={`px-3 py-2 ${s.ats.win_pct !== null ? (s.ats.win_pct > breakEven ? 'text-green-600' : 'text-red-600') : ''}`}>
-                      {fmtPct(s.ats.win_pct)}
-                    </td>
-                    <td className={`px-3 py-2 font-medium ${s.units > 0 ? 'text-green-600' : s.units < 0 ? 'text-red-600' : ''}`}>
-                      {fmtUnits(s.units)}
-                    </td>
-                    {(['best_bet', 'survivor', 'underdog', 'mnf'] as const).map((t) => (
-                      <td key={t} className="px-3 py-2 text-gray-600">
-                        {s.by_type[t] ? fmtRecord(s.by_type[t]) : '—'}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             ATS record covers regular + best bet picks, graded against the line at pick time.
             Break-even at -110 is {fmtPct(breakEven)}. Pushes excluded from win%.
           </p>

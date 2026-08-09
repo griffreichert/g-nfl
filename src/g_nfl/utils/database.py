@@ -338,22 +338,19 @@ class MarketLinesDatabase:
             return len(lines_data)
         return 0
 
-    def get_market_lines(self, season: int, week: int) -> list[dict]:
+    def get_market_lines(self, season: int, week: int | None = None) -> list[dict]:
         """Retrieve market lines from Supabase
 
         Args:
             season: NFL season year
-            week: Week number
+            week: Week number, or None for the whole season
 
         Returns:
             List of market line dictionaries
         """
-        query = (
-            self.client.table("market_lines")
-            .select("*")
-            .eq("season", season)
-            .eq("week", week)
-        )
+        query = self.client.table("market_lines").select("*").eq("season", season)
+        if week is not None:
+            query = query.eq("week", week)
 
         result = query.execute()
         return result.data
@@ -446,22 +443,19 @@ class PoolSpreadsDatabase:
             return len(spreads_data)
         return 0
 
-    def get_pool_spreads(self, season: int, week: int) -> list[dict]:
+    def get_pool_spreads(self, season: int, week: int | None = None) -> list[dict]:
         """Retrieve pool spreads from Supabase
 
         Args:
             season: NFL season year
-            week: Week number
+            week: Week number, or None for the whole season
 
         Returns:
             List of pool spread dictionaries
         """
-        query = (
-            self.client.table("pool_spreads")
-            .select("*")
-            .eq("season", season)
-            .eq("week", week)
-        )
+        query = self.client.table("pool_spreads").select("*").eq("season", season)
+        if week is not None:
+            query = query.eq("week", week)
 
         result = query.execute()
         return result.data

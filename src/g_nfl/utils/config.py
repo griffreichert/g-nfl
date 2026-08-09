@@ -17,8 +17,23 @@ DEFAULT_WIN_PROB = 0.05
 EXPLOSIVE_RUN_THRESHOLD = 10
 EXPLOSIVE_PASS_THRESHOLD = 15
 
-# Pickers in the no-homers pool
-PICKERS = ["TEAM", "Griffin", "Harry", "Ben", "Chuck", "Hunter", "bModel", "gModel"]
+# Pickers in the no-homers pool. TEST is a scratch profile for exercising the
+# save path without writing to anyone's real record; the team board treats it
+# as non-voting so it never lands in the consensus.
+PICKERS = [
+    "TEAM",
+    "Griffin",
+    "Harry",
+    "Ben",
+    "Chuck",
+    "Hunter",
+    "bModel",
+    "gModel",
+    "TEST",
+]
+# Scratch profile: it can save picks, but it is not a competitor and never
+# appears in standings or in the team board's consensus.
+TEST_PICKER = "TEST"
 
 # Survivor pool used teams - teams that have already been picked and cannot be used again
 # Update this list each week after making survivor picks

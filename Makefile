@@ -48,10 +48,11 @@ run:
 
 api:
 	@echo "⚡ Running FastAPI backend..."
-	uv run uvicorn g_nfl.api.main:app --reload --port 8000
+	uv run uvicorn g_nfl.api.main:app --reload --reload-dir src --port 8000
 
 web:
 	@echo "⚛️  Running React frontend..."
+	cd web && [ -d node_modules ] || npm install
 	cd web && npm run dev
 
 # Deployment

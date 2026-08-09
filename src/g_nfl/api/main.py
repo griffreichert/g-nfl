@@ -10,8 +10,14 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl.picks.grading import BREAK_EVEN, picker_standings
-from g_nfl.utils.config import CUR_SEASON, CUR_WEEK, PICKERS, SURVIVOR_USED_TEAMS
+from g_nfl.picks.grading import BREAK_EVEN, picker_standings, resolve_lines
+from g_nfl.utils.config import (
+    CUR_SEASON,
+    CUR_WEEK,
+    PICKERS,
+    SURVIVOR_USED_TEAMS,
+    TEST_PICKER,
+)
 from g_nfl.utils.database import (
     GameResultsDatabase,
     MarketLinesDatabase,
@@ -166,12 +172,30 @@ def get_standings(season: int):
 
     Grades picks against the game_results table (populated locally by
     scripts/update_results.py); games without a result are pending.
+
+    The line each pick grades against is resolved here from the lines
+    tables — pool where we have one, market otherwise — not read off the
+    pick row. People pick before the Friday pool line is posted, so the
+    row cannot carry the line it will be graded on.
     """
-    picks = PicksDatabase().get_season_picks(season)
+    picks = [
+        p
+        for p in PicksDatabase().get_season_picks(season)
+        if p["picker"] != TEST_PICKER
+    ]
     if not picks:
         raise HTTPException(404, f"No picks for season {season}")
     for p in picks:
         p["game_id"] = normalize_game_id(p["game_id"])
+
+    # game_ids are normalized on both sides or the join silently misses
+    def _normalized(rows: list[dict]) -> list[dict]:
+        return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]
+
+    lines = resolve_lines(
+        _normalized(PoolSpreadsDatabase().get_pool_spreads(season)),
+        _normalized(MarketLinesDatabase().get_market_lines(season)),
+    )
 
     result_rows = GameResultsDatabase().get_results(season)
     results = {
@@ -184,7 +208,7 @@ def get_standings(season: int):
         season=season,
         break_even_pct=BREAK_EVEN,
         graded_through_week=max(graded_weeks) if graded_weeks else None,
-        standings=picker_standings(picks, results),
+        standings=picker_standings(picks, results, lines),
     )
 
 
