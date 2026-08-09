@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context
 
 # Default target
 help:
@@ -17,6 +17,7 @@ help:
 	@echo "🧪 Data Management:"
 	@echo "  update-lines  Update market lines for current week"
 	@echo "  update-results Update final game results (for standings)"
+	@echo "  update-context Update game context + team EPA (for game detail)"
 	@echo "  verify-db     Verify database tables exist"
 	@echo "  load-pool     Load pool standings workbook (ARGS=\"<xlsx> --season 2025\")"
 	@echo "  pool-report   Pool pick-trend report (ARGS=\"<xlsx> --season 2025\")"
@@ -73,6 +74,10 @@ update-lines-all:
 update-results:
 	@echo "🏁 Updating game results..."
 	uv run python scripts/update_results.py $(ARGS)
+
+update-context:
+	@echo "🌦️  Updating game context and team EPA..."
+	uv run python scripts/update_game_context.py $(ARGS)
 
 verify-db:
 	@echo "🔍 Verifying database tables..."

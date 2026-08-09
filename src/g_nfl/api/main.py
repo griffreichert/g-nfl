@@ -10,7 +10,13 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl.picks.grading import BREAK_EVEN, picker_standings, resolve_lines
+from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
+from g_nfl.picks.grading import (
+    BREAK_EVEN,
+    grade_pick,
+    picker_standings,
+    resolve_lines,
+)
 from g_nfl.utils.config import (
     CUR_SEASON,
     CUR_WEEK,
@@ -19,15 +25,19 @@ from g_nfl.utils.config import (
     TEST_PICKER,
 )
 from g_nfl.utils.database import (
+    GameContextDatabase,
     GameResultsDatabase,
     MarketLinesDatabase,
     PicksDatabase,
     PoolSpreadsDatabase,
+    TeamWeekStatsDatabase,
 )
 from g_nfl.utils.web_app import get_pool_spreads, normalize_game_id
 
 from .schemas import (
+    AnalyticsResponse,
     AppConfig,
+    GameDetail,
     GameLine,
     PickRecord,
     PoolSpreadUpdate,
@@ -222,3 +232,224 @@ def update_pool_spread(req: PoolSpreadUpdate):
     if not success:
         raise HTTPException(500, "Failed to update pool spread")
     return PoolSpreadUpdateResponse(success=True)
+
+
+# Each cut carries the reason it is on the page. Three of these used to be
+# terms in the board's rating and are kept here precisely because they turned
+# out to be worth nothing — a reader should be able to see that for themselves.
+_CUTS = [
+    (
+        "band",
+        "Line size",
+        "The only cut with signal left after clustering. Everything is under break-even; "
+        "close lines are the least bad, not good.",
+    ),
+    (
+        "band_venue",
+        "Line size and venue",
+        "The sharpest cell in the record: a home side laying or getting 3-7. The league "
+        "covered 44.6% there, so this is our side selection.",
+    ),
+    ("venue", "Home or road", "Collapses onto the base rate once shrunk. No signal."),
+    ("slot", "Slot", "Best bets look worse than regulars, but not beyond noise."),
+    (
+        "contested",
+        "Split or unanimous",
+        "The board was built on the idea that agreement is a negative. Per game and shrunk, "
+        "it is worth nothing either way.",
+    ),
+    ("picker", "Picker", "Nobody in the room clears break-even over one season."),
+]
+
+
+def _cut_key(name: str):
+    def band(r):
+        if r["line"] is None:
+            return None
+        a = abs(r["line"])
+        return "0-3" if a <= 3 else "3-7" if a <= 7 else "7+"
+
+    venue = lambda r: "home" if r["picked_home"] else "road"  # noqa: E731
+    return {
+        "band": band,
+        "venue": venue,
+        "slot": lambda r: r["slot"],
+        "picker": lambda r: r["picker"],
+        "contested": lambda r: "split" if r["contested"] else "unanimous",
+        "band_venue": lambda r: None if band(r) is None else f"{band(r)} {venue(r)}",
+    }[name]
+
+
+@app.get("/api/analytics", response_model=AnalyticsResponse)
+def get_analytics(season: int):
+    """Cuts of our own pick record, computed per game rather than per pick.
+
+    The room puts about three votes on every game, so a per-pick rate
+    counts one game three times. Everything here collapses votes to games
+    first and then shrinks each cell toward the field's own rate by
+    sample size. See g_nfl.picks.analytics and notes/pick-analytics.md.
+    """
+    picks = [
+        {**p, "game_id": normalize_game_id(p["game_id"])}
+        for p in PicksDatabase().get_season_picks(season)
+        # TEAM is the room's own average; counting it double-counts everyone
+        if p["picker"] not in (TEST_PICKER, "TEAM")
+    ]
+    if not picks:
+        raise HTTPException(404, f"No picks for season {season}")
+
+    def _normalized(rows: list[dict]) -> list[dict]:
+        return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]
+
+    lines = resolve_lines(
+        _normalized(PoolSpreadsDatabase().get_pool_spreads(season)),
+        _normalized(MarketLinesDatabase().get_market_lines(season)),
+    )
+    result_rows = GameResultsDatabase().get_results(season)
+    results = {
+        normalize_game_id(r["game_id"]): r["result"]
+        for r in result_rows
+        if r["result"] is not None
+    }
+
+    rows = graded_rows(picks, results, lines)
+    if not rows:
+        raise HTTPException(404, f"No graded picks for season {season}")
+
+    sides: dict[str, set] = {}
+    for r in rows:
+        sides.setdefault(r["game_id"], set()).add(r["team"])
+    for r in rows:
+        r["contested"] = len(sides[r["game_id"]]) > 1
+
+    games = len({r["game_id"] for r in rows})
+    base = summarize(rows, lambda r: "all")[0]["pct"]
+    # Appetite is a share of the chances we *had*. Results run through the
+    # playoffs while the pool stops at week 17, so counting every graded game
+    # hands the January teams a bigger denominator than the room could ever
+    # have picked into and understates appetite exactly where it matters.
+    picked_weeks = {r["week"] for r in rows}
+    schedule = [
+        (normalize_game_id(r["game_id"]), r["away_team"], r["home_team"])
+        for r in result_rows
+        if r["result"] is not None
+        and int(normalize_game_id(r["game_id"]).split("_")[1]) in picked_weeks
+    ]
+
+    return AnalyticsResponse(
+        season=season,
+        picks=len(rows),
+        games=games,
+        votes_per_game=round(len(rows) / games, 2),
+        base_pct=base,
+        break_even_pct=BREAK_EVEN,
+        cuts=[
+            {
+                "name": name,
+                "label": label,
+                "note": note,
+                "rows": [
+                    {**c, "key": str(c["key"])}
+                    for c in summarize(rows, _cut_key(name), base=base)
+                ],
+            }
+            for name, label, note in _CUTS
+        ],
+        teams=team_appetite(rows, schedule, len({r["picker"] for r in rows})),
+    )
+
+
+@app.get("/api/games/{game_id}", response_model=GameDetail)
+def get_game_detail(game_id: str):
+    """Everything known about one game: line, result, weather, rest, QBs,
+    injuries, both teams' season of EPA, and what the room picked and why.
+
+    Context and EPA come from tables pushed by
+    scripts/update_game_context.py — the deployed API cannot reach
+    nflverse. A game whose week has not been pushed yet still returns,
+    with the context fields null; the page is expected to cope.
+    """
+    gid = normalize_game_id(game_id)
+    parts = gid.split("_")
+    if len(parts) != 4:
+        raise HTTPException(400, f"Malformed game_id: {game_id}")
+    season, week, away, home = int(parts[0]), int(parts[1]), parts[2], parts[3]
+
+    ctx = GameContextDatabase().get_context(gid) or {}
+
+    def _normalized(rows: list[dict]) -> list[dict]:
+        return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]
+
+    pool_rows = _normalized(PoolSpreadsDatabase().get_pool_spreads(season))
+    market_rows = _normalized(MarketLinesDatabase().get_market_lines(season))
+    graded_line = resolve_lines(pool_rows, market_rows).get(gid)
+    pool = next((r["spread"] for r in pool_rows if r["game_id"] == gid), None)
+    market = next((r for r in market_rows if r["game_id"] == gid), {})
+
+    results = {
+        normalize_game_id(r["game_id"]): r
+        for r in GameResultsDatabase().get_results(season)
+    }
+    res = results.get(gid, {})
+    margin = res.get("result")
+
+    picks = [
+        p
+        for p in PicksDatabase().get_picks(season, week)
+        if normalize_game_id(p["game_id"]) == gid and p["picker"] != TEST_PICKER
+    ]
+
+    stats = [
+        s
+        for s in TeamWeekStatsDatabase().get_team_stats(season, [away, home])
+        if s["week"] <= week
+    ]
+    stats.sort(key=lambda s: (s["team"], s["week"]))
+
+    return GameDetail(
+        game_id=gid,
+        season=season,
+        week=week,
+        away_team=away,
+        home_team=home,
+        injuries=ctx.pop("injuries", None) or [],
+        pool_spread=pool,
+        market_spread=market.get("spread"),
+        market_total=market.get("total"),
+        away_score=res.get("away_score"),
+        home_score=res.get("home_score"),
+        result=margin,
+        graded_line=graded_line,
+        team_weeks=stats,
+        picks=[
+            {
+                "picker": p["picker"],
+                "team_picked": p["team_picked"],
+                "pick_type": p.get("pick_type", "regular"),
+                "note": p.get("note"),
+                "outcome": grade_pick(p, margin, graded_line),
+            }
+            for p in picks
+        ],
+        **{
+            k: ctx[k]
+            for k in (
+                "gameday",
+                "gametime",
+                "roof",
+                "surface",
+                "temp",
+                "wind",
+                "stadium",
+                "div_game",
+                "away_rest",
+                "home_rest",
+                "away_qb",
+                "home_qb",
+                "away_coach",
+                "home_coach",
+                "referee",
+            )
+            if k in ctx
+        },
+    )

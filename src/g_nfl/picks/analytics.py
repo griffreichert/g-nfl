@@ -200,3 +200,52 @@ def summarize(
     ]
     out.sort(key=lambda d: d["games"], reverse=True)
     return out
+
+
+def team_appetite(
+    rows: list[dict[str, Any]],
+    schedule: Iterable[tuple[str, str, str]],
+    pickers: int,
+) -> list[dict[str, Any]]:
+    """Which teams we buy more often than chance, and whether it paid.
+
+    A raw pick count says nothing: a team that plays every week has more
+    chances to be picked than one on bye, and a team in tight games gets
+    looked at more. `appetite` is the share of a team's *available*
+    games in which someone in the room took them, so 1.0 means we backed
+    them every time we could have and 0.0 means never.
+
+    `schedule` is (game_id, away, home) for every graded game.
+    """
+    available: dict[str, int] = defaultdict(int)
+    for _gid, away, home in schedule:
+        available[away] += 1
+        available[home] += 1
+
+    taken: dict[str, set] = defaultdict(set)
+    votes: dict[str, int] = defaultdict(int)
+    for r in rows:
+        taken[r["team"]].add(r["game_id"])
+        votes[r["team"]] += 1
+
+    by_team = cells(rows, lambda r: r["team"])
+    out = []
+    for team, chances in sorted(available.items()):
+        cell = by_team.get(team)
+        picked_games = len(taken[team])
+        out.append(
+            {
+                "team": team,
+                "available": chances,
+                "picked_games": picked_games,
+                "picks": votes[team],
+                # 0 = never took them, 1 = took them every time we could
+                "appetite": picked_games / chances if chances else None,
+                # how hard the room piled on when it did take them
+                "votes_per_pick": votes[team] / picked_games if picked_games else None,
+                "pct": cell.raw_pct if cell else None,
+                "units": round(cell.units, 2) if cell else 0.0,
+            }
+        )
+    out.sort(key=lambda d: (d["appetite"] or 0), reverse=True)
+    return out

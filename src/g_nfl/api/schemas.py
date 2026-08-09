@@ -96,3 +96,113 @@ class PoolSpreadUpdate(BaseModel):
 
 class PoolSpreadUpdateResponse(BaseModel):
     success: bool
+
+
+class CutRow(BaseModel):
+    """One slice of the pick record. `pct` is per game; `pick_pct` is the
+    naive per-pick rate, carried so the inflation stays visible."""
+
+    key: str
+    picks: int
+    games: float
+    pick_pct: float | None
+    pct: float | None
+    shrunk_pct: float | None
+    units: float
+    z: float | None
+
+
+class Cut(BaseModel):
+    name: str
+    label: str
+    note: str
+    rows: list[CutRow]
+
+
+class TeamAppetite(BaseModel):
+    team: str
+    available: int
+    picked_games: int
+    picks: int
+    appetite: float | None
+    votes_per_pick: float | None
+    pct: float | None
+    units: float
+
+
+class AnalyticsResponse(BaseModel):
+    season: int
+    picks: int
+    games: int
+    votes_per_game: float
+    base_pct: float
+    break_even_pct: float
+    cuts: list[Cut]
+    teams: list[TeamAppetite]
+
+
+class InjuryReport(BaseModel):
+    team: str
+    name: str
+    position: str | None
+    status: str | None
+    practice: str | None
+
+
+class TeamWeekStat(BaseModel):
+    week: int
+    team: str
+    plays: int | None
+    off_epa_play: float | None
+    def_epa_play: float | None
+    off_success_rate: float | None
+    def_success_rate: float | None
+    off_explosive_rate: float | None
+    def_explosive_rate: float | None
+    off_pass_epa: float | None
+    off_rush_epa: float | None
+
+
+class GamePick(BaseModel):
+    """A pick the room made on this game, with whatever reasoning was
+    written down at the time."""
+
+    picker: str
+    team_picked: str
+    pick_type: PickType
+    note: str | None = None
+    outcome: str | None = None
+
+
+class GameDetail(BaseModel):
+    game_id: str
+    season: int
+    week: int
+    away_team: str
+    home_team: str
+    # context is null until scripts/update_game_context.py has run for the week
+    gameday: str | None = None
+    gametime: str | None = None
+    roof: str | None = None
+    surface: str | None = None
+    temp: int | None = None
+    wind: int | None = None
+    stadium: str | None = None
+    div_game: bool | None = None
+    away_rest: int | None = None
+    home_rest: int | None = None
+    away_qb: str | None = None
+    home_qb: str | None = None
+    away_coach: str | None = None
+    home_coach: str | None = None
+    referee: str | None = None
+    injuries: list[InjuryReport] = []
+    pool_spread: float | None = None
+    market_spread: float | None = None
+    market_total: float | None = None
+    away_score: int | None = None
+    home_score: int | None = None
+    result: float | None = None
+    graded_line: float | None = None
+    team_weeks: list[TeamWeekStat] = []
+    picks: list[GamePick] = []
