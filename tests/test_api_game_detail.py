@@ -48,6 +48,9 @@ class _Results:
 
 
 class _Lines:
+    """One fake per table so pool and market can differ, which is the only
+    way to exercise the market fallback."""
+
     def __init__(self, rows):
         self.rows = rows
 
@@ -81,13 +84,15 @@ def _stat(team, week):
 def wired(monkeypatch):
     """Patch every table the endpoint touches; tests tweak what they need."""
 
-    def _wire(context=None, stats=(), picks=(), lines=()):
+    def _wire(context=None, stats=(), picks=(), lines=(), pool=None, market=None):
         monkeypatch.setattr(api, "GameContextDatabase", lambda: _Ctx(context))
         monkeypatch.setattr(api, "TeamWeekStatsDatabase", lambda: _Stats(list(stats)))
         monkeypatch.setattr(api, "PicksDatabase", lambda: _Picks(list(picks)))
         monkeypatch.setattr(api, "GameResultsDatabase", lambda: _Results())
-        monkeypatch.setattr(api, "PoolSpreadsDatabase", lambda: _Lines(list(lines)))
-        monkeypatch.setattr(api, "MarketLinesDatabase", lambda: _Lines(list(lines)))
+        pool_rows = list(lines if pool is None else pool)
+        market_rows = list(lines if market is None else market)
+        monkeypatch.setattr(api, "PoolSpreadsDatabase", lambda: _Lines(pool_rows))
+        monkeypatch.setattr(api, "MarketLinesDatabase", lambda: _Lines(market_rows))
 
     return _wire
 
@@ -163,3 +168,34 @@ def test_malformed_game_id_is_a_400(wired):
     with pytest.raises(HTTPException) as e:
         api.get_game_detail("nonsense")
     assert e.value.status_code == 400
+
+
+def test_graded_line_source_names_the_table_it_came_from(wired):
+    """The client used to infer this from pool_spread being null, which
+    quietly reimplements resolve_lines(). The API says it instead."""
+    wired(lines=[{"game_id": GID, "spread": 2.5}])
+    assert api.get_game_detail(GID).graded_line_source == "pool"
+
+
+def test_market_is_the_fallback_when_no_pool_line_exists(wired):
+    wired(pool=[], market=[{"game_id": GID, "spread": 1.5}])
+    d = api.get_game_detail(GID)
+    assert d.graded_line == 1.5
+    assert d.graded_line_source == "market"
+    assert d.pool_spread is None
+
+
+def test_pool_wins_over_market_when_both_exist(wired):
+    wired(
+        pool=[{"game_id": GID, "spread": 2.5}],
+        market=[{"game_id": GID, "spread": 1.5}],
+    )
+    d = api.get_game_detail(GID)
+    assert d.graded_line == 2.5 and d.graded_line_source == "pool"
+    assert d.market_spread == 1.5
+
+
+def test_graded_line_source_is_null_when_no_line_resolves(wired):
+    wired(lines=[])
+    d = api.get_game_detail(GID)
+    assert d.graded_line is None and d.graded_line_source is None

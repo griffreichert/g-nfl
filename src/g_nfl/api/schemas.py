@@ -204,5 +204,8 @@ class GameDetail(BaseModel):
     home_score: int | None = None
     result: float | None = None
     graded_line: float | None = None
+    # which table graded_line came from. Returned rather than inferred from
+    # pool_spread being null, so the client cannot drift from resolve_lines().
+    graded_line_source: Literal["pool", "market"] | None = None
     team_weeks: list[TeamWeekStat] = []
     picks: list[GamePick] = []

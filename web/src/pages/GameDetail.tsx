@@ -323,7 +323,7 @@ export default function GameDetailPage() {
             {game.graded_line === null
               ? 'No line resolved yet, so nothing here grades.'
               : `Picks grade on ${fmtSpread(game.graded_line)} (${
-                  game.pool_spread === null ? 'market' : 'pool'
+                  game.graded_line_source ?? 'unknown'
                 }).`}
           </p>
         </CardContent>

@@ -170,6 +170,8 @@ export interface GameDetail {
   home_score: number | null
   result: number | null
   graded_line: number | null
+  /** which table graded_line came from — the API decides, not the client */
+  graded_line_source: 'pool' | 'market' | null
   team_weeks: TeamWeekStat[]
   picks: GamePick[]
 }

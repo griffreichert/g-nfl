@@ -385,6 +385,9 @@ def get_game_detail(game_id: str):
     graded_line = resolve_lines(pool_rows, market_rows).get(gid)
     pool = next((r["spread"] for r in pool_rows if r["game_id"] == gid), None)
     market = next((r for r in market_rows if r["game_id"] == gid), {})
+    # resolve_lines prefers pool; report which one it landed on rather than
+    # leaving the client to reimplement that rule
+    source = None if graded_line is None else ("pool" if pool is not None else "market")
 
     results = {
         normalize_game_id(r["game_id"]): r
@@ -420,6 +423,7 @@ def get_game_detail(game_id: str):
         home_score=res.get("home_score"),
         result=margin,
         graded_line=graded_line,
+        graded_line_source=source,
         team_weeks=stats,
         picks=[
             {
