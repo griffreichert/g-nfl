@@ -5,12 +5,17 @@ import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, PickRecord } from '../types'
 import {
   BANDS,
+  bestSide,
+  BREAK_EVEN,
+  buildAttachment,
   buildConsensus,
-  byContention,
+  byScore,
   findBlocs,
+  scoreSide,
   spreadFor,
   TEAM_PICKER,
   type ConsensusRow,
+  type Score,
   type SidePick,
 } from '@/lib/consensus'
 import SplitBar from '@/components/SplitBar'
@@ -28,15 +33,55 @@ import {
 const pickerOrder = (a: string, b: string) =>
   a === TEAM_PICKER ? 1 : b === TEAM_PICKER ? -1 : a.localeCompare(b)
 
-function Chip({ p }: { p: SidePick }) {
+/**
+ * One chip per independent opinion. Pickers who vote together get one chip
+ * between them, so a duplicate vote can't read as two people agreeing.
+ */
+function Chip({ picks, bb }: { picks: string[]; bb: boolean }) {
   return (
     <span
       className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium ${
-        p.bb ? 'border-bb bg-bb-soft text-bb' : 'border-border text-muted-foreground'
+        bb ? 'border-bb bg-bb-soft text-bb' : 'border-border text-muted-foreground'
       }`}
+      title={picks.length > 1 ? `${picks.join(' and ')} vote together` : undefined}
     >
-      {p.picker}
-      {p.bb && <Star className="size-3 fill-current" />}
+      {picks.join('+')}
+      {bb && <Star className="size-3 fill-current" />}
+    </span>
+  )
+}
+
+/** Group a side's pickers into blocs, preserving order of first appearance. */
+function toChips(picks: SidePick[], blocs: string[][]) {
+  const out: { picks: string[]; bb: boolean }[] = []
+  const seen = new Map<number, number>()
+  for (const p of picks) {
+    const idx = blocs.findIndex((b) => b.includes(p.picker))
+    const at = idx === -1 ? undefined : seen.get(idx)
+    if (at === undefined) {
+      seen.set(idx, out.length)
+      out.push({ picks: [p.picker], bb: p.bb })
+    } else {
+      out[at].picks.push(p.picker)
+      out[at].bb = out[at].bb || p.bb
+    }
+  }
+  return out
+}
+
+/** Expected ATS% for a side, and how far that sits from the -110 break-even. */
+function ScorePill({ score }: { score: Score }) {
+  const good = score.total >= BREAK_EVEN
+  return (
+    <span
+      className={`tabular rounded px-1.5 py-0.5 text-xs font-semibold ${
+        good ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
+      }`}
+      title={score.parts
+        .map((p) => `${p.label}: ${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}${p.measured ? '' : ' (judgement)'}`)
+        .join('\n')}
+    >
+      {score.total.toFixed(1)}%
     </span>
   )
 }
@@ -47,12 +92,16 @@ function Side({
   picks,
   isTeamPick,
   lead,
+  score,
+  blocs,
 }: {
   team: string
   spread: number | null
   picks: SidePick[]
   isTeamPick: boolean
   lead: boolean
+  score: Score
+  blocs: string[][]
 }) {
   return (
     <div
@@ -63,21 +112,30 @@ function Side({
       <img src={teamLogo(team)} alt="" className={`size-6 ${picks.length ? '' : 'opacity-40'}`} />
       <span className="font-semibold">{team}</span>
       <span className="tabular text-sm text-muted-foreground">{fmtSpread(spread)}</span>
+      <ScorePill score={score} />
       {isTeamPick && (
         <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
           TEAM
         </span>
       )}
       <span className="ml-auto flex flex-wrap justify-end gap-1">
-        {picks.map((p) => (
-          <Chip key={p.picker} p={p} />
+        {toChips(picks, blocs).map((c) => (
+          <Chip key={c.picks.join('+')} picks={c.picks} bb={c.bb} />
         ))}
       </span>
     </div>
   )
 }
 
-function GameCard({ row }: { row: ConsensusRow }) {
+function GameCard({
+  row,
+  attachment,
+  blocs,
+}: {
+  row: ConsensusRow
+  attachment: Map<string, number>
+  blocs: string[][]
+}) {
   const split = row.blocOther > 0 && row.blocSide > 0
   const otherSpread = spreadFor(row.game, row.other)
   // Two weak signals stacked: a best bet on a game nobody is arguing about.
@@ -128,6 +186,8 @@ function GameCard({ row }: { row: ConsensusRow }) {
           picks={row.sidePicks}
           isTeamPick={row.teamPick === row.side}
           lead
+          score={scoreSide(row, row.side, attachment)}
+          blocs={blocs}
         />
         <Side
           team={row.other}
@@ -135,6 +195,8 @@ function GameCard({ row }: { row: ConsensusRow }) {
           picks={row.otherPicks}
           isTeamPick={row.teamPick === row.other}
           lead={false}
+          score={scoreSide(row, row.other, attachment)}
+          blocs={blocs}
         />
       </div>
 
@@ -274,17 +336,6 @@ function Survivor({
   )
 }
 
-function Stat({ value, label, tone }: { value: string; label: string; tone?: 'warn' }) {
-  return (
-    <div className="rounded-lg border border-border bg-card px-3 py-2">
-      <div className={`text-xl font-bold tabular ${tone === 'warn' ? 'text-loss' : ''}`}>
-        {value}
-      </div>
-      <div className="text-xs leading-tight text-muted-foreground">{label}</div>
-    </div>
-  )
-}
-
 export default function Field() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
@@ -324,16 +375,20 @@ export default function Field() {
   }, [season, weeks])
 
   const blocs = useMemo(() => findBlocs(seasonPicks ?? []), [seasonPicks])
-  const rows = useMemo(
-    () => buildConsensus(games, picks, blocs).sort(byContention),
-    [games, picks, blocs],
-  )
+  // Attachment rides on the season fetch the blocs already need — no extra call.
+  const attachment = useMemo(() => buildAttachment(seasonPicks ?? []), [seasonPicks])
+  const rows = useMemo(() => {
+    const built = buildConsensus(games, picks, blocs)
+    const best = new Map(
+      built.map((r) => [r.game.game_id, bestSide(r, attachment).score.total]),
+    )
+    return built.sort(byScore(best))
+  }, [games, picks, blocs, attachment])
   const pickers = useMemo(
     () => [...new Set(picks.map((p) => p.picker))].sort(pickerOrder),
     [picks],
   )
 
-  const contested = rows.filter((r) => r.blocSide > 0 && r.blocOther > 0).length
   const bandCounts = useMemo(() => {
     const c: Record<string, number> = {}
     for (const r of rows) {
@@ -342,7 +397,6 @@ export default function Field() {
     }
     return c
   }, [rows])
-  const bigSpreadPicks = (bandCounts['3-7'] ?? 0) + (bandCounts['7+'] ?? 0)
 
   if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
   if (!config || season === null || week === null) return <p>Loading…</p>
@@ -391,37 +445,14 @@ export default function Field() {
           </TabsList>
 
           <TabsContent value="board" className="flex flex-col gap-4">
-            <div className="grid grid-cols-3 gap-2">
-              <Stat value={String(contested)} label="games we're split on" />
-              <Stat
-                value={`${pickers.filter((p) => p !== TEAM_PICKER).length}→${
-                  pickers.filter((p) => p !== TEAM_PICKER).length -
-                  blocs.reduce((s, b) => s + b.length - 1, 0)
-                }`}
-                label="pickers → independent voices"
-              />
-              <Stat
-                value={String(bigSpreadPicks)}
-                label="picks on spreads over 3"
-                tone={bigSpreadPicks > 0 ? 'warn' : undefined}
-              />
-            </div>
-
-            {blocs.length > 0 && (
-              <div className="rounded-lg border border-border bg-card p-3 text-sm">
-                <span className="font-semibold">Voting together: </span>
-                {blocs.map((b) => b.join(' = ')).join(' · ')}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These pick the same side over 90% of the time, so the board counts each group
-                  once. Ben submitted bModel verbatim on all 69 shared games in 2025 — counting
-                  both turns a 4–2 into a 5–2.
-                </p>
-              </div>
-            )}
-
             <div className="flex flex-col gap-2">
               {rows.map((r) => (
-                <GameCard key={r.game.game_id} row={r} />
+                <GameCard
+                  key={r.game.game_id}
+                  row={r}
+                  attachment={attachment}
+                  blocs={blocs}
+                />
               ))}
             </div>
 
@@ -439,9 +470,11 @@ export default function Field() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Sorted by how split we are, not how much we agree. In 2025 the games we all agreed on
-              went 45.2% and the contested ones 52.4%, so agreement is not confidence — the open
-              games are the ones worth the call's time. Full analysis in{' '}
+              Every side carries an expected ATS%, best first. It is built from what graded out in
+              2025: spread band, contested or not, the best-bet slot, home or road. Agreement counts
+              against a side — the games we all agreed on went 45.2% and the contested ones 52.4%.
+              Homer and attachment terms are judgement, capped so they can only break a tie; hover a
+              score to see the breakdown. Full analysis in{' '}
               <code>notes/team-page-consensus-analysis.md</code>.
             </p>
           </TabsContent>

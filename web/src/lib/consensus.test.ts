@@ -1,6 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bandFor, buildConsensus, byContention, findBlocs, spreadFor } from './consensus.ts'
+import {
+  bandFor,
+  buildAttachment,
+  buildConsensus,
+  byContention,
+  findBlocs,
+  isHomer,
+  scoreSide,
+  spreadFor,
+} from './consensus.ts'
 import type { GameLine, PickRecord, PickType } from '../types.ts'
 
 const game = (away: string, home: string, pool: number | null = -3): GameLine => ({
@@ -140,4 +149,61 @@ test('byContention puts dead splits first and unanimity last', () => {
 test('no picks at all yields no rows, not a crash', () => {
   assert.deepEqual(buildConsensus([game('NYJ', 'BUF')], []), [])
   assert.deepEqual(findBlocs([]), [])
+})
+
+test('scoreRow leads with the spread band and penalises agreement', () => {
+  // The one thing 2025 says loudly: close games hit, big numbers do not.
+  const close = buildConsensus([game('CAR', 'GB', 2.5)], [
+    pick('Ben', '2025_12_CAR_GB', 'GB'),
+    pick('Harry', '2025_12_CAR_GB', 'CAR'),
+  ])[0]
+  const big = buildConsensus([game('CAR', 'GB', 13.5)], [
+    pick('Ben', '2025_12_CAR_GB', 'GB'),
+    pick('Harry', '2025_12_CAR_GB', 'CAR'),
+  ])[0]
+  const empty = new Map<string, number>()
+  assert.ok(scoreSide(close, 'GB', empty).total > scoreSide(big, 'GB', empty).total)
+
+  // Unanimous scores below contested on an otherwise identical game — the
+  // whole point. If this flips, the board is selling consensus as confidence.
+  const unanimous = buildConsensus([game('CAR', 'GB', 2.5)], [
+    pick('Ben', '2025_12_CAR_GB', 'GB'),
+    pick('Harry', '2025_12_CAR_GB', 'GB'),
+  ])[0]
+  assert.ok(scoreSide(unanimous, 'GB', empty).total < scoreSide(close, 'GB', empty).total)
+})
+
+test('scoreRow docks homer and attached votes, but never past the floor', () => {
+  const gid = '2025_12_WAS_CHI'
+  const row = buildConsensus([game('WAS', 'CHI', 2.5)], [
+    pick('Chuck', gid, 'CHI'),
+    pick('Harry', gid, 'WAS'),
+  ])[0]
+  // Chuck is a CHI homer, so the CHI side is docked and the WAS side is not.
+  const clean = scoreSide(row, 'CHI', new Map()).total
+  assert.ok(scoreSide(row, 'CHI', new Map()).parts.some((p) => !p.measured))
+  assert.ok(scoreSide(row, 'WAS', new Map()).parts.every((p) => p.measured))
+  assert.ok(isHomer('Chuck', 'CHI') && !isHomer('Chuck', 'WAS'))
+
+  // Attachment: five prior CHI picks is a habit, and it costs more than homer alone.
+  const attached = buildAttachment(
+    Array.from({ length: 5 }, (_, i) => ({ ...pick('Chuck', `g${i}`, 'CHI'), week: i + 1 })),
+  )
+  assert.ok(scoreSide(row, 'CHI', attached).total < clean)
+
+  // Judgement can never outweigh the 15-point spread-band spread.
+  assert.ok(clean - scoreSide(row, 'CHI', attached).total <= 6)
+})
+
+test('buildAttachment counts a picker per team and ignores TEAM', () => {
+  const counts = buildAttachment([
+    pick('Harry', 'g1', 'CLE'),
+    pick('Harry', 'g2', 'CLE'),
+    pick('Harry', 'g3', 'PIT'),
+    pick('TEAM', 'g4', 'CLE'),
+    pick('Harry', 'g5', 'CLE', 'survivor'),
+  ])
+  assert.equal(counts.get('Harry|CLE'), 2)
+  assert.equal(counts.get('Harry|PIT'), 1)
+  assert.equal(counts.get('TEAM|CLE'), undefined)
 })

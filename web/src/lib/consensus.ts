@@ -211,3 +211,145 @@ export const byContention = (a: ConsensusRow, b: ConsensusRow) =>
   b.contention - a.contention ||
   b.sidePicks.length + b.otherPicks.length - (a.sidePicks.length + a.otherPicks.length) ||
   a.game.away_team.localeCompare(b.game.away_team)
+
+/**
+ * Whose club is whose. A homer vote is a picker backing their own team, which
+ * is the one bias the room can name out loud.
+ *
+ * Hunter's CLE is the real one; he drifts to CHI and WAS, so all three count.
+ * Models have no club. Griffin's list is Chuck's neighbour, not a typo — three
+ * of the eight are Browns fans.
+ */
+export const HOMER_TEAMS: Record<string, string[]> = {
+  Ben: ['WAS'],
+  Chuck: ['CHI'],
+  Hunter: ['CLE', 'CHI', 'WAS'],
+  Harry: ['CLE'],
+  Griffin: ['CLE'],
+}
+
+/** Break-even at -110, and the field's own rate across all 777 graded 2025 picks. */
+export const BREAK_EVEN = 52.4
+const FIELD_BASE = 48.5
+
+/**
+ * How many times this season a picker has already taken a given team.
+ * Key is `picker|team`. Built from the season fetch the board already makes.
+ */
+export function buildAttachment(seasonPicks: PickRecord[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const p of seasonPicks) {
+    if (!isAtsPick(p.pick_type) || p.picker === TEAM_PICKER) continue
+    const key = `${p.picker}|${p.team_picked}`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** Prior picks on this team, not counting the one being scored. */
+const priorPicks = (attachment: Map<string, number>, picker: string, team: string) =>
+  Math.max(0, (attachment.get(`${picker}|${team}`) ?? 0) - 1)
+
+/** Backing the same team this many times is a habit, not a read. */
+const ATTACH_MIN = 4
+
+export const isHomer = (picker: string, team: string) =>
+  (HOMER_TEAMS[picker] ?? []).includes(team)
+
+export interface ScorePart {
+  label: string
+  value: number
+  /** false when the number is a judgement call rather than something we graded */
+  measured: boolean
+}
+
+export interface Score {
+  /** expected ATS%, same units as the band rates */
+  total: number
+  /** points above (or below) the -110 break-even */
+  edge: number
+  parts: ScorePart[]
+}
+
+/**
+ * What we'd expect this side to hit, built from `notes/team-page-consensus-analysis.md`.
+ *
+ * The measured terms are deltas against the field's own 48.5% across 2025:
+ * spread band (the only cut significant at both tails), contested vs unanimous
+ * (52.4% / 45.2%), the best-bet slot (41.4%), and home vs road (45.2% / 50.1%).
+ * Note that agreement enters with a *minus* sign — the unanimous games are the
+ * ones that lost. A score that rewarded headcount would be backwards here.
+ *
+ * Homer and attachment are judgement, not history: nothing in the dataset grades
+ * them, so they are capped at JUDGEMENT_FLOOR and marked unmeasured in the
+ * breakdown. They exist to nudge a tie, never to outvote the spread band.
+ */
+const JUDGEMENT_FLOOR = -6
+
+export function scoreSide(
+  row: ConsensusRow,
+  team: string,
+  attachment: Map<string, number>,
+): Score {
+  const picks = team === row.side ? row.sidePicks : row.otherPicks
+  const parts: ScorePart[] = []
+  const add = (label: string, value: number, measured = true) => {
+    if (value !== 0) parts.push({ label, value, measured })
+  }
+
+  // Band and contention describe the game, so both sides carry them. Slot,
+  // venue and the judgement terms are what actually separate the two sides.
+  parts.push({
+    label: row.band ? `spread ${row.band.label}` : 'no pool line',
+    value: row.band?.pct ?? FIELD_BASE,
+    measured: true,
+  })
+
+  const contested = row.blocSide > 0 && row.blocOther > 0
+  add(contested ? 'contested' : 'unanimous', contested ? 3.9 : -3.3)
+  if (picks.some((p) => p.bb)) add('best bet slot', -7.1)
+
+  const isHome = team === row.game.home_team
+  add(isHome ? 'home side' : 'road side', isHome ? -3.3 : 1.6)
+
+  // judgement terms, floored so they can never swamp the band
+  const homers = picks.filter((p) => isHomer(p.picker, team))
+  const attached = picks.filter(
+    (p) => priorPicks(attachment, p.picker, team) >= ATTACH_MIN,
+  )
+  const judgement = Math.max(JUDGEMENT_FLOOR, homers.length * -3 + attached.length * -1.5)
+  if (judgement !== 0) {
+    const who = [
+      homers.length ? `${homers.map((p) => p.picker).join(', ')} homer` : '',
+      attached.length ? `${attached.map((p) => p.picker).join(', ')} attached` : '',
+    ]
+      .filter(Boolean)
+      .join(' \u00b7 ')
+    parts.push({ label: who, value: judgement, measured: false })
+  }
+
+  const total = parts.reduce((sum, p) => sum + p.value, 0)
+  return { total, edge: total - BREAK_EVEN, parts }
+}
+
+/** The better of the two sides — what this game is worth to the room at all. */
+export const bestSide = (row: ConsensusRow, attachment: Map<string, number>) => {
+  const a = scoreSide(row, row.side, attachment)
+  const b = scoreSide(row, row.other, attachment)
+  return a.total >= b.total
+    ? { team: row.side, score: a, otherScore: b }
+    : { team: row.other, score: b, otherScore: a }
+}
+
+/**
+ * Board order: best expected side first, most contested breaking ties.
+ *
+ * This is not "most agreed first" wearing a hat — agreement is a negative term
+ * in the score, so a unanimous 7+ point favourite sorts to the bottom, which is
+ * exactly where 2025 says it belongs.
+ */
+export const byScore =
+  (best: Map<string, number>) => (a: ConsensusRow, b: ConsensusRow) =>
+    (best.get(b.game.game_id) ?? 0) - (best.get(a.game.game_id) ?? 0) ||
+    b.contention - a.contention ||
+    a.game.away_team.localeCompare(b.game.away_team)
