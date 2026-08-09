@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Check, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
@@ -617,6 +618,13 @@ export default function Field() {
               one of us — and followed the majority on {TEAM_2025.rubberStamp} games.{' '}
               <b>Averaging is what loses.</b> The entry below is a starting point to argue with,
               not a vote to ratify.
+            </p>
+
+            <p className="text-xs text-muted-foreground">
+              Tap a side to add it, tap again to make it the best bet, once more to drop it.{' '}
+              <Link to="/help" className="text-primary underline-offset-4 hover:underline">
+                How this works
+              </Link>
             </p>
 
             {missing.length > 0 && (

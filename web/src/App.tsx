@@ -1,10 +1,11 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
+import { CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import MakePicks from './pages/MakePicks'
 import Field from './pages/Field'
 import ManageSpreads from './pages/ManageSpreads'
 import Standings from './pages/Standings'
+import Help from './pages/Help'
 
 const tabs = [
   { to: '/picks', label: 'Picks', icon: ClipboardCheck },
@@ -41,7 +42,19 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <NavLink
+              to="/help"
+              aria-label="How this works"
+              title="How this works"
+              className={({ isActive }) =>
+                `flex size-9 items-center justify-center rounded-md transition-colors ${
+                  isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                }`
+              }
+            >
+              <CircleQuestionMark className="size-5" />
+            </NavLink>
             <ThemeToggle />
           </div>
         </div>
@@ -54,6 +67,7 @@ export default function App() {
           <Route path="/view" element={<Field />} />
           <Route path="/standings" element={<Standings />} />
           <Route path="/spreads" element={<ManageSpreads />} />
+          <Route path="/help" element={<Help />} />
         </Routes>
       </main>
 
