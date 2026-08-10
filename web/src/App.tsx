@@ -1,13 +1,17 @@
+import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
-import MakePicks from './pages/MakePicks'
-import Field from './pages/Field'
-import GameDetail from './pages/GameDetail'
-import ManageSpreads from './pages/ManageSpreads'
-import Standings from './pages/Standings'
-import Analytics from './pages/Analytics'
-import Help from './pages/Help'
+
+// Split per route so a page's charts and tables are fetched when someone opens
+// it, not on first paint. Recharts and TanStack Table are most of the bundle.
+const MakePicks = lazy(() => import('./pages/MakePicks'))
+const Field = lazy(() => import('./pages/Field'))
+const GameDetail = lazy(() => import('./pages/GameDetail'))
+const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
+const Standings = lazy(() => import('./pages/Standings'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const Help = lazy(() => import('./pages/Help'))
 
 const tabs = [
   { to: '/picks', label: 'Picks', icon: ClipboardCheck },
@@ -64,17 +68,19 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-24 sm:px-5 sm:pb-8">
-        <Routes>
-          <Route path="/" element={<Navigate to="/view" replace />} />
-          <Route path="/picks" element={<MakePicks />} />
-          <Route path="/view" element={<Field />} />
-          {/* detail view, reached from a game row — deliberately not a tab */}
-          <Route path="/game/:gameId" element={<GameDetail />} />
-          <Route path="/standings" element={<Standings />} />
-          <Route path="/spreads" element={<ManageSpreads />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/help" element={<Help />} />
-        </Routes>
+        <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/view" replace />} />
+            <Route path="/picks" element={<MakePicks />} />
+            <Route path="/view" element={<Field />} />
+            {/* detail view, reached from a game row — deliberately not a tab */}
+            <Route path="/game/:gameId" element={<GameDetail />} />
+            <Route path="/standings" element={<Standings />} />
+            <Route path="/spreads" element={<ManageSpreads />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/help" element={<Help />} />
+          </Routes>
+        </Suspense>
       </main>
 
       {/* Thumb-reachable on a phone, gone on a laptop. */}
