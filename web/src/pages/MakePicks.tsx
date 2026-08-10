@@ -34,24 +34,29 @@ export default function MakePicks() {
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [picker, setPicker] = useState<string>('')
 
-  const [games, setGames] = useState<GameLine[]>([])
+  // Games are stamped with the week they were fetched for, so "still loading"
+  // is derived from a stale stamp rather than flagged from inside the effect.
+  const [fetched, setGames] = useState<{ key: string; rows: GameLine[] }>({
+    key: '',
+    rows: [],
+  })
+  const weekKey = `${season}-${week}`
+  const games = fetched.key === weekKey ? fetched.rows : []
   const [picks, setPicks] = useState<Record<string, GamePick>>({})
   const [survivor, setSurvivor] = useState<string | null>(null)
   const [underdog, setUnderdog] = useState<string | null>(null)
   const [mnf, setMnf] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
-  const [loading, setLoading] = useState(false)
+  const loading = season !== null && week !== null && fetched.key !== weekKey
 
   // Load games for the selected week
   useEffect(() => {
     if (season === null || week === null) return
-    setLoading(true)
     api
       .lines(season, week)
-      .then(setGames)
+      .then((rows) => setGames({ key: `${season}-${week}`, rows }))
       .catch((e) => setStatus({ kind: 'err', msg: String(e) }))
-      .finally(() => setLoading(false))
   }, [season, week])
 
   // Load existing picks when picker / week changes

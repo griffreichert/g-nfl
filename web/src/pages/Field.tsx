@@ -454,7 +454,12 @@ export default function Field() {
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [games, setGames] = useState<GameLine[]>([])
-  const [seasonPicks, setSeasonPicks] = useState<PickRecord[] | null>(null)
+  const [fetchedSeason, setSeasonPicks] = useState<{
+    key: string
+    rows: PickRecord[]
+  } | null>(null)
+  const seasonKey = `${season}-${weeks.join(',')}`
+  const seasonPicks = fetchedSeason?.key === seasonKey ? fetchedSeason.rows : null
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Both are keyed by season+week so switching weeks drops them without an effect.
@@ -491,10 +496,10 @@ export default function Field() {
   useEffect(() => {
     if (season === null || weeks.length === 0) return
     let cancelled = false
-    setSeasonPicks(null)
+    const key = `${season}-${weeks.join(',')}`
     Promise.all(weeks.map((w) => api.picks(season, w)))
-      .then((all) => !cancelled && setSeasonPicks(all.flat()))
-      .catch(() => !cancelled && setSeasonPicks([]))
+      .then((all) => !cancelled && setSeasonPicks({ key, rows: all.flat() }))
+      .catch(() => !cancelled && setSeasonPicks({ key, rows: [] }))
     return () => {
       cancelled = true
     }
