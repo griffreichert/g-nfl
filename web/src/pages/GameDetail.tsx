@@ -24,6 +24,7 @@ import {
   SLOT_LABEL,
   type EpaPoint,
 } from '@/lib/game'
+import { Loading } from '@/components/PageState'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -251,7 +252,7 @@ export default function GameDetailPage() {
     return (
       <div className="flex flex-col gap-3">
         {back}
-        <p className="text-muted-foreground">Loading game…</p>
+        <Loading />
       </div>
     )
 

@@ -4,6 +4,7 @@ import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine } from '../types'
 import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 
 export default function ManageSpreads() {
   const { config, error: configError } = useConfig()
@@ -38,8 +39,8 @@ export default function ManageSpreads() {
     }
   }
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">

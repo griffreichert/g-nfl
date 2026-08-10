@@ -24,6 +24,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageHeader from '@/components/PageHeader'
+import { EmptyState, ErrorNote, Loading } from '@/components/PageState'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 /** Cut keys come off the backend as raw group values. Only slots need help. */
@@ -357,8 +358,8 @@ export default function Analytics() {
     }
   }, [season])
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null) return <Loading />
 
   const ready = data?.season === season
 
@@ -373,15 +374,13 @@ export default function Analytics() {
 
       {/* A season with no graded picks 404s. That is an answer, not a crash. */}
       {error && (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="font-medium">Nothing graded for {season}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Cuts appear once picks and results exist for the season.
-          </p>
-          <p className="mt-3 text-xs text-muted-foreground">{error}</p>
-        </div>
+        <EmptyState
+          title={`Nothing graded for ${season}`}
+          detail="Cuts appear once picks and results exist for the season."
+          note={error}
+        />
       )}
-      {!error && !ready && <p className="text-muted-foreground">Loading…</p>}
+      {!error && !ready && <Loading />}
 
       {!error && ready && data && (
         <>

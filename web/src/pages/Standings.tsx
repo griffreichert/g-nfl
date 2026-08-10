@@ -20,6 +20,7 @@ import { useConfig, useSeasonWeek } from '../hooks'
 import type { PickerStanding, StandingsResponse } from '../types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import PageHeader from '@/components/PageHeader'
+import { EmptyState, ErrorNote, Loading } from '@/components/PageState'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const CHART_COLORS = [
@@ -246,11 +247,12 @@ export default function Standings() {
     }
   }, [season])
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null) return <Loading />
 
   const breakEven = data ? data.break_even_pct : 110 / 210
-
+  // Covers both "nothing fetched yet" and "what we have is last season's".
+  const stale = !error && data?.season !== season
   const empty = !error && data?.season === season && data.standings.length === 0
 
   return (
@@ -271,18 +273,13 @@ export default function Standings() {
       {/* Results live in a table the backend may not have yet (#65). An empty
           board is the honest answer, not a stack trace. */}
       {(error || empty) && (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="font-medium">No graded results yet</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Standings appear once game results are loaded for {season}.
-          </p>
-          {error && <p className="mt-3 text-xs text-muted-foreground">{error}</p>}
-        </div>
+        <EmptyState
+          title="No graded results yet"
+          detail={`Standings appear once game results are loaded for ${season}.`}
+          note={error}
+        />
       )}
-      {!error && !data && <p className="text-muted-foreground">Loading…</p>}
-      {!error && data && data.season !== season && (
-        <p className="text-muted-foreground">Loading…</p>
-      )}
+      {stale && <Loading />}
 
       {!error && !empty && data?.season === season && (
         <>

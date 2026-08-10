@@ -6,6 +6,7 @@ import { WORST_CELL, isWorstCell } from '@/lib/consensus'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -214,8 +215,8 @@ export default function MakePicks() {
     setStatus(null)
   }
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
 
   const mnfPickedHere = (g: GameLine) =>
     mnf !== null && (mnf === g.away_team || mnf === g.home_team)
@@ -365,7 +366,7 @@ export default function MakePicks() {
       )}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading games…</p>
+        <Loading />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">

@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 
 /** The two side pools. Separate objectives, separate games, own state. */
 type Pool = 'underdog' | 'survivor'
@@ -341,7 +342,7 @@ function Survivor({
     <div className="flex flex-col gap-4">
       <section className="rounded-lg border border-border bg-card p-3">
         <h2 className="mb-2 text-sm font-bold">Survivor — teams spent</h2>
-        {seasonPicks === null && <p className="text-sm text-muted-foreground">Loading season…</p>}
+        {seasonPicks === null && <Loading />}
         <div className="flex flex-col gap-2">
           {byPicker.map(([picker, used]) => (
             <div key={picker} className="flex flex-wrap items-center gap-2">
@@ -694,8 +695,8 @@ export default function Field() {
     return c
   }, [rows])
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">
