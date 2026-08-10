@@ -32,13 +32,7 @@ import BandChart from '@/components/BandChart'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import PageHeader from '@/components/PageHeader'
 
 /** The two side pools. Separate objectives, separate games, own state. */
 type Pool = 'underdog' | 'survivor'
@@ -705,33 +699,15 @@ export default function Field() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Team</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w} value={String(w)}>
-                Week {w}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Team"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+        week={week}
+        weeks={weeks}
+        onWeek={setWeek}
+      />
 
       {error && <p className="text-destructive">{error}</p>}
       {!error && rows.length === 0 && (

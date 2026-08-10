@@ -19,13 +19,7 @@ import { api } from '../api'
 import { useConfig, useSeasonWeek } from '../hooks'
 import type { PickerStanding, StandingsResponse } from '../types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import PageHeader from '@/components/PageHeader'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const CHART_COLORS = [
@@ -261,21 +255,12 @@ export default function Standings() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Standings</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Standings"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+      />
 
       {data?.graded_through_week != null && (
         <p className="text-sm text-muted-foreground">

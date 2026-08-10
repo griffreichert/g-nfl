@@ -5,6 +5,7 @@ import { api, teamLogo } from '../api'
 import { WORST_CELL, isWorstCell } from '@/lib/consensus'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
+import PageHeader from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -324,32 +325,15 @@ export default function MakePicks() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Picks</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w} value={String(w)}>
-                Week {w}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <PageHeader
+        title="Picks"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+        week={week}
+        weeks={weeks}
+        onWeek={setWeek}
+      >
         <Select value={picker || undefined} onValueChange={setPicker}>
           <SelectTrigger size="sm" className="w-full sm:w-40">
             <SelectValue placeholder="Your name" />
@@ -362,7 +346,7 @@ export default function MakePicks() {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </PageHeader>
 
       {status && (
         <p
