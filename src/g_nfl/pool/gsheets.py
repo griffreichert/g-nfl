@@ -513,7 +513,9 @@ def pull_picks(season: int) -> pl.DataFrame:
         week = season_week(season, title)
         if week is None:
             continue
-        records += [dict(p, week=week) for p in parse_picks_grid(rows)]
+        records += [
+            dict(p, week=week, week_label=title) for p in parse_picks_grid(rows)
+        ]
 
     if not records:
         return pl.DataFrame(
@@ -524,11 +526,14 @@ def pull_picks(season: int) -> pl.DataFrame:
                 "slot": pl.String,
                 "pick_type": pl.String,
                 "team_picked": pl.String,
+                "week_label": pl.String,
             }
         )
     return (
         pl.DataFrame(records)
         .with_columns(season=pl.lit(season, pl.Int64))
-        .select("season", "week", "picker", "slot", "pick_type", "team_picked")
+        .select(
+            "season", "week", "week_label", "picker", "slot", "pick_type", "team_picked"
+        )
         .sort("week", "picker", "slot")
     )
