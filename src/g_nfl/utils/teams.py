@@ -42,6 +42,7 @@ def get_nfl_teams() -> list:
 def standardize_teams(team):
     team_map = {
         "ARZ": "ARI",
+        "AZ": "ARI",
         "BLT": "BAL",
         "CLV": "CLE",
         "HST": "HOU",
