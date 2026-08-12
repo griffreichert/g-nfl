@@ -121,9 +121,11 @@ export default function Help() {
           <li>
             <b className="text-foreground">Line size and venue</b> — the only measured term left.{' '}
             {BANDS.map((b) => `${b.label} hit ${b.pct}%`).join(', ')} across{' '}
-            {BANDS.reduce((n, b) => n + b.n, 0)} graded games, and it splits further by venue: a
-            home side in the 3-7 band is 41.8%, a road side in the same band 52.1%. Home teams
-            getting or laying a field goal to a touchdown are the single worst thing we buy.
+            {BANDS.reduce((n, b) => n + b.n, 0)} game-sides from 2020 to 2025, and neither number
+            means much until you know the venue. Road sides of a 7+ line are 39.3% and bad in
+            every season; home sides of a close game are 45.5% and also bad in every season. The
+            single worst thing we buy is a road favourite laying 7 or more, at 33.6% over 336
+            picks.
           </li>
           <li>
             <b className="text-foreground">What used to be here</b> — split-or-agreed, the

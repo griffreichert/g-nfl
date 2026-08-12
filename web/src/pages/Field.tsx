@@ -800,9 +800,9 @@ export default function Field() {
             <div className="rounded-lg border border-border bg-card p-3">
               <h2 className="text-sm font-bold">Where we win and lose</h2>
               <p className="mb-1 text-xs text-muted-foreground">
-                2025, 225 graded games. Close lines 52%, 3-7 45%, 7+ 44% — and the worst cell in
-                the record is a home team laying or getting 3-7, at 37%. The instruction is avoid
-                big numbers, not close games are good: 52% is still under break-even.
+                2020-2025. Close lines 50%, 3-7 49%, 7+ 44% — and the worst cell in the record is
+                a road favourite laying 7 or more, at 34% over 336 picks. The instruction is avoid
+                big road numbers: even the best band is under break-even.
               </p>
               <BandChart counts={bandCounts} />
               <p className="text-xs text-muted-foreground">
