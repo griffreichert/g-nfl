@@ -1,5 +1,10 @@
 .PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context
 
+# Season and week default to config.py; override on the command line, e.g.
+#   make update-lines WEEK=7
+SEASON ?= $(shell uv run python -c "from g_nfl.utils.config import CUR_SEASON; print(CUR_SEASON)")
+WEEK ?= $(shell uv run python -c "from g_nfl.utils.config import CUR_WEEK; print(CUR_WEEK)")
+
 # Default target
 help:
 	@echo "🏈 NFL Picks App - Available Commands"
@@ -63,13 +68,19 @@ deploy-prep:
 	@echo "✅ requirements.txt updated"
 
 # Data Management
+#
+# Run this LAST, just before picks are submitted. The row it writes replaces
+# the week's previous one, and the whole value of the number is how late it is:
+# our stored 2025 lines were pulled a median of 66 hours before kickoff, which
+# is earlier than the pool line itself, and that is why the pool-vs-market edge
+# is still unmeasured. See notes/pool-spread-edge.md.
 update-lines:
-	@echo "📊 Updating market lines for week 1..."
-	uv run python scripts/update_market_lines.py --season 2025 --week 1
+	@echo "📊 Updating market lines for the current week..."
+	uv run python scripts/update_market_lines.py --season $(SEASON) --week $(WEEK)
 
 update-lines-all:
 	@echo "📊 Updating market lines for all weeks..."
-	uv run python scripts/update_market_lines.py --season 2025 --weeks 1-18
+	uv run python scripts/update_market_lines.py --season $(SEASON) --weeks 1-18
 
 update-results:
 	@echo "🏁 Updating game results..."
