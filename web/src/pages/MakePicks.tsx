@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { WORST_CELL, isWorstCell } from '@/lib/consensus'
+import { POOL_EDGE, WORST_CELL, isWorstCell, poolEdge } from '@/lib/consensus'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
@@ -223,20 +223,47 @@ export default function MakePicks() {
 
   /**
    * The board has a rating to lean on; this page has nothing, and this page is
-   * where most picks get made. One flag, on the one cell that cost us real
-   * money in 2025, shown only once the pick is on the board so it reads as a
-   * second thought rather than a lecture.
+   * where most picks get made. Flags appear only once the pick is on the board,
+   * so they read as a second thought rather than a lecture, and there are at
+   * most two — the cell that costs us the most, and the line comparison the
+   * room does not appear to make at all.
    */
-  const worstCellWarning = (g: GameLine) => {
+  const pickWarnings = (g: GameLine) => {
     const picked = g.is_mnf ? mnf : picks[g.game_id]?.team_picked
-    if (picked !== g.home_team) return null
-    if (!isWorstCell(effectiveSpread(g), true)) return null
+    if (!picked) return null
+    const pickedHome = picked === g.home_team
+    const notes = []
+
+    if (isWorstCell(effectiveSpread(g), pickedHome)) {
+      notes.push(
+        <span key="cell">
+          <span className="font-semibold text-foreground">A {WORST_CELL.label}.</span>{' '}
+          Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} picks, against a
+          league that covered {WORST_CELL.league}% here.
+        </span>,
+      )
+    }
+
+    const edge = poolEdge(g.pool_spread, g.market_spread, pickedHome)
+    if (edge !== null && edge < 0) {
+      notes.push(
+        <span key="edge">
+          <span className="font-semibold text-foreground">
+            Pool line is {Math.abs(edge)} worse than market.
+          </span>{' '}
+          Picks into a worse pool line went {POOL_EDGE.badPct}% over {POOL_EDGE.badGames}, against{' '}
+          {POOL_EDGE.okPct}% otherwise.
+        </span>,
+      )
+    }
+
+    if (!notes.length) return null
     return (
-      <p className="col-span-6 pt-1 text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">Home {WORST_CELL.band}.</span>{' '}
-        Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} games, against a
-        league that covered {WORST_CELL.league}% here.
-      </p>
+      <div className="col-span-6 space-y-0.5 pt-1 text-xs text-muted-foreground">
+        {notes.map((n) => (
+          <p key={n.key}>{n}</p>
+        ))}
+      </div>
     )
   }
 
@@ -409,7 +436,7 @@ export default function MakePicks() {
                 >
                   <ChevronRight className="size-4" />
                 </Link>
-                {worstCellWarning(g)}
+                {pickWarnings(g)}
                 {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
                   <div className="col-span-6 pt-1">
                     {noteInput(

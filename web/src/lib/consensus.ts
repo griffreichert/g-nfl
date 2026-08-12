@@ -15,60 +15,76 @@ const WEIGHT: Partial<Record<PickType, number>> = { best_bet: 2, regular: 1, mnf
 export const isAtsPick = (t: PickType) => t in WEIGHT
 
 /**
- * Spread bands crossed with venue. 2025, 677 graded ATS picks by the field over
- * 225 distinct games. Rebuild method + full table in `notes/pick-analytics.md`
- * ("Corrected board constants").
+ * Spread bands crossed with venue. 2020-2025, every graded ATS pick on a pool
+ * line from the six seasons #56 recovered, against 2025 alone before.
  *
- * These replace a set of per-pick rates that were badly overstated. The room
- * puts 3.0 votes on the average game, so a per-pick group-by counts the same
- * game three times and inflates every z-score by roughly sqrt(3). Rates here
- * are per game (a game we split 4-2 counts once, as 0.667) and then shrunk
- * toward the field's own 47.4% by sample size, so a thin cell cannot shout.
+ * Each game-side is weighted by the share of the room on it, so a game split
+ * 3-3 contributes 0.5 to each side and cancels, while a 6-0 game counts fully.
+ * The previous build counted each game-side once instead — but the room takes
+ * both sides of 54% of the games it picks (82% in 2025), and for those the two
+ * rows are exact complements, so the table was measuring which team covered
+ * rather than whether the room was right. Rates are then shrunk toward the
+ * lean-weighted base of 47.8% so a thin cell cannot shout.
  *
- * What survived the correction: line size, and only in combination with venue.
- * What did not: the best-bet slot, venue on its own, and — the uncomfortable
- * one — whether the room was split. Those terms are gone from the rating
- * rather than kept at a smaller weight, because shrinkage put all three exactly
- * on the base rate. See `notes/pick-analytics.md`.
+ * Three of six cells reversed under the correction. The clearest casualty was
+ * "home 3-7", previously the worst cell at 41.8% off 71 games and now 50.8%.
+ * Per-season stability tables are in `notes/pick-behaviour.md`.
  *
- * ponytail: hard-coded rather than served from an endpoint — one season, and
- * it moves once a year. Recompute when 2026 grades out.
+ * What survived: line size crossed with venue. What did not: the best-bet
+ * slot, venue on its own, and whether the room was split.
+ *
+ * ponytail: hard-coded rather than served from an endpoint — it moves once a
+ * year. Recompute when 2026 grades out.
  */
 export const BANDS = [
-  { max: 3, label: '0-3', pct: 52.0, n: 92, tone: 'good' },
-  { max: 7, label: '3-7', pct: 45.1, n: 92, tone: 'bad' },
-  { max: Infinity, label: '7+', pct: 44.0, n: 41, tone: 'bad' },
+  { max: 3, label: '0-3', pct: 50.4, n: 219, tone: 'good' },
+  { max: 7, label: '3-7', pct: 48.5, n: 410, tone: 'bad' },
+  { max: Infinity, label: '7+', pct: 44.4, n: 235, tone: 'bad' },
 ] as const
 
 /**
  * Shrunk ATS% by band and venue — the one cut with anything left in it.
- * Home teams laying or getting 3-7 are the single worst thing we do: 36.6%
- * over 71 games raw (z = -2.66), and the league covered 44.6% in that band,
- * so this is our side selection, not the season.
+ *
+ * The stable cells, and the two worth acting on: **road sides of a 7+ line are
+ * 39.3%**, and bad in all four full seasons (34.7 / 36.3 / 38.8 / 41.8), while
+ * **home sides of a close game are 45.5%**, also bad in all four (42.6 / 45.5 /
+ * 45.7 / 47.0). "7+ home" is the unstable one (27.7 to 66.7), which is why
+ * shrinkage leaves it near the base rate.
  */
 export const BAND_VENUE: Record<string, { home: number; road: number }> = {
-  '0-3': { home: 50.9, road: 49.4 },
-  '3-7': { home: 41.8, road: 52.1 },
-  '7+': { home: 48.6, road: 42.4 },
+  '0-3': { home: 45.5, road: 53.7 },
+  '3-7': { home: 50.8, road: 46.6 },
+  '7+': { home: 50.6, road: 39.3 },
 }
 
 export type Band = (typeof BANDS)[number]
 
 /**
- * The single worst thing we buy: a home side laying or getting 3-7.
- * 36.6% over 71 games in 2025 (z = -2.66), against a league that covered
- * 44.6% in the same band — so it is our side selection, not the season.
- * Worth -61 units on its own, which is most of what the room lost.
+ * The single worst thing we buy: a road favourite laying 7 or more.
+ * 33.6% over 336 picks across 2020-2025 (z = -5.46 on the pool-line subset),
+ * and negative in every season — 32.4%, 24.1%, 28.6%, 40.1%. The same games
+ * covered 42.5% from the road side league-wide, so the cell is mildly bad and
+ * our selection inside it is much worse. The home side of those same games
+ * went 55.8% when we took it.
+ *
+ * This replaces an earlier "home side laying or getting 3-7" claim built on 71
+ * games of 2025. Over six seasons that cell is 49.3% (n = 740) — neutral. See
+ * notes/pick-behaviour.md.
  *
  * Exposed as its own predicate rather than left implicit in the rating,
  * because the pick pages have no rating on them and this is where the
  * money actually leaves.
  */
-export const WORST_CELL = { band: '3-7', pct: 36.6, games: 71, league: 44.6 } as const
+export const WORST_CELL = {
+  label: 'road favourite of 7+',
+  pct: 33.6,
+  games: 336,
+  league: 42.5,
+} as const
 
 /** `spread` is home-perspective, the nflverse convention. */
 export const isWorstCell = (spread: number | null, pickedHome: boolean) =>
-  pickedHome && spread !== null && Math.abs(spread) > 3 && Math.abs(spread) <= 7
+  !pickedHome && spread !== null && spread <= -7
 
 export const bandFor = (spread: number | null): Band | null =>
   spread === null ? null : (BANDS.find((b) => Math.abs(spread) < b.max) ?? BANDS[BANDS.length - 1])
@@ -501,3 +517,30 @@ export function cycleSlot(slate: Slate, gameId: string, team: string, isMnf: boo
 
   return { [gameId]: null }
 }
+
+/**
+ * How the pool line compares to the market on one side of a game.
+ *
+ * Positive `edge` means the pool is giving this side more points than the
+ * market does. Picks made into a negative edge went 45.2% over 1098 picks
+ * (z = -3.20); a non-negative edge went 49.9%. That is the largest single
+ * leak in six seasons of picks.
+ *
+ * Read it as a nudge, not an instruction. The 45.2% is measured against the
+ * closing line, which nobody has when picks are due, and the market number
+ * this app stores is pulled ~66 hours before kickoff — earlier than the pool
+ * line itself. See notes/pool-spread-edge.md.
+ *
+ * Both spreads are home-perspective, the nflverse convention.
+ */
+export const poolEdge = (
+  poolSpread: number | null,
+  marketSpread: number | null,
+  pickedHome: boolean,
+): number | null => {
+  if (poolSpread === null || marketSpread === null) return null
+  const gap = marketSpread - poolSpread
+  return pickedHome ? gap : -gap
+}
+
+export const POOL_EDGE = { badPct: 45.2, badGames: 1098, okPct: 49.9 } as const

@@ -9,6 +9,7 @@ import {
   findBlocs,
   isHomer,
   isWorstCell,
+  poolEdge,
   partRating,
   scoreSide,
   toRating,
@@ -160,17 +161,21 @@ test('scoreRow is driven by line size crossed with venue', () => {
   const gid = '2025_12_CAR_GB'
   const both = [pick('Ben', gid, 'GB'), pick('Harry', gid, 'CAR')]
 
-  // The one thing 2025 still says after clustering: close games hit, big
-  // numbers do not.
+  // Six seasons say the band only means something once you know the venue, so
+  // this reads off the road side: a close road number is the best cell on the
+  // board, a big one is the worst.
   const close = buildConsensus([game('CAR', 'GB', 2.5)], both)[0]
   const big = buildConsensus([game('CAR', 'GB', 13.5)], both)[0]
-  assert.ok(scoreSide(close, 'GB', empty).rating > scoreSide(big, 'GB', empty).rating)
+  assert.ok(scoreSide(close, 'CAR', empty).rating > scoreSide(big, 'CAR', empty).rating)
 
-  // Home in the 3-7 band is the worst cell in the record, and it is worse
-  // than the road side of the same game. If this flips, the band/venue term
-  // has been wired up backwards.
-  const mid = buildConsensus([game('CAR', 'GB', 5.5)], both)[0]
-  assert.ok(scoreSide(mid, 'GB', empty).rating < scoreSide(mid, 'CAR', empty).rating)
+  // The road side of a 7+ line is the worst thing the room buys, well below
+  // the home side of the same game. If this flips, the band/venue term has
+  // been wired up backwards.
+  assert.ok(scoreSide(big, 'CAR', empty).rating < scoreSide(big, 'GB', empty).rating)
+
+  // And in the closest band it goes the other way — the home side is the bad
+  // one. This pair is what makes the venue crossing worth keeping at all.
+  assert.ok(scoreSide(close, 'GB', empty).rating < scoreSide(close, 'CAR', empty).rating)
 })
 
 test('agreement no longer moves the rating', () => {
@@ -308,15 +313,24 @@ test('a full entry refuses a new game but still allows swaps', () => {
   })
 })
 
-test('isWorstCell fires only on home sides in the 3-7 band', () => {
-  // spread is home-perspective, so sign says who is favoured, not who we took
-  assert.ok(isWorstCell(5.5, true))     // home laying 5.5
-  assert.ok(isWorstCell(-5.5, true))    // home getting 5.5 — same band
-  assert.ok(!isWorstCell(5.5, false))   // road side of the same game is fine
-  assert.ok(!isWorstCell(2.5, true))    // close line
-  assert.ok(!isWorstCell(13.5, true))   // big line, a different cell
-  assert.ok(!isWorstCell(null, true))   // no line, nothing to say
-  // boundaries: 3 belongs to the close band, 7 to this one
-  assert.ok(!isWorstCell(3, true))
-  assert.ok(isWorstCell(7, true))
+test('isWorstCell fires only on a road favourite laying 7 or more', () => {
+  // spread is home-perspective, so a negative number means the road team is
+  // favoured; the flag is about the side we took, not the side that is favoured
+  assert.ok(isWorstCell(-8.5, false))    // road laying 8.5 — the cell
+  assert.ok(!isWorstCell(-8.5, true))    // home dog of 8.5 is the good side
+  assert.ok(!isWorstCell(8.5, false))    // road dog of 8.5 is a different cell
+  assert.ok(!isWorstCell(-5.5, false))   // road laying 5.5, under the threshold
+  assert.ok(!isWorstCell(null, false))   // no line, nothing to say
+  // boundary: exactly 7 counts
+  assert.ok(isWorstCell(-7, false))
+  assert.ok(!isWorstCell(-6.5, false))
+})
+
+test('poolEdge is positive when the pool gives our side more points', () => {
+  // home-perspective: pool has home -3, market has home -4.5
+  assert.equal(poolEdge(-3, -4.5, true), -1.5)   // we took home: pool is worse
+  assert.equal(poolEdge(-3, -4.5, false), 1.5)   // we took the road dog: better
+  assert.equal(poolEdge(-3, -3, true), 0)        // no disagreement
+  assert.equal(poolEdge(null, -3, true), null)   // nothing to compare
+  assert.equal(poolEdge(-3, null, true), null)
 })
