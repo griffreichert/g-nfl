@@ -8,6 +8,28 @@ if TYPE_CHECKING:
 
 from .supabase_client import get_supabase
 
+# PostgREST caps a response at 1000 rows and does not say so. `pool_picks`
+# holds 6057 and a whole season of it came back silently truncated, which is
+# the worst shape a data bug can take — the analysis still runs.
+PAGE_SIZE = 1000
+
+
+def fetch_all(build_query) -> list[dict]:
+    """Run a select in pages until it returns a short one.
+
+    `build_query` is a callable rather than a query because the builder is
+    consumed by `.range()`. The ordering matters: without a stable sort the
+    database may repeat or skip rows between pages.
+    """
+    rows: list[dict] = []
+    start = 0
+    while True:
+        page = build_query().order("id").range(start, start + PAGE_SIZE - 1).execute()
+        rows += page.data
+        if len(page.data) < PAGE_SIZE:
+            return rows
+        start += PAGE_SIZE
+
 
 class PicksDatabase:
     """Supabase database handler for storing NFL picks"""
@@ -136,8 +158,9 @@ class PicksDatabase:
 
     def get_season_picks(self, season: int) -> list[dict]:
         """All picks for a season, every picker and week."""
-        result = self.client.table("picks").select("*").eq("season", season).execute()
-        return result.data
+        return fetch_all(
+            lambda: self.client.table("picks").select("*").eq("season", season)
+        )
 
     def get_all_picks(self, limit: int | None = None) -> list[dict]:
         """Get all picks with optional limit
@@ -184,10 +207,9 @@ class PicksDatabase:
             Dictionary with database stats
         """
         # Get all picks to calculate stats
-        all_picks_result = (
-            self.client.table("picks").select("season, week, picker").execute()
+        all_picks = fetch_all(
+            lambda: self.client.table("picks").select("id, season, week, picker")
         )
-        all_picks = all_picks_result.data
 
         if not all_picks:
             return {
@@ -257,11 +279,12 @@ class PoolPicksDatabase:
 
     def get_picks(self, season: int, week: int | None = None) -> list[dict]:
         """Retrieve pool picks for a season (optionally one week)."""
-        query = self.client.table("pool_picks").select("*").eq("season", season)
-        if week is not None:
-            query = query.eq("week", week)
-        result = query.order("week").execute()
-        return result.data
+
+        def build():
+            query = self.client.table("pool_picks").select("*").eq("season", season)
+            return query if week is None else query.eq("week", week)
+
+        return fetch_all(build)
 
 
 class GameResultsDatabase:
@@ -289,10 +312,9 @@ class GameResultsDatabase:
 
     def get_results(self, season: int) -> list[dict]:
         """All result rows for a season."""
-        result = (
-            self.client.table("game_results").select("*").eq("season", season).execute()
+        return fetch_all(
+            lambda: self.client.table("game_results").select("*").eq("season", season)
         )
-        return result.data
 
 
 class GameContextDatabase:
@@ -346,14 +368,14 @@ class TeamWeekStatsDatabase:
     def get_team_stats(self, season: int, teams: list[str]) -> list[dict]:
         """Every week so far for the given teams — the detail page shows the
         season to date, not just the week in question."""
-        result = (
-            self.client.table("team_week_stats")
-            .select("*")
-            .eq("season", season)
-            .in_("team", teams)
-            .execute()
+        return fetch_all(
+            lambda: (
+                self.client.table("team_week_stats")
+                .select("*")
+                .eq("season", season)
+                .in_("team", teams)
+            )
         )
-        return result.data
 
 
 class MarketLinesDatabase:
@@ -417,12 +439,12 @@ class MarketLinesDatabase:
         Returns:
             List of market line dictionaries
         """
-        query = self.client.table("market_lines").select("*").eq("season", season)
-        if week is not None:
-            query = query.eq("week", week)
 
-        result = query.execute()
-        return result.data
+        def build():
+            query = self.client.table("market_lines").select("*").eq("season", season)
+            return query if week is None else query.eq("week", week)
+
+        return fetch_all(build)
 
     def get_available_weeks(self, season: int) -> list[int]:
         """Get all weeks that have market lines data for a given season
@@ -522,12 +544,12 @@ class PoolSpreadsDatabase:
         Returns:
             List of pool spread dictionaries
         """
-        query = self.client.table("pool_spreads").select("*").eq("season", season)
-        if week is not None:
-            query = query.eq("week", week)
 
-        result = query.execute()
-        return result.data
+        def build():
+            query = self.client.table("pool_spreads").select("*").eq("season", season)
+            return query if week is None else query.eq("week", week)
+
+        return fetch_all(build)
 
     def update_pool_spread(
         self, season: int, week: int, game_id: str, spread: float

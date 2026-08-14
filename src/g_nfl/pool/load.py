@@ -29,6 +29,7 @@ from g_nfl.utils.database import PoolPicksDatabase, PoolSpreadsDatabase
 # the family workbooks call it TEAM; the Cville workbook calls it Reichert
 TEAM_ENTRY = "Reichert"
 CVILLE_SEASONS = (2025,)
+ALL_SEASONS = [2020, 2021, 2022, 2023, 2024, 2025]
 
 
 def _cville(season: int) -> pl.DataFrame:
@@ -134,9 +135,7 @@ def main() -> None:
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument(
-        "--seasons", type=int, nargs="+", default=[2020, 2021, 2022, 2023, 2024, 2025]
-    )
+    ap.add_argument("--seasons", type=int, nargs="+", default=ALL_SEASONS)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -146,3 +145,105 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def picks_from_db(seasons: list[int]) -> pl.DataFrame:
+    """Picks as `season_picks` returns them, read out of Supabase.
+
+    The workbooks need `google_config.json`, which lives on one laptop.
+    Everything downstream of the load only needs the tables, so analysis
+    should come through here and leave the sheets to ingestion.
+    """
+    rows = [r for s in seasons for r in PoolPicksDatabase().get_picks(s)]
+    if not rows:
+        return pl.DataFrame(
+            schema={
+                "season": pl.Int64,
+                "week": pl.Int64,
+                "week_label": pl.String,
+                "picker": pl.String,
+                "slot": pl.String,
+                "pick_type": pl.String,
+                "team_picked": pl.String,
+            }
+        )
+    return pl.DataFrame(rows).select(
+        "season", "week", "week_label", "picker", "slot", "pick_type", "team_picked"
+    )
+
+
+def pool_lines_from_db(seasons: list[int]) -> pl.DataFrame:
+    """Pool spreads as `season_pool_lines` returns them, read out of Supabase.
+
+    The table keys on `game_id`, so home and away come back off the id
+    rather than from another schedule join.
+    """
+    rows = [r for s in seasons for r in PoolSpreadsDatabase().get_pool_spreads(s)]
+    if not rows:
+        return pl.DataFrame(
+            schema={
+                "season": pl.Int64,
+                "week": pl.Int64,
+                "home_team": pl.String,
+                "away_team": pl.String,
+                "pool_spread": pl.Float64,
+            }
+        )
+    return (
+        pl.DataFrame(rows)
+        .with_columns(parts=pl.col("game_id").str.split("_"))
+        .select(
+            "season",
+            "week",
+            home_team=pl.col("parts").list.get(3),
+            away_team=pl.col("parts").list.get(2),
+            pool_spread=pl.col("spread").cast(pl.Float64),
+        )
+    )
+
+
+def graded_history(
+    seasons: list[int] | None = None, *, source: str = "db"
+) -> pl.DataFrame:
+    """Every pool pick, graded, with its line and outcome attached.
+
+    The single entry point for analysis. `source="db"` reads Supabase and
+    works anywhere; `source="sheets"` re-reads the workbooks and needs
+    `google_config.json`, so it is for ingestion and for checking the
+    tables against their source.
+
+    Note the two differ by the picks `grade` drops — a team on a bye, or a
+    name too mangled to resolve. Those never reached the tables, which is
+    why the DB is the smaller of the two by 55 rows across six seasons.
+    """
+    seasons = seasons or ALL_SEASONS
+    line_seasons = [s for s in seasons if s in WORKBOOKS or s in CVILLE_SEASONS]
+    if source == "db":
+        picks = picks_from_db(seasons)
+        lines = pool_lines_from_db(line_seasons)
+    else:
+        picks = pl.concat([season_picks(s) for s in seasons], how="diagonal_relaxed")
+        lines = pl.concat(
+            [season_pool_lines(s) for s in line_seasons], how="diagonal_relaxed"
+        )
+    return grade(picks, load_games(seasons), lines)
+
+
+def board_history(seasons: list[int] | None = None) -> pl.DataFrame:
+    """Game-grain history: pool line, market close and final margin.
+
+    One row per game, so rates computed off it are about the games rather
+    than about how many of us picked them.
+    """
+    seasons = seasons or ALL_SEASONS
+    line_seasons = [s for s in seasons if s in WORKBOOKS or s in CVILLE_SEASONS]
+    lines = pool_lines_from_db(line_seasons)
+    return (
+        load_games(seasons)
+        .join(
+            lines.select("season", "week", "home_team", "pool_spread"),
+            on=["season", "week", "home_team"],
+            how="inner",
+        )
+        .filter(pl.col("result").is_not_null())
+    )
