@@ -10,7 +10,15 @@ from g_nfl.pool.gsheets import _parse_lines_block, _parse_visitor_home, season_w
 def _lines_grid(pool_cell: str, market_cell: str) -> list[list[str]]:
     return [
         ["*Game*", "*Spread*", "", "*Moneyline*", "", "", "Pool Spread"],
-        ["Green Bay Packers at New York Giants", market_cell, "", "", "", "", pool_cell],
+        [
+            "Green Bay Packers at New York Giants",
+            market_cell,
+            "",
+            "",
+            "",
+            "",
+            pool_cell,
+        ],
     ]
 
 

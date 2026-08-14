@@ -17,6 +17,7 @@ from g_nfl.picks.grading import (
     picker_standings,
     resolve_lines,
 )
+from g_nfl.pool.load import TEAM_ENTRY
 from g_nfl.utils.config import (
     CUR_SEASON,
     CUR_WEEK,
@@ -29,6 +30,7 @@ from g_nfl.utils.database import (
     GameResultsDatabase,
     MarketLinesDatabase,
     PicksDatabase,
+    PoolPicksDatabase,
     PoolSpreadsDatabase,
     TeamWeekStatsDatabase,
 )
@@ -288,12 +290,29 @@ def get_analytics(season: int):
     counts one game three times. Everything here collapses votes to games
     first and then shrinks each cell toward the field's own rate by
     sample size. See g_nfl.picks.analytics and notes/pick-analytics.md.
+
+    Seasons before 2025 predate the app, so they come from `pool_picks`,
+    which #56 filled from the old Google workbooks. Same people either way
+    — the entry the room submits is spelled TEAM in the app and Reichert
+    in the workbooks, and is excluded from both, since it is the room's own
+    average and counting it double-counts everyone.
     """
+    # the submitted entry, under both of its spellings
+    submitted = {TEST_PICKER, "TEAM", TEAM_ENTRY}
+    app_picks = PicksDatabase().get_season_picks(season)
+    source = app_picks or PoolPicksDatabase().get_picks(season)
     picks = [
-        {**p, "game_id": normalize_game_id(p["game_id"])}
-        for p in PicksDatabase().get_season_picks(season)
-        # TEAM is the room's own average; counting it double-counts everyone
-        if p["picker"] not in (TEST_PICKER, "TEAM")
+        # `spread` is dropped, never passed through. The two tables disagree
+        # about it: `picks.spread` is the home-perspective game line, while
+        # `pool_picks.spread` is signed for the team picked (parser.py's
+        # convention). `grade_pick` falls back to the row's spread when the
+        # caller resolves no line, and would read the historical one
+        # backwards on every away pick. Grading here uses resolved lines
+        # only, so a season with no pool line grades nothing rather than
+        # grading it wrong.
+        {**p, "game_id": normalize_game_id(p["game_id"]), "spread": None}
+        for p in source
+        if p["picker"] not in submitted
     ]
     if not picks:
         raise HTTPException(404, f"No picks for season {season}")
