@@ -5,6 +5,7 @@ import polars as pl
 from g_nfl.fantasy.draft_board import (
     attach_next_turn_value,
     attach_tiers,
+    attach_vs_ecr,
     next_turn_outlook,
     picks_until_next_turn,
     snake_picks,
@@ -141,3 +142,18 @@ def test_vs_next_turn_is_value_over_the_real_alternative():
     assert rows["C"] == 0.0
     # Waiting past your next turn is negative value.
     assert rows["E"] == -4.0
+
+
+def test_vs_ecr_is_positive_when_we_like_a_player_more_than_the_room():
+    board = pl.DataFrame(
+        {
+            "overall_rank": [1, 2, 3],
+            "ecr": [10.0, 2.0, None],
+            "player_name": ["sleeper", "consensus", "unranked"],
+        }
+    )
+    deltas = attach_vs_ecr(board)["vs_ecr"].to_list()
+
+    assert deltas[0] == 9.0  # we rank him 1st, the room 10th
+    assert deltas[1] == 0.0
+    assert deltas[2] is None  # no consensus, no delta to report

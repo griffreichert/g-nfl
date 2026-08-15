@@ -140,7 +140,7 @@ def to_markdown(board: pl.DataFrame, top: int = 60) -> str:
     cols += ["proj_ppg", "ppgar"]
     cols += [
         c
-        for c in ("ecr", "sd", "floor", "ceiling", "tprr", "yprr", "fdrr")
+        for c in ("ecr", "sd", "vs_ecr", "floor", "ceiling", "tprr", "yprr", "fdrr")
         if c in board.columns
     ]
     rows = board.head(top).select(cols).iter_rows()
