@@ -35,6 +35,7 @@ BOARD_COLUMNS = [
     "ppgar",
     "ecr",
     "sd",
+    "vs_ecr",
 ]
 
 # A tier break is a ppgar drop bigger than this, in points per game. #78 settles
@@ -87,6 +88,19 @@ def attach_tiers(board: pl.DataFrame, gap: float = DEFAULT_TIER_GAP) -> pl.DataF
         .add(1)
         .alias("tier")
     )
+
+
+def attach_vs_ecr(board: pl.DataFrame) -> pl.DataFrame:
+    """``ecr - overall_rank``: who this league's scoring likes more than the room.
+
+    Positive means we rank the player higher than the consensus does, so he is
+    someone to wait on rather than reach for. Units are ranks over two different
+    populations — ECR is expert opinion under generic PPR, ``overall_rank`` is
+    PPGAR under *your* scoring — so part of every delta is the league config
+    doing its job. A very large one usually means a projection problem rather
+    than an edge, which makes this the column that tells you where to look.
+    """
+    return board.with_columns((pl.col("ecr") - pl.col("overall_rank")).alias("vs_ecr"))
 
 
 def snake_picks(slot: int, teams: int, rounds: int) -> list[int]:
@@ -169,6 +183,7 @@ def build_draft_board(
 
     ecr, scrape_date = load_ecr()
     board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
+    board = attach_vs_ecr(board)
     # gsis_id rides along: it is the join key for #86's outcome percentiles, and
     # ``to_markdown`` picks its own columns so it never reaches the table.
     board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])

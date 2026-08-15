@@ -21,6 +21,7 @@ from g_nfl.fantasy.draft_board import (
     DEFAULT_TIER_GAP,
     attach_next_turn_value,
     attach_tiers,
+    attach_vs_ecr,
     load_ecr,
     picks_until_next_turn,
     snake_picks,
@@ -128,6 +129,7 @@ ecr, scrape_date = _ecr()
 
 board = build_board(score(stat_lines, config), config.teams, config.roster_positions)
 board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
+board = attach_vs_ecr(board)
 board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
 
 picks_between = picks_until_next_turn(slot, teams, current_round)
@@ -202,6 +204,13 @@ st.dataframe(
         ),
         "ecr": st.column_config.NumberColumn("ECR", format="%.1f"),
         "sd": st.column_config.NumberColumn("ECR sd", format="%.1f"),
+        "vs_ecr": st.column_config.NumberColumn(
+            "vs ECR",
+            format="%+.0f",
+            help="ECR minus our rank. Positive = this league likes him more than "
+            "the room does. A very large delta is usually a projection problem, "
+            "not an edge.",
+        ),
         "floor": st.column_config.NumberColumn(
             "Floor",
             format="%.1f",
