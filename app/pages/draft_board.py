@@ -25,6 +25,7 @@ from g_nfl.fantasy.draft_board import (
     picks_until_next_turn,
     snake_picks,
 )
+from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
 from g_nfl.fantasy.projections.board import build_board
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, Scoring, score
 from g_nfl.fantasy.sources.espn import fetch_espn_projections
@@ -45,6 +46,14 @@ def _stat_lines(season: int):
 @st.cache_data(show_spinner="Loading FantasyPros ECR...")
 def _ecr():
     return load_ecr()
+
+
+# Keyed on the scoring config: role ratios are near scale-free, but luck is
+# measured in points, so it has to be rebuilt when the scoring changes.
+@st.cache_data(show_spinner="Measuring historical outcomes (this takes a minute)...")
+def _residuals(config_json: str):
+    config = LeagueConfig.model_validate_json(config_json)
+    return residuals(build_history(list(range(2019, 2026)), config))
 
 
 st.title("🏈 Draft Board")
@@ -93,6 +102,11 @@ with st.sidebar.expander("Scoring"):
 
 tier_gap = st.sidebar.slider("Tier gap (ppg)", 0.1, 3.0, DEFAULT_TIER_GAP, 0.05)
 
+show_outcomes = st.sidebar.checkbox(
+    "Outcome range (slow)",
+    help="Floor and ceiling from historical role and luck residuals, 2019-2025 (#86).",
+)
+
 st.sidebar.markdown("### Your turn")
 slot = st.sidebar.number_input("Draft slot", 1, teams, min(1, teams))
 rounds = len(roster_positions) + bench if roster_positions else 1
@@ -114,13 +128,19 @@ ecr, scrape_date = _ecr()
 
 board = build_board(score(stat_lines, config), config.teams, config.roster_positions)
 board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
-board = board.sort("overall_rank").select(BOARD_COLUMNS)
+board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
 
 picks_between = picks_until_next_turn(slot, teams, current_round)
 board, outlook = attach_next_turn_value(board, picks_between)
+
+outcome_columns: list[str] = []
+if show_outcomes:
+    board = attach_outcomes(board, _residuals(config.model_dump_json()), SEASON)
+    outcome_columns = ["floor", "ceiling"]
+
 board = board.with_columns(
     pl.col("team").map_elements(get_team_logo, return_dtype=pl.Utf8).alias("logo")
-).select(["logo", *BOARD_COLUMNS, "vs_next_turn"])
+).select(["logo", *BOARD_COLUMNS, "vs_next_turn", *outcome_columns])
 
 st.caption(
     f"**{label}** — {teams} teams, {'/'.join(roster_positions)}, {bench} bench. "
@@ -182,6 +202,14 @@ st.dataframe(
         ),
         "ecr": st.column_config.NumberColumn("ECR", format="%.1f"),
         "sd": st.column_config.NumberColumn("ECR sd", format="%.1f"),
+        "floor": st.column_config.NumberColumn(
+            "Floor",
+            format="%.1f",
+            help="10th percentile ppg from historical role and luck residuals.",
+        ),
+        "ceiling": st.column_config.NumberColumn(
+            "Ceiling", format="%.1f", help="90th percentile ppg."
+        ),
         "vs_next_turn": st.column_config.NumberColumn(
             "vs next turn",
             format="%.2f",

@@ -138,7 +138,11 @@ def to_markdown(board: pl.DataFrame, top: int = 60) -> str:
     cols = ["overall_rank", "player_name", "position", "pos_rank"]
     cols += [c for c in ("last_team", "team", "tier") if c in board.columns]
     cols += ["proj_ppg", "ppgar"]
-    cols += [c for c in ("ecr", "sd", "tprr", "yprr", "fdrr") if c in board.columns]
+    cols += [
+        c
+        for c in ("ecr", "sd", "floor", "ceiling", "tprr", "yprr", "fdrr")
+        if c in board.columns
+    ]
     rows = board.head(top).select(cols).iter_rows()
     head = "| " + " | ".join(cols) + " |"
     sep = "|" + "|".join("---" for _ in cols) + "|"
