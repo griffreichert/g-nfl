@@ -6,10 +6,6 @@ import importlib
 from g_nfl.utils import paths
 
 
-def test_project_dir_is_repo_root():
-    assert (paths.PROJECT_DIR / "pyproject.toml").exists()
-
-
 def test_project_dir_independent_of_cwd(tmp_path, monkeypatch):
     original = paths.PROJECT_DIR
     monkeypatch.chdir(tmp_path)

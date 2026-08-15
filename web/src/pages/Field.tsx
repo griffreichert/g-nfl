@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, Star } from 'lucide-react'
+import { Check, ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
@@ -32,13 +32,8 @@ import BandChart from '@/components/BandChart'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 
 /** The two side pools. Separate objectives, separate games, own state. */
 type Pool = 'underdog' | 'survivor'
@@ -188,6 +183,8 @@ function GameCard({
   slate,
   full,
   onPick,
+  note,
+  onNote,
 }: {
   row: ConsensusRow
   attachment: Map<string, number>
@@ -195,6 +192,8 @@ function GameCard({
   slate: Slate
   full: boolean
   onPick: (team: string) => void
+  note: string
+  onNote: (v: string) => void
 }) {
   const chosen = slate[row.game.game_id]
   // A full slate locks games we haven't used; a game already in the entry stays
@@ -208,9 +207,20 @@ function GameCard({
         chosen ? 'border-foreground/25' : 'border-border'
       } ${locked ? 'opacity-70' : ''}`}
     >
-      {row.game.is_mnf && (
-        <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">Monday night</p>
-      )}
+      <div className="flex items-center px-2 pb-1">
+        {row.game.is_mnf && (
+          <p className="text-[11px] font-medium text-muted-foreground">Monday night</p>
+        )}
+        {/* Its own control: tapping a side is a pick, so the card can't be a link. */}
+        <Link
+          to={`/game/${row.game.game_id}`}
+          aria-label={`Detail for ${away} at ${home}`}
+          title="Game detail"
+          className="ml-auto flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        >
+          detail <ChevronRight className="size-3.5" />
+        </Link>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {[away, home].map((team) => (
           <SideCell
@@ -227,6 +237,18 @@ function GameCard({
           />
         ))}
       </div>
+      {/* The meeting's reasoning is the thing nothing else records — grading can
+          reconstruct what we picked, never why. Only on games in the entry. */}
+      {chosen && (
+        <input
+          type="text"
+          value={note}
+          placeholder="Why? (optional)"
+          onChange={(e) => onNote(e.target.value)}
+          aria-label={`Note for ${away} at ${home}`}
+          className="mt-2 h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+        />
+      )}
     </div>
   )
 }
@@ -320,7 +342,7 @@ function Survivor({
     <div className="flex flex-col gap-4">
       <section className="rounded-lg border border-border bg-card p-3">
         <h2 className="mb-2 text-sm font-bold">Survivor — teams spent</h2>
-        {seasonPicks === null && <p className="text-sm text-muted-foreground">Loading season…</p>}
+        {seasonPicks === null && <Loading />}
         <div className="flex flex-col gap-2">
           {byPicker.map(([picker, used]) => (
             <div key={picker} className="flex flex-wrap items-center gap-2">
@@ -427,7 +449,12 @@ export default function Field() {
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [games, setGames] = useState<GameLine[]>([])
-  const [seasonPicks, setSeasonPicks] = useState<PickRecord[] | null>(null)
+  const [fetchedSeason, setSeasonPicks] = useState<{
+    key: string
+    rows: PickRecord[]
+  } | null>(null)
+  const seasonKey = `${season}-${weeks.join(',')}`
+  const seasonPicks = fetchedSeason?.key === seasonKey ? fetchedSeason.rows : null
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Both are keyed by season+week so switching weeks drops them without an effect.
@@ -464,10 +491,10 @@ export default function Field() {
   useEffect(() => {
     if (season === null || weeks.length === 0) return
     let cancelled = false
-    setSeasonPicks(null)
+    const key = `${season}-${weeks.join(',')}`
     Promise.all(weeks.map((w) => api.picks(season, w)))
-      .then((all) => !cancelled && setSeasonPicks(all.flat()))
-      .catch(() => !cancelled && setSeasonPicks([]))
+      .then((all) => !cancelled && setSeasonPicks({ key, rows: all.flat() }))
+      .catch(() => !cancelled && setSeasonPicks({ key, rows: [] }))
     return () => {
       cancelled = true
     }
@@ -601,6 +628,26 @@ export default function Field() {
     }))
   }
 
+  // Keyed like the API keys a pick, so a survivor note and a regular note on
+  // the same game stay separate.
+  const noteKeyFor = (gameId: string, type: Pick['pick_type']) =>
+    type === 'regular' || type === 'best_bet' ? gameId : `${type}_${gameId}`
+
+  // Saved notes are derived from the fetched picks and typing is held as an
+  // overlay, the same shape `edits` uses for the slate. Deriving avoids an
+  // effect that would clobber what someone is mid-sentence on when picks refetch.
+  const savedNotes = useMemo(() => {
+    const saved: Record<string, string> = {}
+    for (const p of picks) {
+      if (p.picker === TEAM_PICKER && p.note) {
+        saved[noteKeyFor(p.game_id, p.pick_type)] = p.note
+      }
+    }
+    return saved
+  }, [picks])
+  const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
+  const notes = { ...savedNotes, ...noteEdits }
+
   const saveSlate = async () => {
     if (season === null || week === null) return
     setSaving(true)
@@ -610,6 +657,7 @@ export default function Field() {
         team_picked: v.team,
         pick_type: v.type,
         spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+        note: notes[noteKeyFor(game_id, v.type)]?.trim() || null,
       }))
       for (const [pool, choice] of [
         ['underdog', underdog],
@@ -621,6 +669,7 @@ export default function Field() {
           team_picked: choice.team,
           pick_type: pool,
           spread: games.find((g) => g.game_id === choice.game_id)?.market_spread ?? null,
+          note: notes[noteKeyFor(choice.game_id, pool)]?.trim() || null,
         })
       }
       const res = await api.savePicks(season, week, TEAM_PICKER, payload)
@@ -646,38 +695,20 @@ export default function Field() {
     return c
   }, [rows])
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Team</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w} value={String(w)}>
-                Week {w}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Team"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+        week={week}
+        weeks={weeks}
+        onWeek={setWeek}
+      />
 
       {error && <p className="text-destructive">{error}</p>}
       {!error && rows.length === 0 && (
@@ -742,6 +773,8 @@ export default function Field() {
                   slate={slate}
                   full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
                   onPick={(team) => cycle(r, team)}
+                  note={notes[r.game.game_id] ?? ''}
+                  onNote={(v) => setNoteEdits((n) => ({ ...n, [r.game.game_id]: v }))}
                 />
               ))}
             </div>
@@ -767,9 +800,9 @@ export default function Field() {
             <div className="rounded-lg border border-border bg-card p-3">
               <h2 className="text-sm font-bold">Where we win and lose</h2>
               <p className="mb-1 text-xs text-muted-foreground">
-                2025, 777 graded picks. Close games 57.1%, everything else under 45% — the only
-                split in our history significant at both tails, and the biggest single term in
-                the rating.
+                2025, 225 graded games. Close lines 52%, 3-7 45%, 7+ 44% — and the worst cell in
+                the record is a home team laying or getting 3-7, at 37%. The instruction is avoid
+                big numbers, not close games are good: 52% is still under break-even.
               </p>
               <BandChart counts={bandCounts} />
               <p className="text-xs text-muted-foreground">
@@ -780,12 +813,13 @@ export default function Field() {
 
             <p className="text-xs text-muted-foreground">
               Every side is rated 0-10, best first. <b>5.0 is break-even</b> at -110, so a side
-              under 5 costs us money over time. The rating is built from what graded out in 2025:
-              line size, whether the room is split, the best-bet slot, home or road. Agreement
-              counts <i>against</i> a side — the games we all agreed on went 45.2% and the ones we
-              argued about 52.4%. Homer and stuck-on-them are judgement, capped so they can only
-              break a tie; hover a rating for the breakdown. Full analysis in{' '}
-              <code>notes/team-page-consensus-analysis.md</code>.
+              under 5 costs us money over time. One measured term builds it: line size crossed
+              with home or road. The rating used to carry three more — the best-bet slot, venue on
+              its own, whether the room was split — and all three vanished when the numbers were
+              recomputed per game instead of per pick. We put three votes on the average game, so
+              counting picks counted the same game three times. Homer and stuck-on-them are
+              judgement, capped so they can only break a tie; hover a rating for the breakdown.
+              Full working in <code>notes/pick-analytics.md</code>.
             </p>
           </TabsContent>
 

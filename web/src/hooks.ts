@@ -13,13 +13,12 @@ export function useConfig() {
 
 /** Season + week selectors, weeks loaded from the API for the chosen season */
 export function useSeasonWeek(config: AppConfig | null) {
-  const [season, setSeason] = useState<number | null>(null)
+  // The season defaults to the config's current one until someone picks another,
+  // so it is derived rather than synced across from config in an effect.
+  const [chosen, setSeason] = useState<number | null>(null)
+  const season = chosen ?? config?.cur_season ?? null
   const [week, setWeek] = useState<number | null>(null)
   const [weeks, setWeeks] = useState<number[]>([])
-
-  useEffect(() => {
-    if (config && season === null) setSeason(config.cur_season)
-  }, [config, season])
 
   useEffect(() => {
     if (season === null) return

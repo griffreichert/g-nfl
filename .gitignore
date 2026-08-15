@@ -159,6 +159,3 @@ dmypy.json
 # MLflow local tracking (#12) — sqlite backend + artifact store, regenerable
 mlflow.db
 mlruns/
-
-# scratch: regenerable sweep harnesses, throwaway configs (see notes/l2-refined-team.md)
-scratch/

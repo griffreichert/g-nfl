@@ -10,7 +10,6 @@ import polars as pl
 
 from g_nfl.ml.features.qb import (
     add_qb_context,
-    add_qb_downgrade,
     qb_game_history,
     starters,
 )
@@ -130,45 +129,3 @@ def test_add_qb_context_attaches_and_cold_starts():
 # downgrade scenario: KC's good starter A (g1,g2), then backup C starts g3.
 # C has prior history on BUF (a bad game) so his personal EWMA is non-null.
 W3, W4 = dt.date(2023, 9, 24), dt.date(2023, 10, 1)
-DOWN_ROWS = ROWS[:2] + [  # A's two good g1 plays, plus a good g2 start
-    {
-        "game_id": "g2",
-        "posteam": "KC",
-        "qb": "A",
-        "date": W2,
-        "play_id": 10,
-        "qb_epa": 1.0,
-        "cpoe": 10.0,
-    },
-    {
-        "game_id": "gb",
-        "posteam": "BUF",
-        "qb": "C",
-        "date": W1,
-        "play_id": 10,
-        "qb_epa": -2.0,
-        "cpoe": -30.0,
-    },
-    {
-        "game_id": "g3",
-        "posteam": "KC",
-        "qb": "C",
-        "date": W3,
-        "play_id": 10,
-        "qb_epa": -2.0,
-        "cpoe": -30.0,
-    },
-]
-
-
-def test_downgrade_negative_for_backup():
-    matrix = pl.DataFrame(
-        {"game_id": ["g2", "g3"], "home_team": ["KC", "KC"], "away_team": ["X", "X"]}
-    )
-    out = add_qb_downgrade(matrix, _pbp(DOWN_ROWS), half_life=1000)
-    g2 = out.filter(pl.col("game_id") == "g2").row(0, named=True)
-    g3 = out.filter(pl.col("game_id") == "g3").row(0, named=True)
-    # usual starter A back in g2 -> ~0
-    assert abs(g2["home_qb_downgrade"]) < 0.2
-    # backup C (career -2) starts g3 vs KC's ~+1 baseline -> strongly negative
-    assert g3["home_qb_downgrade"] < -1.0

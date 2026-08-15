@@ -37,20 +37,22 @@ class PicksDatabase:
             Number of picks saved
         """
         try:
-            # If replace is True, delete existing picks for this picker/season/week
+            # Replace is insert-then-delete, never delete-then-insert: if the
+            # insert fails (bad column, network) a prior delete would have
+            # already wiped the picker's week with nothing to put back. The
+            # old rows are captured by id here and removed only after the new
+            # ones land. Worst case is leftover duplicates, which is fixable.
+            stale_ids: list[int] = []
             if replace:
-                print(
-                    f"DEBUG: Deleting existing picks for season={season}, week={week}, picker={picker}"
-                )
-                delete_result = (
+                existing = (
                     self.client.table("picks")
-                    .delete()
+                    .select("id")
                     .eq("season", season)
                     .eq("week", week)
                     .eq("picker", picker)
                     .execute()
                 )
-                print(f"DEBUG: Delete result: {delete_result}")
+                stale_ids = [row["id"] for row in existing.data]
 
             # Prepare picks data for insertion
             picks_data = []
@@ -81,6 +83,9 @@ class PicksDatabase:
                         else "regular"
                     ),
                     "picker": picker,
+                    "note": (
+                        pick_data.get("note") if isinstance(pick_data, dict) else None
+                    ),
                 }
                 picks_data.append(pick_record)
                 print(f"DEBUG: Prepared pick record: {pick_record}")
@@ -91,6 +96,9 @@ class PicksDatabase:
             print("DEBUG: Attempting to insert picks into 'picks' table")
             result = self.client.table("picks").insert(picks_data).execute()
             print(f"DEBUG: Insert result: {result}")
+
+            if stale_ids:
+                self.client.table("picks").delete().in_("id", stale_ids).execute()
 
             return len(picks_data)
 
@@ -283,6 +291,67 @@ class GameResultsDatabase:
         """All result rows for a season."""
         result = (
             self.client.table("game_results").select("*").eq("season", season).execute()
+        )
+        return result.data
+
+
+class GameContextDatabase:
+    """Per-game context for the detail page: weather, rest, QBs, injuries.
+
+    Populated locally by scripts/update_game_context.py — nflverse data
+    isn't available to the deployed API, same constraint as game_results.
+    """
+
+    def __init__(self):
+        self.client: Client = get_supabase()
+
+    def save_context(self, rows: list[dict]) -> int:
+        """Upsert context rows keyed by game_id."""
+        if not rows:
+            return 0
+        payload = [{**r, "updated_at": datetime.utcnow().isoformat()} for r in rows]
+        self.client.table("game_context").upsert(
+            payload, on_conflict="game_id"
+        ).execute()
+        return len(payload)
+
+    def get_context(self, game_id: str) -> dict | None:
+        """One game's context, or None if it hasn't been pushed yet."""
+        result = (
+            self.client.table("game_context")
+            .select("*")
+            .eq("game_id", game_id)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0] if result.data else None
+
+
+class TeamWeekStatsDatabase:
+    """Weekly team EPA / success / explosive rates, offense and defense."""
+
+    def __init__(self):
+        self.client: Client = get_supabase()
+
+    def save_stats(self, rows: list[dict]) -> int:
+        """Upsert stat rows keyed by (season, week, team)."""
+        if not rows:
+            return 0
+        payload = [{**r, "updated_at": datetime.utcnow().isoformat()} for r in rows]
+        self.client.table("team_week_stats").upsert(
+            payload, on_conflict="season,week,team"
+        ).execute()
+        return len(payload)
+
+    def get_team_stats(self, season: int, teams: list[str]) -> list[dict]:
+        """Every week so far for the given teams — the detail page shows the
+        season to date, not just the week in question."""
+        result = (
+            self.client.table("team_week_stats")
+            .select("*")
+            .eq("season", season)
+            .in_("team", teams)
+            .execute()
         )
         return result.data
 

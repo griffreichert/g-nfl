@@ -27,6 +27,8 @@ export interface Pick {
   team_picked: string
   pick_type: PickType
   spread: number | null
+  /** why this pick was made, captured at pick time (#70) */
+  note?: string | null
 }
 
 export interface PickRecord extends Pick {
@@ -64,4 +66,112 @@ export interface StandingsResponse {
   break_even_pct: number
   graded_through_week: number | null
   standings: PickerStanding[]
+}
+
+export interface CutRow {
+  key: string
+  picks: number
+  games: number
+  /** naive per-pick rate, carried so the inflation stays visible */
+  pick_pct: number | null
+  /** the honest one: per distinct game, votes on a game collapsed to one */
+  pct: number | null
+  shrunk_pct: number | null
+  units: number
+  z: number | null
+}
+
+export interface Cut {
+  name: string
+  label: string
+  note: string
+  rows: CutRow[]
+}
+
+export interface TeamAppetite {
+  team: string
+  available: number
+  picked_games: number
+  picks: number
+  appetite: number | null
+  votes_per_pick: number | null
+  pct: number | null
+  units: number
+}
+
+export interface AnalyticsResponse {
+  season: number
+  picks: number
+  games: number
+  votes_per_game: number
+  base_pct: number
+  break_even_pct: number
+  cuts: Cut[]
+  teams: TeamAppetite[]
+}
+
+export interface InjuryReport {
+  team: string
+  name: string
+  position: string | null
+  status: string | null
+  practice: string | null
+}
+
+export interface TeamWeekStat {
+  week: number
+  team: string
+  plays: number | null
+  off_epa_play: number | null
+  def_epa_play: number | null
+  off_success_rate: number | null
+  def_success_rate: number | null
+  off_explosive_rate: number | null
+  def_explosive_rate: number | null
+  off_pass_epa: number | null
+  off_rush_epa: number | null
+}
+
+export interface GamePick {
+  picker: string
+  team_picked: string
+  pick_type: PickType
+  note: string | null
+  outcome: string | null
+}
+
+/** Context fields are null until scripts/update_game_context.py runs for the week. */
+export interface GameDetail {
+  game_id: string
+  season: number
+  week: number
+  away_team: string
+  home_team: string
+  gameday: string | null
+  gametime: string | null
+  roof: string | null
+  surface: string | null
+  temp: number | null
+  wind: number | null
+  stadium: string | null
+  div_game: boolean | null
+  away_rest: number | null
+  home_rest: number | null
+  away_qb: string | null
+  home_qb: string | null
+  away_coach: string | null
+  home_coach: string | null
+  referee: string | null
+  injuries: InjuryReport[]
+  pool_spread: number | null
+  market_spread: number | null
+  market_total: number | null
+  away_score: number | null
+  home_score: number | null
+  result: number | null
+  graded_line: number | null
+  /** which table graded_line came from — the API decides, not the client */
+  graded_line_source: 'pool' | 'market' | null
+  team_weeks: TeamWeekStat[]
+  picks: GamePick[]
 }

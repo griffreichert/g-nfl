@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
+import { WORST_CELL, isWorstCell } from '@/lib/consensus'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
+import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -19,28 +23,42 @@ interface GamePick {
 
 const MAX_REGULAR_PICKS = 6
 
+// A note is keyed the way the API keys a pick: special slots are prefixed so a
+// survivor and a regular pick on the same game keep separate notes.
+const noteKey = (gameId: string, type: Pick['pick_type']) =>
+  type === 'regular' || type === 'best_bet' ? gameId : `${type}_${gameId}`
+
+const NOTE_INPUT_CLASS =
+  'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
+
 export default function MakePicks() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [picker, setPicker] = useState<string>('')
 
-  const [games, setGames] = useState<GameLine[]>([])
+  // Games are stamped with the week they were fetched for, so "still loading"
+  // is derived from a stale stamp rather than flagged from inside the effect.
+  const [fetched, setGames] = useState<{ key: string; rows: GameLine[] }>({
+    key: '',
+    rows: [],
+  })
+  const weekKey = `${season}-${week}`
+  const games = fetched.key === weekKey ? fetched.rows : []
   const [picks, setPicks] = useState<Record<string, GamePick>>({})
   const [survivor, setSurvivor] = useState<string | null>(null)
   const [underdog, setUnderdog] = useState<string | null>(null)
   const [mnf, setMnf] = useState<string | null>(null)
+  const [notes, setNotes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
-  const [loading, setLoading] = useState(false)
+  const loading = season !== null && week !== null && fetched.key !== weekKey
 
   // Load games for the selected week
   useEffect(() => {
     if (season === null || week === null) return
-    setLoading(true)
     api
       .lines(season, week)
-      .then(setGames)
+      .then((rows) => setGames({ key: `${season}-${week}`, rows }))
       .catch((e) => setStatus({ kind: 'err', msg: String(e) }))
-      .finally(() => setLoading(false))
   }, [season, week])
 
   // Load existing picks when picker / week changes
@@ -48,10 +66,12 @@ export default function MakePicks() {
     if (season === null || week === null || !picker) return
     api.picks(season, week, picker).then((existing) => {
       const regular: Record<string, GamePick> = {}
+      const savedNotes: Record<string, string> = {}
       let surv: string | null = null
       let dog: string | null = null
       let monday: string | null = null
       for (const p of existing) {
+        if (p.note) savedNotes[noteKey(p.game_id, p.pick_type)] = p.note
         if (p.pick_type === 'regular' || p.pick_type === 'best_bet') {
           regular[p.game_id] = { team_picked: p.team_picked, pick_type: p.pick_type }
         } else if (p.pick_type === 'survivor') surv = p.team_picked
@@ -59,6 +79,7 @@ export default function MakePicks() {
         else if (p.pick_type === 'mnf') monday = p.team_picked
       }
       setPicks(regular)
+      setNotes(savedNotes)
       setSurvivor(surv)
       setUnderdog(dog)
       setMnf(monday)
@@ -82,8 +103,13 @@ export default function MakePicks() {
           if (!existing && Object.keys(cur).length >= MAX_REGULAR_PICKS) return cur
           next[game.game_id] = { team_picked: team, pick_type: 'regular' }
         } else if (existing.pick_type === 'regular') {
-          const hasBestBet = Object.values(cur).some((p) => p.pick_type === 'best_bet')
-          next[game.game_id] = { team_picked: team, pick_type: hasBestBet ? 'regular' : 'best_bet' }
+          // Promote, demoting whoever held the slot -- the same swap the board
+          // does in cycleSlot(). Previously this wrote 'regular' back over
+          // itself whenever a best bet existed, so the side could not be
+          // promoted OR dropped: the tap did nothing at all.
+          const incumbent = Object.entries(cur).find(([, p]) => p.pick_type === 'best_bet')
+          if (incumbent) next[incumbent[0]] = { ...incumbent[1], pick_type: 'regular' }
+          next[game.game_id] = { team_picked: team, pick_type: 'best_bet' }
         } else {
           delete next[game.game_id]
         }
@@ -150,11 +176,19 @@ export default function MakePicks() {
       team_picked: p.team_picked,
       pick_type: p.pick_type,
       spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+      note: notes[noteKey(game_id, p.pick_type)]?.trim() || null,
     }))
     const special = (team: string | null, type: Pick['pick_type']) => {
       if (!team) return
       const g = games.find((x) => x.away_team === team || x.home_team === team)
-      if (g) payload.push({ game_id: g.game_id, team_picked: team, pick_type: type, spread: g.market_spread })
+      if (g)
+        payload.push({
+          game_id: g.game_id,
+          team_picked: team,
+          pick_type: type,
+          spread: g.market_spread,
+          note: notes[noteKey(g.game_id, type)]?.trim() || null,
+        })
     }
     special(survivor, 'survivor')
     special(underdog, 'underdog')
@@ -174,14 +208,37 @@ export default function MakePicks() {
 
   const clearAll = () => {
     setPicks({})
+    setNotes({})
     setSurvivor(null)
     setUnderdog(null)
     setMnf(null)
     setStatus(null)
   }
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
+
+  const mnfPickedHere = (g: GameLine) =>
+    mnf !== null && (mnf === g.away_team || mnf === g.home_team)
+
+  /**
+   * The board has a rating to lean on; this page has nothing, and this page is
+   * where most picks get made. One flag, on the one cell that cost us real
+   * money in 2025, shown only once the pick is on the board so it reads as a
+   * second thought rather than a lecture.
+   */
+  const worstCellWarning = (g: GameLine) => {
+    const picked = g.is_mnf ? mnf : picks[g.game_id]?.team_picked
+    if (picked !== g.home_team) return null
+    if (!isWorstCell(effectiveSpread(g), true)) return null
+    return (
+      <p className="col-span-6 pt-1 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">Home {WORST_CELL.band}.</span>{' '}
+        Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} games, against a
+        league that covered {WORST_CELL.league}% here.
+      </p>
+    )
+  }
 
   const regularCount = Object.keys(picks).length
   const maxReached = regularCount >= MAX_REGULAR_PICKS
@@ -215,15 +272,30 @@ export default function MakePicks() {
     )
   }
 
+  // Notes only appear once a pick exists — an empty box on all 16 games is
+  // noise, and there is nothing to explain until a side is chosen.
+  const noteInput = (key: string, label: string) => (
+    <input
+      type="text"
+      value={notes[key] ?? ''}
+      placeholder="Why? (optional)"
+      onChange={(e) => setNotes((n) => ({ ...n, [key]: e.target.value }))}
+      aria-label={`Note for ${label}`}
+      className={NOTE_INPUT_CLASS}
+    />
+  )
+
   const poolRow = (
     item: { team: string; opp: string; spread: number; id: string },
     selected: string | null,
     setSelected: (t: string | null) => void,
-    Icon: typeof Skull
+    Icon: typeof Skull,
+    slotType: Pick['pick_type']
   ) => {
     const on = selected === item.team
     return (
-      <div key={`${item.id}_${item.team}`} className="flex items-center gap-2 py-1">
+      <div key={`${item.id}_${item.team}`} className="py-1">
+      <div className="flex items-center gap-2">
         <img src={teamLogo(item.team)} className="size-6 shrink-0" alt="" />
         <span className="flex-1 truncate text-sm">
           <span className="font-semibold">{item.team}</span>{' '}
@@ -241,6 +313,8 @@ export default function MakePicks() {
           {on ? item.team : 'Pick'}
         </Button>
       </div>
+        {on && <div className="mt-1 pl-8">{noteInput(noteKey(item.id, slotType), item.team)}</div>}
+      </div>
     )
   }
 
@@ -252,32 +326,15 @@ export default function MakePicks() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Picks</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w} value={String(w)}>
-                Week {w}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <PageHeader
+        title="Picks"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+        week={week}
+        weeks={weeks}
+        onWeek={setWeek}
+      >
         <Select value={picker || undefined} onValueChange={setPicker}>
           <SelectTrigger size="sm" className="w-full sm:w-40">
             <SelectValue placeholder="Your name" />
@@ -290,7 +347,7 @@ export default function MakePicks() {
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </PageHeader>
 
       {status && (
         <p
@@ -309,7 +366,7 @@ export default function MakePicks() {
       )}
 
       {loading ? (
-        <p className="text-muted-foreground">Loading games…</p>
+        <Loading />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -326,7 +383,7 @@ export default function MakePicks() {
             {games.map((g) => (
               <div
                 key={g.game_id}
-                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
               >
                 <img src={teamLogo(g.away_team)} className="size-6" alt="" />
                 {teamButton(g, g.away_team)}
@@ -343,6 +400,24 @@ export default function MakePicks() {
                 </span>
                 {teamButton(g, g.home_team)}
                 <img src={teamLogo(g.home_team)} className="size-6" alt="" />
+                {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
+                <Link
+                  to={`/game/${g.game_id}`}
+                  aria-label={`Detail for ${g.away_team} at ${g.home_team}`}
+                  title="Game detail"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ChevronRight className="size-4" />
+                </Link>
+                {worstCellWarning(g)}
+                {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
+                  <div className="col-span-6 pt-1">
+                    {noteInput(
+                      noteKey(g.game_id, g.is_mnf ? 'mnf' : picks[g.game_id].pick_type),
+                      `${g.away_team} at ${g.home_team}`
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -358,7 +433,7 @@ export default function MakePicks() {
             </p>
             {favorites
               .filter((f) => !survivor || f.team === survivor)
-              .map((f) => poolRow(f, survivor, setSurvivor, Skull))}
+              .map((f) => poolRow(f, survivor, setSurvivor, Skull, 'survivor'))}
           </div>
 
           <div className="rounded-lg border border-border bg-card p-3">
@@ -368,7 +443,7 @@ export default function MakePicks() {
             <p className="mb-2 text-xs text-muted-foreground">One underdog for the week.</p>
             {underdogs
               .filter((d) => !underdog || d.team === underdog)
-              .map((d) => poolRow(d, underdog, setUnderdog, Dog))}
+              .map((d) => poolRow(d, underdog, setUnderdog, Dog, 'underdog'))}
           </div>
 
           {summary && (

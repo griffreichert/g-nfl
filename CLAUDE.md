@@ -36,6 +36,24 @@ The `notes/` folder is the source of truth for in-flight, multi-session work. Us
 
 **When a task is fully complete**: mark the note as done at the top (or summarize the outcome) so future sessions know it's closed.
 
+### One-off analysis scripts — no `scratch/` folder
+
+There is no in-repo scratch/scratchpad directory (removed 2026-08-09 — it had
+become a dumping ground for sweep/backtest scripts whose findings never made it
+into `notes/`). Disposition for a throwaway script:
+
+- **Write it to the session scratchpad** (outside the repo, e.g.
+  `/private/tmp/claude-*/.../scratchpad`), not into a repo folder.
+- **The moment it produces a finding**, write that finding into the relevant
+  `notes/*.md` file — table, verdict, and enough method detail to rebuild
+  (see `notes/pick-analytics.md`'s "Corrected board constants" section for the
+  pattern). The note is the record; the script is disposable.
+- **If the script turns out to be a reusable tool** (something you'll run
+  again, not a one-shot diagnostic for a single issue), it belongs under
+  `src/g_nfl/`, not as a loose script.
+- Never leave a script as the only copy of a result — if the repo restarted
+  today, `notes/` should already have everything worth keeping.
+
 ## Key Architecture Components
 
 ### Data Pipeline

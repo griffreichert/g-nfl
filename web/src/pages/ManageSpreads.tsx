@@ -3,13 +3,8 @@ import { api, teamLogo } from '../api'
 import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine } from '../types'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import PageHeader from '@/components/PageHeader'
+import { ErrorNote, Loading } from '@/components/PageState'
 
 export default function ManageSpreads() {
   const { config, error: configError } = useConfig()
@@ -44,38 +39,20 @@ export default function ManageSpreads() {
     }
   }
 
-  if (configError) return <p className="text-destructive">Failed to load config: {configError}</p>
-  if (!config || season === null || week === null) return <p>Loading…</p>
+  if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
+  if (!config || season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-auto text-xl font-bold sm:text-2xl">Lines</h1>
-        <Select value={String(season)} onValueChange={(v) => setSeason(Number(v))}>
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {seasons.map((s) => (
-              <SelectItem key={s} value={String(s)}>
-                {s}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={String(week)} onValueChange={(v) => setWeek(Number(v))}>
-          <SelectTrigger size="sm" className="w-28">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {weeks.map((w) => (
-              <SelectItem key={w} value={String(w)}>
-                Week {w}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Lines"
+        season={season}
+        seasons={seasons}
+        onSeason={setSeason}
+        week={week}
+        weeks={weeks}
+        onWeek={setWeek}
+      />
 
       <p className="text-sm text-muted-foreground">
         Pool spread is what picks grade against. Blank means the market line stands.
