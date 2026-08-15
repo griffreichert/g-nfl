@@ -19,6 +19,7 @@ from pathlib import Path
 import nflreadpy
 import polars as pl
 
+from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
 from g_nfl.fantasy.projections.board import build_board, to_markdown
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, score
 from g_nfl.fantasy.sources.espn import fetch_espn_projections
@@ -168,7 +169,9 @@ def build_draft_board(
 
     ecr, scrape_date = load_ecr()
     board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
-    board = board.sort("overall_rank").select(BOARD_COLUMNS)
+    # gsis_id rides along: it is the join key for #86's outcome percentiles, and
+    # ``to_markdown`` picks its own columns so it never reaches the table.
+    board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
 
     provenance = {
         "espn_fetched": fetched_at,
@@ -212,10 +215,21 @@ def main() -> None:
     parser.add_argument("--out-dir", type=Path, default=Path("data/fantasy"))
     parser.add_argument("--slot", type=int, help="your draft slot, 1-indexed")
     parser.add_argument("--round", type=int, default=1, help="round you are picking in")
+    parser.add_argument(
+        "--outcomes",
+        action="store_true",
+        help="add floor/ceiling from historical residuals (#86, slow: fetches history)",
+    )
+    parser.add_argument("--history", type=int, nargs=2, default=[2019, 2025])
     args = parser.parse_args()
 
     config = PRESETS[args.preset]
     board, provenance = build_draft_board(config, args.season, args.tier_gap)
+
+    if args.outcomes:
+        history_seasons = list(range(args.history[0], args.history[1] + 1))
+        resid = residuals(build_history(history_seasons, config))
+        board = attach_outcomes(board, resid, args.season)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"board_{args.season}_{args.preset}"
