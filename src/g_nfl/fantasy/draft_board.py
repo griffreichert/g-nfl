@@ -88,6 +88,73 @@ def attach_tiers(board: pl.DataFrame, gap: float = DEFAULT_TIER_GAP) -> pl.DataF
     )
 
 
+def snake_picks(slot: int, teams: int, rounds: int) -> list[int]:
+    """Overall pick numbers belonging to ``slot`` in a snake draft, 1-indexed."""
+    return [
+        (rnd - 1) * teams + (slot if rnd % 2 else teams - slot + 1)
+        for rnd in range(1, rounds + 1)
+    ]
+
+
+def picks_until_next_turn(slot: int, teams: int, rnd: int) -> int:
+    """Other teams' picks between your pick in ``rnd`` and your pick in ``rnd + 1``.
+
+    Snake, so this alternates: an early slot waits a long time after round 1 and
+    barely any time after round 2. That asymmetry is the reason the number is
+    worth showing at all.
+    """
+    picks = snake_picks(slot, teams, rnd + 1)
+    return picks[rnd] - picks[rnd - 1] - 1
+
+
+def _best_available(board: pl.DataFrame) -> pl.DataFrame:
+    """Top remaining player per position, by board rank."""
+    return board.sort("overall_rank").group_by("position", maintain_order=True).first()
+
+
+def next_turn_outlook(board: pl.DataFrame, picks_between: int) -> pl.DataFrame:
+    """What the top of each position looks like now, and at your next turn.
+
+    Survival model: the next ``picks_between`` picks take the next
+    ``picks_between`` players *in board order*. That is a proxy, and a
+    self-flattering one, since it assumes the room drafts off this board. #92(c)
+    replaces it with ADP, where ``minPick``/``maxPick`` give a real spread.
+    """
+    now = _best_available(board).select(
+        "position",
+        pl.col("player_name").alias("best_now"),
+        pl.col("ppgar").alias("ppgar_now"),
+    )
+    later = _best_available(board.sort("overall_rank").slice(picks_between)).select(
+        "position",
+        pl.col("player_name").alias("best_next_turn"),
+        pl.col("ppgar").alias("ppgar_next_turn"),
+    )
+    return (
+        now.join(later, on="position", how="left")
+        .with_columns(
+            (pl.col("ppgar_now") - pl.col("ppgar_next_turn")).alias("cost_of_waiting")
+        )
+        .sort("cost_of_waiting", descending=True)
+    )
+
+
+def attach_next_turn_value(
+    board: pl.DataFrame, picks_between: int
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Add ``vs_next_turn``: ppgar over the best of that position at your next turn.
+
+    PPGAR measures a player against a replacement he shares with the whole
+    season. ``vs_next_turn`` measures him against the alternative you actually
+    face, which is the one the draft asks about.
+    """
+    outlook = next_turn_outlook(board, picks_between)
+    scored = board.join(
+        outlook.select("position", "ppgar_next_turn"), on="position", how="left"
+    ).with_columns((pl.col("ppgar") - pl.col("ppgar_next_turn")).alias("vs_next_turn"))
+    return scored.drop("ppgar_next_turn"), outlook
+
+
 def build_draft_board(
     config: LeagueConfig, season: int, tier_gap: float = DEFAULT_TIER_GAP
 ) -> tuple[pl.DataFrame, dict[str, str]]:
@@ -143,6 +210,8 @@ def main() -> None:
     parser.add_argument("--tier-gap", type=float, default=DEFAULT_TIER_GAP)
     parser.add_argument("--top", type=int, default=100, help="rows in the markdown")
     parser.add_argument("--out-dir", type=Path, default=Path("data/fantasy"))
+    parser.add_argument("--slot", type=int, help="your draft slot, 1-indexed")
+    parser.add_argument("--round", type=int, default=1, help="round you are picking in")
     args = parser.parse_args()
 
     config = PRESETS[args.preset]
@@ -160,6 +229,16 @@ def main() -> None:
     print(header)
     print()
     print(to_markdown(board, top=30))
+
+    if args.slot:
+        gap = picks_until_next_turn(args.slot, config.teams, args.round)
+        picks = snake_picks(args.slot, config.teams, args.round + 1)
+        print(
+            f"\nSlot {args.slot}, round {args.round}: pick {picks[args.round - 1]}, "
+            f"then pick {picks[args.round]} — {gap} picks in between."
+        )
+        print(next_turn_outlook(board, gap))
+
     print(f"\nWrote {csv_path} and {md_path}")
 
 

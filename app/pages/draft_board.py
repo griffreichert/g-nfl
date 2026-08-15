@@ -14,15 +14,21 @@ import streamlit as st
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
+import polars as pl
+
 from g_nfl.fantasy.draft_board import (
     BOARD_COLUMNS,
     DEFAULT_TIER_GAP,
+    attach_next_turn_value,
     attach_tiers,
     load_ecr,
+    picks_until_next_turn,
+    snake_picks,
 )
 from g_nfl.fantasy.projections.board import build_board
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, Scoring, score
 from g_nfl.fantasy.sources.espn import fetch_espn_projections
+from g_nfl.utils.web_app import get_team_logo
 
 SEASON = 2026
 
@@ -87,6 +93,11 @@ with st.sidebar.expander("Scoring"):
 
 tier_gap = st.sidebar.slider("Tier gap (ppg)", 0.1, 3.0, DEFAULT_TIER_GAP, 0.05)
 
+st.sidebar.markdown("### Your turn")
+slot = st.sidebar.number_input("Draft slot", 1, teams, min(1, teams))
+rounds = len(roster_positions) + bench if roster_positions else 1
+current_round = st.sidebar.number_input("Round", 1, max(rounds - 1, 1), 1)
+
 config = LeagueConfig(
     teams=teams, roster_positions=roster_positions, bench=bench, scoring=scoring
 )
@@ -105,11 +116,43 @@ board = build_board(score(stat_lines, config), config.teams, config.roster_posit
 board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
 board = board.sort("overall_rank").select(BOARD_COLUMNS)
 
+picks_between = picks_until_next_turn(slot, teams, current_round)
+board, outlook = attach_next_turn_value(board, picks_between)
+board = board.with_columns(
+    pl.col("team").map_elements(get_team_logo, return_dtype=pl.Utf8).alias("logo")
+).select(["logo", *BOARD_COLUMNS, "vs_next_turn"])
+
 st.caption(
     f"**{label}** — {teams} teams, {'/'.join(roster_positions)}, {bench} bench. "
     f"ESPN {SEASON} projections ({stat_lines.height} players) · "
     f"FantasyPros ECR scraped {scrape_date}. "
     "ECR is expert opinion, not ADP, and the redraft page is PPR-only."
+)
+
+my_picks = snake_picks(slot, teams, current_round + 1)
+st.subheader(
+    f"Pick {my_picks[current_round - 1]}, then pick {my_picks[current_round]} — "
+    f"{picks_between} picks in between"
+)
+st.dataframe(
+    outlook.to_pandas(),
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "position": st.column_config.TextColumn("Pos", width="small"),
+        "best_now": st.column_config.TextColumn("Best now"),
+        "ppgar_now": st.column_config.NumberColumn("PPGAR", format="%.2f"),
+        "best_next_turn": st.column_config.TextColumn("Best at next turn"),
+        "ppgar_next_turn": st.column_config.NumberColumn("PPGAR", format="%.2f"),
+        "cost_of_waiting": st.column_config.NumberColumn(
+            "Cost of waiting", format="%.2f"
+        ),
+    },
+)
+st.caption(
+    "Survival is a proxy: it assumes the next "
+    f"{picks_between} picks take the next {picks_between} players in board order. "
+    "ADP replaces it in #92(c)."
 )
 
 positions = st.multiselect(
@@ -123,6 +166,7 @@ st.dataframe(
     hide_index=True,
     height=800,
     column_config={
+        "logo": st.column_config.ImageColumn("", width="small"),
         "overall_rank": st.column_config.NumberColumn("#", width="small"),
         "player_name": st.column_config.TextColumn("Player"),
         "position": st.column_config.TextColumn("Pos", width="small"),
@@ -138,6 +182,12 @@ st.dataframe(
         ),
         "ecr": st.column_config.NumberColumn("ECR", format="%.1f"),
         "sd": st.column_config.NumberColumn("ECR sd", format="%.1f"),
+        "vs_next_turn": st.column_config.NumberColumn(
+            "vs next turn",
+            format="%.2f",
+            help="PPGAR over the best player at this position expected to survive "
+            "to your next pick.",
+        ),
     },
 )
 
