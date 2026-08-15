@@ -12,6 +12,8 @@ data/
 bin/
 *.zip
 *.json
+# test fixtures are code, not data — a fresh clone needs them to run the suite
+!tests/fixtures/*.json
 
 # private notes (symlink)
 notes

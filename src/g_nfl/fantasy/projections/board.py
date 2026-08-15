@@ -131,18 +131,14 @@ def attach_efficiency_rates(board: pl.DataFrame, rates: pl.DataFrame) -> pl.Data
 def to_markdown(board: pl.DataFrame, top: int = 60) -> str:
     """Render the top-``top`` rows as a markdown table.
 
-    Includes ``tprr``/``yprr``/``fdrr`` if present (see ``attach_efficiency_rates``).
+    Includes ``tier``/``ecr``/``sd`` (draft board) and ``tprr``/``yprr``/``fdrr``
+    (see ``attach_efficiency_rates``) if present. ``last_team`` is #30's column
+    name for the team; the #87 stat-line schema calls it ``team``.
     """
-    cols = [
-        "overall_rank",
-        "player_name",
-        "position",
-        "pos_rank",
-        "last_team",
-        "proj_ppg",
-        "ppgar",
-    ]
-    cols += [c for c in ("tprr", "yprr", "fdrr") if c in board.columns]
+    cols = ["overall_rank", "player_name", "position", "pos_rank"]
+    cols += [c for c in ("last_team", "team", "tier") if c in board.columns]
+    cols += ["proj_ppg", "ppgar"]
+    cols += [c for c in ("ecr", "sd", "tprr", "yprr", "fdrr") if c in board.columns]
     rows = board.head(top).select(cols).iter_rows()
     head = "| " + " | ".join(cols) + " |"
     sep = "|" + "|".join("---" for _ in cols) + "|"
