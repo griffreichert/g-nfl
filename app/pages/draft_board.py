@@ -19,12 +19,14 @@ import polars as pl
 from g_nfl.fantasy.draft_board import (
     BOARD_COLUMNS,
     DEFAULT_TIER_SENSITIVITY,
+    SORTS,
     attach_next_turn_value,
     attach_tiers,
     attach_vs_ecr,
     load_ecr,
     picks_until_next_turn,
     snake_picks,
+    sort_board,
 )
 from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
 from g_nfl.fantasy.projections.board import build_board
@@ -185,10 +187,22 @@ st.caption(
     "ADP replaces it in #92(c)."
 )
 
-positions = st.multiselect(
-    "Positions", ["QB", "RB", "WR", "TE"], default=["QB", "RB", "WR", "TE"]
-)
-shown = board.filter(board["position"].is_in(positions))
+left, right = st.columns([2, 1])
+with left:
+    positions = st.multiselect(
+        "Positions", ["QB", "RB", "WR", "TE"], default=["QB", "RB", "WR", "TE"]
+    )
+with right:
+    available = [s for s in SORTS if s in board.columns]
+    sort_by = st.selectbox(
+        "Rank by",
+        available,
+        format_func=lambda s: SORTS[s],
+        help="The # column stays PPGAR rank whatever you sort by, so it reads as "
+        "a fixed reference. Early rounds are where the floor is worth paying for; "
+        "by the last few, a bust gets dropped and the ceiling is nearly free.",
+    )
+shown = sort_board(board.filter(board["position"].is_in(positions)), sort_by)
 
 st.dataframe(
     shown.to_pandas(),
