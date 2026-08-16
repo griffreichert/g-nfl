@@ -18,7 +18,7 @@ import polars as pl
 
 from g_nfl.fantasy.draft_board import (
     BOARD_COLUMNS,
-    DEFAULT_TIER_GAP,
+    DEFAULT_TIER_SENSITIVITY,
     attach_next_turn_value,
     attach_tiers,
     attach_vs_ecr,
@@ -101,7 +101,15 @@ with st.sidebar.expander("Scoring"):
         fumble_lost=st.number_input("Fumble lost", -10.0, 0.0, p.fumble_lost, 1.0),
     )
 
-tier_gap = st.sidebar.slider("Tier gap (ppg)", 0.1, 3.0, DEFAULT_TIER_GAP, 0.05)
+tier_sensitivity = st.sidebar.slider(
+    "Tier sensitivity",
+    1.0,
+    4.0,
+    DEFAULT_TIER_SENSITIVITY,
+    0.05,
+    help="A tier break is a drop this many times the local median gap. "
+    "Lower means more, smaller tiers.",
+)
 
 show_outcomes = st.sidebar.checkbox(
     "Outcome range (slow)",
@@ -128,7 +136,7 @@ stat_lines = _stat_lines(SEASON)
 ecr, scrape_date = _ecr()
 
 board = build_board(score(stat_lines, config), config.teams, config.roster_positions)
-board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
+board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_sensitivity)
 board = attach_vs_ecr(board)
 board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
 
