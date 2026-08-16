@@ -76,21 +76,53 @@ def test_reception_value_moves_receivers_relative_to_backs():
     assert wr_share_of_top(half) < wr_share_of_top(full)
 
 
-def test_tiers_break_on_gaps_and_number_per_position():
-    board = pl.DataFrame(
+def test_tiers_break_where_a_drop_stands_out_from_its_neighbours():
+    """Even gaps make one tier; a gap far bigger than its neighbours breaks it."""
+    even = pl.DataFrame(
         {
-            "position": ["WR", "WR", "WR", "RB", "RB"],
-            "ppgar": [10.0, 9.8, 5.0, 8.0, 7.9],
+            "position": ["WR"] * 8,
+            "ppgar": [10.0, 9.5, 9.0, 8.5, 8.0, 7.5, 7.0, 6.5],
         }
     )
-    tiered = attach_tiers(board, gap=1.0)
+    assert attach_tiers(even)["tier"].unique().to_list() == [1]
 
-    wr = tiered.filter(pl.col("position") == "WR").sort("ppgar", descending=True)
-    assert wr["tier"].to_list() == [1, 1, 2]
+    cliff = pl.DataFrame(
+        {
+            "position": ["WR"] * 8,
+            "ppgar": [10.0, 9.5, 9.0, 8.5, 5.0, 4.5, 4.0, 3.5],
+        }
+    )
+    tiers = attach_tiers(cliff).sort("ppgar", descending=True)["tier"].to_list()
+    assert tiers == [1, 1, 1, 1, 2, 2, 2, 2]
 
-    # Tiers restart per position, so the RBs are tier 1 despite lower ppgar.
-    rb = tiered.filter(pl.col("position") == "RB")
-    assert rb["tier"].to_list() == [1, 1]
+
+def test_tiers_are_relative_so_one_threshold_fits_both_ends_of_a_curve():
+    """The failure the fixed threshold had: a steep top and a flat tail.
+
+    The 4.0 drop at the top is ordinary for its neighbourhood, and the 0.4 drop
+    in the tail is a cliff for its own. An absolute gap sees only the first.
+    """
+    board = pl.DataFrame(
+        {
+            "position": ["RB"] * 10,
+            "ppgar": [30.0, 26.0, 22.0, 18.0, 14.0, 10.0, 9.6, 9.2, 8.8, 4.0],
+        }
+    )
+    tiers = attach_tiers(board).sort("ppgar", descending=True)["tier"].to_list()
+
+    assert tiers[:6] == [1] * 6  # the even 4.0 steps are one tier
+    assert tiers[-1] > tiers[-2]  # the tail cliff still breaks
+
+
+def test_tiers_restart_per_position():
+    board = pl.DataFrame(
+        {
+            "position": ["WR"] * 5 + ["RB"] * 5,
+            "ppgar": [10.0, 9.5, 9.0, 8.5, 8.0, 6.0, 5.5, 5.0, 4.5, 4.0],
+        }
+    )
+    tiered = attach_tiers(board)
+    assert tiered.filter(pl.col("position") == "RB")["tier"].to_list() == [1] * 5
 
 
 def test_snake_picks_reverse_on_even_rounds():

@@ -38,9 +38,16 @@ BOARD_COLUMNS = [
     "vs_ecr",
 ]
 
-# A tier break is a ppgar drop bigger than this, in points per game. #78 settles
-# the principled answer; this is a knob with a defensible default until then.
-DEFAULT_TIER_GAP = 0.75
+# A tier break is a drop this many times bigger than the drops around it (#78).
+# Relative, because ppgar gaps shrink by an order of magnitude down a position's
+# curve: one absolute threshold cannot serve both the top and the twentieth
+# player. 1.75 measured best over the top 40 — every position lands on tiers of
+# at most 8, which is the size that answers "wait or reach".
+DEFAULT_TIER_SENSITIVITY = 1.75
+
+# Gaps pooled to judge what "the drops around it" means. Nine is wide enough to
+# be stable and narrow enough to track the curve as it flattens.
+TIER_WINDOW = 9
 
 
 def load_ecr() -> tuple[pl.DataFrame, str]:
@@ -76,17 +83,52 @@ def load_ecr() -> tuple[pl.DataFrame, str]:
     return ecr, str(scrape_date)
 
 
-def attach_tiers(board: pl.DataFrame, gap: float = DEFAULT_TIER_GAP) -> pl.DataFrame:
-    """Number tiers per position: a new tier starts where ppgar drops by > ``gap``."""
-    return board.sort("ppgar", descending=True).with_columns(
-        (
-            (pl.col("ppgar").shift(1).over("position") - pl.col("ppgar")).fill_null(0.0)
-            > gap
+def attach_tiers(
+    board: pl.DataFrame,
+    sensitivity: float = DEFAULT_TIER_SENSITIVITY,
+    window: int = TIER_WINDOW,
+) -> pl.DataFrame:
+    """Number tiers per position. A break is a drop that stands out locally.
+
+    A cliff is only a cliff relative to the ground around it. Each gap between
+    consecutive players is compared against the median gap among its ``window``
+    neighbours, and a new tier starts where it is ``sensitivity`` times larger.
+
+    Two rejected alternatives, both measured on the live board (see
+    ``notes/fantasy-draft-board.md``):
+
+    - **A fixed ppg threshold**, which is what this replaces. Gaps shrink by an
+      order of magnitude down a position, so one number cannot fit the whole
+      curve: 0.75 ppg put 74 of the top-200 WRs in a single tier.
+    - **Distribution overlap** from #86, which sounds like the principled answer
+      and is not. Adjacent players' outcome ranges overlap so heavily that
+      ``P(next player scores more)`` sits between 0.34 and 0.59 across the
+      entire top 14 at RB and WR. No threshold separates anything, because
+      tiers are about cliffs in expected value, not statistical separation.
+
+    Tiers are per position, since that is how drafters think about waiting, and
+    they recompute over whatever board they are handed — so striking drafted
+    players (#79) re-tiers the survivors for free.
+    """
+    ranked = board.sort("ppgar", descending=True)
+    gap = (pl.col("ppgar").shift(1) - pl.col("ppgar")).over("position")
+    return (
+        ranked.with_columns(gap.alias("_gap"))
+        .with_columns(
+            (
+                pl.col("_gap")
+                > sensitivity
+                * pl.col("_gap")
+                .rolling_median(window, center=True, min_samples=3)
+                .over("position")
+            )
+            .fill_null(False)  # noqa: FBT003 — the first player starts a tier, not a break
+            .cum_sum()
+            .over("position")
+            .add(1)
+            .alias("tier")
         )
-        .cum_sum()
-        .over("position")
-        .add(1)
-        .alias("tier")
+        .drop("_gap")
     )
 
 
@@ -171,7 +213,9 @@ def attach_next_turn_value(
 
 
 def build_draft_board(
-    config: LeagueConfig, season: int, tier_gap: float = DEFAULT_TIER_GAP
+    config: LeagueConfig,
+    season: int,
+    tier_sensitivity: float = DEFAULT_TIER_SENSITIVITY,
 ) -> tuple[pl.DataFrame, dict[str, str]]:
     """Full pipeline. Returns the board and the provenance to print alongside it."""
     stat_lines = fetch_espn_projections(season)
@@ -182,7 +226,7 @@ def build_draft_board(
     )
 
     ecr, scrape_date = load_ecr()
-    board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_gap)
+    board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_sensitivity)
     board = attach_vs_ecr(board)
     # gsis_id rides along: it is the join key for #86's outcome percentiles, and
     # ``to_markdown`` picks its own columns so it never reaches the table.
@@ -225,7 +269,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preset", default="ppr_12", choices=sorted(PRESETS))
     parser.add_argument("--season", type=int, default=2026)
-    parser.add_argument("--tier-gap", type=float, default=DEFAULT_TIER_GAP)
+    parser.add_argument(
+        "--tier-sensitivity",
+        type=float,
+        default=DEFAULT_TIER_SENSITIVITY,
+        help="a tier break is a drop this many times the local median gap",
+    )
     parser.add_argument("--top", type=int, default=100, help="rows in the markdown")
     parser.add_argument("--out-dir", type=Path, default=Path("data/fantasy"))
     parser.add_argument("--slot", type=int, help="your draft slot, 1-indexed")
@@ -239,7 +288,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = PRESETS[args.preset]
-    board, provenance = build_draft_board(config, args.season, args.tier_gap)
+    board, provenance = build_draft_board(config, args.season, args.tier_sensitivity)
 
     if args.outcomes:
         history_seasons = list(range(args.history[0], args.history[1] + 1))
