@@ -28,6 +28,7 @@ from g_nfl.fantasy.draft_board import (
     snake_picks,
     sort_board,
 )
+from g_nfl.fantasy.draft_state import load_drafted, save_drafted
 from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
 from g_nfl.fantasy.projections.board import build_board
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, Scoring, score
@@ -118,6 +119,14 @@ show_outcomes = st.sidebar.checkbox(
     help="Floor and ceiling from historical role and luck residuals, 2019-2025 (#86).",
 )
 
+st.sidebar.markdown("### Draft state")
+st.sidebar.caption(
+    f"{len(load_drafted())} players struck. Saved to disk, so a refresh keeps them."
+)
+if st.sidebar.button("Clear draft", width="stretch"):
+    save_drafted(set())
+    st.rerun()
+
 st.sidebar.markdown("### Your turn")
 slot = st.sidebar.number_input("Draft slot", 1, teams, min(1, teams))
 rounds = len(roster_positions) + bench if roster_positions else 1
@@ -137,7 +146,14 @@ if not roster_positions:
 stat_lines = _stat_lines(SEASON)
 ecr, scrape_date = _ecr()
 
-board = build_board(score(stat_lines, config), config.teams, config.roster_positions)
+# Drafted players come out of the pool *before* build_board, so replacement
+# level is derived from who is actually left. That is the whole point of #79
+# option 2: positional scarcity is dynamic, and a board that ignores it keeps
+# telling you RBs are valuable long after the RB run has ended.
+drafted = load_drafted()
+available = stat_lines.filter(~pl.col("gsis_id").is_in(list(drafted)))
+
+board = build_board(score(available, config), config.teams, config.roster_positions)
 board = attach_tiers(board.join(ecr, on="gsis_id", how="left"), tier_sensitivity)
 board = attach_vs_ecr(board)
 board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
@@ -152,7 +168,7 @@ if show_outcomes:
 
 board = board.with_columns(
     pl.col("team").map_elements(get_team_logo, return_dtype=pl.Utf8).alias("logo")
-).select(["logo", *BOARD_COLUMNS, "vs_next_turn", *outcome_columns])
+).select(["gsis_id", "logo", *BOARD_COLUMNS, "vs_next_turn", *outcome_columns])
 
 st.caption(
     f"**{label}** — {teams} teams, {'/'.join(roster_positions)}, {bench} bench. "
@@ -204,12 +220,17 @@ with right:
     )
 shown = sort_board(board.filter(board["position"].is_in(positions)), sort_by)
 
-st.dataframe(
-    shown.to_pandas(),
+edited = st.data_editor(
+    shown.with_columns(pl.lit(False).alias("drafted")).to_pandas(),
     width="stretch",
     hide_index=True,
     height=800,
+    disabled=[c for c in shown.columns if c != "drafted"],
     column_config={
+        "drafted": st.column_config.CheckboxColumn(
+            "Drafted", help="Tick to take the player off the board.", width="small"
+        ),
+        "gsis_id": None,
         "logo": st.column_config.ImageColumn("", width="small"),
         "overall_rank": st.column_config.NumberColumn("#", width="small"),
         "player_name": st.column_config.TextColumn("Player"),
@@ -249,6 +270,11 @@ st.dataframe(
         ),
     },
 )
+
+struck = set(edited.loc[edited["drafted"], "gsis_id"])
+if struck:
+    save_drafted(drafted | struck)
+    st.rerun()
 
 st.download_button(
     "⬇️ Download CSV",
