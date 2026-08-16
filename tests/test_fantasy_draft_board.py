@@ -9,6 +9,7 @@ from g_nfl.fantasy.draft_board import (
     next_turn_outlook,
     picks_until_next_turn,
     snake_picks,
+    sort_board,
 )
 from g_nfl.fantasy.projections.board import build_board
 from g_nfl.fantasy.scoring import HALF_PPR_12, PPR_12, score
@@ -189,3 +190,24 @@ def test_vs_ecr_is_positive_when_we_like_a_player_more_than_the_room():
     assert deltas[0] == 9.0  # we rank him 1st, the room 10th
     assert deltas[1] == 0.0
     assert deltas[2] is None  # no consensus, no delta to report
+
+
+def test_sort_board_reorders_without_renumbering():
+    board = pl.DataFrame(
+        {
+            "overall_rank": [1, 2, 3],
+            "ppgar": [9.0, 8.0, 7.0],
+            "ceiling": [12.0, 20.0, 15.0],
+        }
+    )
+    by_ceiling = sort_board(board, "ceiling")
+
+    assert by_ceiling["ceiling"].to_list() == [20.0, 15.0, 12.0]
+    # The rank column keeps its PPGAR meaning, so it reads as a fixed reference.
+    assert by_ceiling["overall_rank"].to_list() == [2, 3, 1]
+
+
+def test_sort_board_falls_back_when_the_column_is_absent():
+    """Floor and ceiling only exist when #86's opt-in outcomes are attached."""
+    board = pl.DataFrame({"overall_rank": [2, 1], "ppgar": [8.0, 9.0]})
+    assert sort_board(board, "floor")["overall_rank"].to_list() == [1, 2]

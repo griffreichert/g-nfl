@@ -132,6 +132,43 @@ def attach_tiers(
     )
 
 
+# What the board can be sorted by, and which direction is "better" (#77).
+# PPGAR is the default and the only cross-positionally comparable one: it is
+# measured against each position's own replacement level, so a point of RB PPGAR
+# and a point of WR PPGAR buy the same thing.
+#
+# P(top-N at position) was measured and rejected as the default. It correlates
+# 0.94 with PPGAR anyway, and where it disagrees it is usually wrong for a
+# structural reason: the threshold is per position (top 12 QB against top 36 WR),
+# so deep positions clear it more easily and drift up the board. It also
+# saturates near 0.5 through the middle rounds, exactly where a board is asked to
+# discriminate.
+#
+# Floor and ceiling stay as sorts because the round-dependent argument holds: an
+# early bust cannot be replaced so you pay for the floor, a late bust gets
+# dropped so the ceiling is close to free. One ranking statistic cannot say both,
+# and a sort selector is the cheap way to let the drafter say which one they are
+# buying this round.
+SORTS: dict[str, str] = {
+    "ppgar": "Value over replacement (default)",
+    "vs_next_turn": "Value over your next turn",
+    "floor": "Floor (10th percentile)",
+    "ceiling": "Ceiling (90th percentile)",
+    "vs_ecr": "Disagreement with the room",
+}
+
+
+def sort_board(board: pl.DataFrame, by: str = "ppgar") -> pl.DataFrame:
+    """Order the board by one of ``SORTS``, best first.
+
+    ``overall_rank`` keeps its PPGAR meaning whatever the sort, so the column
+    stays a stable reference rather than renumbering under the reader.
+    """
+    if by not in board.columns:
+        return board.sort("overall_rank")
+    return board.sort(by, descending=True, nulls_last=True)
+
+
 def attach_vs_ecr(board: pl.DataFrame) -> pl.DataFrame:
     """``ecr - overall_rank``: who this league's scoring likes more than the room.
 
@@ -277,6 +314,7 @@ def main() -> None:
     )
     parser.add_argument("--top", type=int, default=100, help="rows in the markdown")
     parser.add_argument("--out-dir", type=Path, default=Path("data/fantasy"))
+    parser.add_argument("--sort", default="ppgar", choices=sorted(SORTS))
     parser.add_argument("--slot", type=int, help="your draft slot, 1-indexed")
     parser.add_argument("--round", type=int, default=1, help="round you are picking in")
     parser.add_argument(
@@ -294,6 +332,8 @@ def main() -> None:
         history_seasons = list(range(args.history[0], args.history[1] + 1))
         resid = residuals(build_history(history_seasons, config))
         board = attach_outcomes(board, resid, args.season)
+
+    board = sort_board(board, args.sort)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"board_{args.season}_{args.preset}"
