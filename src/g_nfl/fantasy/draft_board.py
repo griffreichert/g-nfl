@@ -19,10 +19,16 @@ from pathlib import Path
 import nflreadpy
 import polars as pl
 
-from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
+from g_nfl.fantasy.outcomes import (
+    attach_outcomes,
+    build_history,
+    load_adp,
+    residuals,
+)
 from g_nfl.fantasy.projections.board import build_board, to_markdown
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, score
 from g_nfl.fantasy.sources.espn import fetch_espn_projections
+from g_nfl.fantasy.survival import best_expected_available, consensus_pick
 
 BOARD_COLUMNS = [
     "overall_rank",
@@ -206,20 +212,26 @@ def _best_available(board: pl.DataFrame) -> pl.DataFrame:
     return board.sort("overall_rank").group_by("position", maintain_order=True).first()
 
 
-def next_turn_outlook(board: pl.DataFrame, picks_between: int) -> pl.DataFrame:
+def next_turn_outlook(
+    board: pl.DataFrame, picks_between: int, next_pick: int | None = None
+) -> pl.DataFrame:
     """What the top of each position looks like now, and at your next turn.
 
-    Survival model: the next ``picks_between`` picks take the next
-    ``picks_between`` players *in board order*. That is a proxy, and a
-    self-flattering one, since it assumes the room drafts off this board. #92(c)
-    replaces it with ADP, where ``minPick``/``maxPick`` give a real spread.
+    With ``next_pick`` and ADP on the board (#99), "still there" means more
+    likely than not to survive to that pick. Without them it falls back to board
+    order: the next ``picks_between`` picks take the next ``picks_between``
+    players on this board, which assumes the room drafts off it.
     """
     now = _best_available(board).select(
         "position",
         pl.col("player_name").alias("best_now"),
         pl.col("ppgar").alias("ppgar_now"),
     )
-    later = _best_available(board.sort("overall_rank").slice(picks_between)).select(
+    if next_pick is not None and "pick_mu" in board.columns:
+        survivors = best_expected_available(board, next_pick)
+    else:
+        survivors = _best_available(board.sort("overall_rank").slice(picks_between))
+    later = survivors.select(
         "position",
         pl.col("player_name").alias("best_next_turn"),
         pl.col("ppgar").alias("ppgar_next_turn"),
@@ -234,7 +246,7 @@ def next_turn_outlook(board: pl.DataFrame, picks_between: int) -> pl.DataFrame:
 
 
 def attach_next_turn_value(
-    board: pl.DataFrame, picks_between: int
+    board: pl.DataFrame, picks_between: int, next_pick: int | None = None
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Add ``vs_next_turn``: ppgar over the best of that position at your next turn.
 
@@ -242,7 +254,7 @@ def attach_next_turn_value(
     season. ``vs_next_turn`` measures him against the alternative you actually
     face, which is the one the draft asks about.
     """
-    outlook = next_turn_outlook(board, picks_between)
+    outlook = next_turn_outlook(board, picks_between, next_pick)
     scored = board.join(
         outlook.select("position", "ppgar_next_turn"), on="position", how="left"
     ).with_columns((pl.col("ppgar") - pl.col("ppgar_next_turn")).alias("vs_next_turn"))
@@ -351,11 +363,13 @@ def main() -> None:
     if args.slot:
         gap = picks_until_next_turn(args.slot, config.teams, args.round)
         picks = snake_picks(args.slot, config.teams, args.round + 1)
+        next_pick = picks[args.round]
+        board = consensus_pick(board, load_adp(args.season))
         print(
             f"\nSlot {args.slot}, round {args.round}: pick {picks[args.round - 1]}, "
-            f"then pick {picks[args.round]} — {gap} picks in between."
+            f"then pick {next_pick} — {gap} picks in between."
         )
-        print(next_turn_outlook(board, gap))
+        print(next_turn_outlook(board, gap, next_pick))
 
     print(f"\nWrote {csv_path} and {md_path}")
 
