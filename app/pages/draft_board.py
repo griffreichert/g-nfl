@@ -29,10 +29,16 @@ from g_nfl.fantasy.draft_board import (
     sort_board,
 )
 from g_nfl.fantasy.draft_state import load_drafted, save_drafted
-from g_nfl.fantasy.outcomes import attach_outcomes, build_history, residuals
+from g_nfl.fantasy.outcomes import (
+    attach_outcomes,
+    build_history,
+    load_adp,
+    residuals,
+)
 from g_nfl.fantasy.projections.board import build_board
 from g_nfl.fantasy.scoring import PRESETS, LeagueConfig, Scoring, score
 from g_nfl.fantasy.sources.espn import fetch_espn_projections
+from g_nfl.fantasy.survival import consensus_pick, survival
 from g_nfl.utils.web_app import get_team_logo
 
 SEASON = 2026
@@ -50,6 +56,11 @@ def _stat_lines(season: int):
 @st.cache_data(show_spinner="Loading FantasyPros ECR...")
 def _ecr():
     return load_ecr()
+
+
+@st.cache_data(show_spinner="Loading ADP...")
+def _adp(season: int):
+    return load_adp(season)
 
 
 # Keyed on the scoring config: role ratios are near scale-free, but luck is
@@ -159,7 +170,10 @@ board = attach_vs_ecr(board)
 board = board.sort("overall_rank").select(["gsis_id", *BOARD_COLUMNS])
 
 picks_between = picks_until_next_turn(slot, teams, current_round)
-board, outlook = attach_next_turn_value(board, picks_between)
+next_pick = snake_picks(slot, teams, current_round + 1)[current_round]
+board = consensus_pick(board, _adp(SEASON))
+board, outlook = attach_next_turn_value(board, picks_between, next_pick)
+board = survival(board, next_pick)
 
 outcome_columns: list[str] = []
 if show_outcomes:
@@ -168,7 +182,9 @@ if show_outcomes:
 
 board = board.with_columns(
     pl.col("team").map_elements(get_team_logo, return_dtype=pl.Utf8).alias("logo")
-).select(["gsis_id", "logo", *BOARD_COLUMNS, "vs_next_turn", *outcome_columns])
+).select(
+    ["gsis_id", "logo", *BOARD_COLUMNS, "vs_next_turn", "p_available", *outcome_columns]
+)
 
 st.caption(
     f"**{label}** — {teams} teams, {'/'.join(roster_positions)}, {bench} bench. "
@@ -198,9 +214,9 @@ st.dataframe(
     },
 )
 st.caption(
-    "Survival is a proxy: it assumes the next "
-    f"{picks_between} picks take the next {picks_between} players in board order. "
-    "ADP replaces it in #92(c)."
+    f"Survival is modelled from ADP: a player lasts to pick {next_pick} if his draft "
+    "position, normal around his ADP with the spread from min/max pick, falls after "
+    "it. QBs use ECR instead, since MFL pools superflex rooms into one ADP feed."
 )
 
 left, right = st.columns([2, 1])
@@ -261,6 +277,13 @@ edited = st.data_editor(
         ),
         "ceiling": st.column_config.NumberColumn(
             "Ceiling", format="%.1f", help="90th percentile ppg."
+        ),
+        "p_available": st.column_config.NumberColumn(
+            "Still there?",
+            format="percent",
+            help="Chance he lasts to your next pick, from ADP spread. "
+            "QBs use FantasyPros ECR instead: MFL pools superflex rooms into one "
+            "ADP feed, which takes quarterbacks far too early for a 1QB league.",
         ),
         "vs_next_turn": st.column_config.NumberColumn(
             "vs next turn",
