@@ -5,7 +5,7 @@ description = "The cleveland browns can stay irrational longer than i can stay s
 authors = [{ name = "Griffin Reichert", email = "griffin.reichert@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.11"
-# Core deps — everything the deployed API + Streamlit app need.
+# Core deps — everything the deployed API + the Streamlit draft board need.
 # Analysis/notebook tooling lives in the `analysis` dependency group.
 dependencies = [
     "requests>=2.32.3,<3",

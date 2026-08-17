@@ -7,7 +7,7 @@ help:
 	@echo "📦 Setup & Development:"
 	@echo "  install       Install dependencies with uv"
 	@echo "  dev           Install dev dependencies and setup pre-commit"
-	@echo "  run           Run the Streamlit app locally"
+	@echo "  run           Run the fantasy draft board (Streamlit) locally"
 	@echo "  api           Run the FastAPI backend locally"
 	@echo "  web           Run the React frontend dev server"
 	@echo ""
@@ -44,7 +44,7 @@ dev: install
 	uv run pre-commit install || echo "Pre-commit not configured"
 
 run:
-	@echo "🏃 Running Streamlit app..."
+	@echo "🏈 Running the fantasy draft board..."
 	uv run streamlit run app/main.py
 
 api:
@@ -138,5 +138,5 @@ jupyter:
 	uv run jupyter lab
 
 streamlit:
-	@echo "🎈 Running Streamlit app..."
+	@echo "🎈 Alias for make run..."
 	uv run streamlit run app/main.py

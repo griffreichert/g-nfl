@@ -121,7 +121,7 @@ cp .env.example .env   # Then fill in Supabase keys (dashboard → Settings → 
 ```bash
 make api               # FastAPI backend (src/g_nfl/api/) on :8000
 make web               # React frontend (web/) on :5173, proxies /api to :8000
-make run               # Legacy Streamlit app
+make run               # Streamlit fantasy draft board (app/main.py)
 ```
 
 **Data Analysis**:
