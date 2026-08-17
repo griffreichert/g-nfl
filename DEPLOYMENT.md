@@ -49,5 +49,6 @@ Backend reads `SUPABASE_URL` / `SUPABASE_ANON_KEY` from `.env` (via python-doten
   Upgrade to Starter ($7/mo) if cold starts become annoying.
 - No auth yet: `picker` is passed explicitly by the frontend. When auth lands,
   replace the picker param with session identity in `src/g_nfl/api/main.py`.
-- The Streamlit app (`app/`) still works (`make run`) and stays until the new
-  frontend reaches parity.
+- The Streamlit app (`app/`) is the fantasy draft board and nothing else. Its
+  picks pages were deleted in #91 once the React app reached parity; picks,
+  spreads and standings live in `web/` now.
