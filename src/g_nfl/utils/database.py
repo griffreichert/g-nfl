@@ -575,3 +575,76 @@ class PoolSpreadsDatabase:
         except Exception as e:
             print(f"Error updating pool spread: {e}")
             return False
+
+
+class FantasyProjectionsDatabase:
+    """Dated snapshots of season-total fantasy stat lines (issue #81).
+
+    Written by ``g_nfl.fantasy.ingest``, which Griffin runs by hand. Nothing in
+    the request path scrapes, so a broken source degrades to a stale snapshot
+    instead of an error, and the caller can see how stale from ``snapshot_date``.
+    """
+
+    #: Stat columns, matching the ESPN source contract in ``fantasy.sources.espn``.
+    STAT_COLUMNS = (
+        "pass_yd",
+        "pass_td",
+        "ints",
+        "rush_yd",
+        "rush_td",
+        "rec",
+        "rec_yd",
+        "rec_td",
+        "fum",
+    )
+
+    def __init__(self):
+        self.client: Client = get_supabase()
+
+    def save_snapshot(self, rows: list[dict]) -> int:
+        """Upsert one snapshot's rows, keyed by (snapshot_date, source, player_id).
+
+        Upsert rather than insert so re-running an ingest the same day is a
+        no-op instead of a duplicate snapshot.
+        """
+        if not rows:
+            return 0
+        payload = [{**r, "updated_at": datetime.utcnow().isoformat()} for r in rows]
+        self.client.table("fantasy_projections").upsert(
+            payload, on_conflict="snapshot_date,source,player_id"
+        ).execute()
+        return len(payload)
+
+    def latest_snapshot_date(self, source: str, season: int) -> str | None:
+        """Newest ``snapshot_date`` for a source, or None if never ingested."""
+        result = (
+            self.client.table("fantasy_projections")
+            .select("snapshot_date")
+            .eq("source", source)
+            .eq("season", season)
+            .order("snapshot_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return result.data[0]["snapshot_date"] if result.data else None
+
+    def get_snapshot(
+        self, source: str, season: int, snapshot_date: str | None = None
+    ) -> list[dict]:
+        """One snapshot's rows; the newest one when ``snapshot_date`` is None.
+
+        Returns an empty list when the source has never been ingested, which
+        the caller should treat as "fall back to a live fetch", not as an error.
+        """
+        snapshot_date = snapshot_date or self.latest_snapshot_date(source, season)
+        if snapshot_date is None:
+            return []
+        result = (
+            self.client.table("fantasy_projections")
+            .select("*")
+            .eq("source", source)
+            .eq("season", season)
+            .eq("snapshot_date", snapshot_date)
+            .execute()
+        )
+        return result.data

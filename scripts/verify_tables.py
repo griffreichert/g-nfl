@@ -10,7 +10,11 @@ import sys
 # Add the project root to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.g_nfl.utils.database import MarketLinesDatabase, PoolSpreadsDatabase
+from src.g_nfl.utils.database import (
+    FantasyProjectionsDatabase,
+    MarketLinesDatabase,
+    PoolSpreadsDatabase,
+)
 
 
 def verify_tables():
@@ -42,9 +46,21 @@ def verify_tables():
         print(f"❌ pool_spreads table issue: {e}")
         pool_ok = False
 
+    # fantasy_projections table (#81) — created by hand from
+    # scripts/fantasy_projections_schema.sql, so this is the check that it was.
+    try:
+        proj_db = FantasyProjectionsDatabase()
+        latest = proj_db.latest_snapshot_date("espn", 2026)
+        print("✅ fantasy_projections table exists and is accessible")
+        print(f"   Latest espn 2026 snapshot: {latest or 'none ingested yet'}")
+        proj_ok = True
+    except Exception as e:
+        print(f"❌ fantasy_projections table issue: {e}")
+        proj_ok = False
+
     print()
 
-    if market_ok and pool_ok:
+    if market_ok and pool_ok and proj_ok:
         print("🎉 All tables verified successfully!")
         print("\n✅ Next steps:")
         print("1. Run 'python scripts/update_market_lines.py --season 2025 --week 1'")
@@ -53,6 +69,9 @@ def verify_tables():
     else:
         print("❌ Some tables have issues. Please check your Supabase setup.")
         print("\n💡 Make sure you've run the SQL from 'scripts/database_schema.sql'")
+        print(
+            "   and, for fantasy_projections, 'scripts/fantasy_projections_schema.sql'"
+        )
         return False
 
 
