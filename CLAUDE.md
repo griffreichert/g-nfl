@@ -38,9 +38,12 @@ The `notes/` folder is the source of truth for in-flight, multi-session work. Us
 
 ### One-off analysis scripts — no `scratch/` folder
 
-There is no in-repo scratch/scratchpad directory (removed 2026-08-09 — it had
-become a dumping ground for sweep/backtest scripts whose findings never made it
-into `notes/`). Disposition for a throwaway script:
+There is no in-repo scratch/scratchpad directory. The rule was written
+2026-08-09; the 31 files it was written about were only triaged and deleted
+2026-08-17 (#95), and the findings that had never left those scripts are now in
+`notes/modelling/error-breakdowns.md`. `scratch/` is deliberately **not** in
+`.gitignore`, so if one reappears it shows up in `git status` instead of hiding.
+Disposition for a throwaway script:
 
 - **Write it to the session scratchpad** (outside the repo, e.g.
   `/private/tmp/claude-*/.../scratchpad`), not into a repo folder.
