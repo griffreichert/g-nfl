@@ -116,7 +116,15 @@ Disposition for a throwaway script:
 ```bash
 uv sync                # Install all dependencies (core + dev + analysis groups)
 cp .env.example .env   # Then fill in Supabase keys (dashboard → Settings → API Keys)
+make bootstrap         # Fresh clone: warms the caches, pulls the source documents
 ```
+
+`make bootstrap` (#96) re-downloads `data/ml_cache` and `data/sleeper_cache`
+through the pipeline's own loaders — slow once, and it cannot go stale the way a
+synced cache can. It then runs `make pull-data`, which fetches the files that
+**cannot** be regenerated (the pool workbooks) from Supabase Storage. Everything
+else under `data/` rebuilds from code and is never synced. `make push-data`
+sends a new workbook the other way.
 
 **Python version**: `>=3.11` (3.13 supported). `nfl-data-py` was the blocker (pinned `numpy<2`/`pandas<2`); it has been replaced by `nflreadpy` (#23).
 

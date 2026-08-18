@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -7,6 +7,9 @@ help:
 	@echo "📦 Setup & Development:"
 	@echo "  install       Install dependencies with uv"
 	@echo "  dev           Install dev dependencies and setup pre-commit"
+	@echo "  bootstrap     Fresh clone -> working repo (warms caches, pulls data)"
+	@echo "  push-data     Upload irreplaceable source documents to Supabase"
+	@echo "  pull-data     Fetch them back (ARGS=--force to overwrite newer local)"
 	@echo "  run           Run the fantasy draft board (Streamlit) locally"
 	@echo "  api           Run the FastAPI backend locally"
 	@echo "  web           Run the React frontend dev server"
@@ -43,6 +46,18 @@ install:
 dev: install
 	@echo "🛠️  Setting up development environment..."
 	uv run pre-commit install || echo "Pre-commit not configured"
+
+bootstrap: install
+	@echo "🥾 Bootstrapping a fresh clone (slow: warms ~163M of nflverse cache)..."
+	uv run python scripts/bootstrap.py $(ARGS)
+
+push-data:
+	@echo "☁️  Uploading source documents to Supabase Storage..."
+	uv run python scripts/sync_data.py push $(ARGS)
+
+pull-data:
+	@echo "⬇️  Fetching source documents from Supabase Storage..."
+	uv run python scripts/sync_data.py pull $(ARGS)
 
 run:
 	@echo "🏈 Running the fantasy draft board..."
