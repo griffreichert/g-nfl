@@ -1,4 +1,4 @@
-.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context
+.PHONY: help install dev run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  verify-db     Verify database tables exist"
 	@echo "  load-pool     Load pool standings workbook (ARGS=\"<xlsx> --season 2025\")"
 	@echo "  pool-report   Pool pick-trend report (ARGS=\"<xlsx> --season 2025\")"
+	@echo "  ingest-fantasy Snapshot fantasy projections to Supabase (SEASON=2026)"
 	@echo ""
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
@@ -90,6 +91,14 @@ load-pool:
 pool-report:
 	@echo "📈 Pool pick-trend report..."
 	uv run python -m g_nfl.pool.analysis $(ARGS)
+
+# The season being drafted for. Not CUR_SEASON in config.py, which still reads
+# 2025 — see #81's PR.
+SEASON ?= 2026
+
+ingest-fantasy:
+	@echo "📥 Snapshotting fantasy projections to Supabase..."
+	uv run python -m g_nfl.fantasy.ingest --season $(SEASON) $(ARGS)
 
 verify-db-test:
 	@echo "🧪 Testing database operations..."
