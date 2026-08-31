@@ -1,113 +1,101 @@
 #!/usr/bin/env python3
-"""
-Script to fetch market spreads and totals from nfl_data and store in database.
-This should be run locally where nfl_data_py is available.
+"""Fetch market spreads and totals from nflverse and store them (#58).
+
+    uv run python scripts/update_market_lines.py --season 2026 --week 1
+    uv run python scripts/update_market_lines.py --seasons 2020-2025 --snapshot close
+    uv run python scripts/update_market_lines.py --season 2026 --snapshot deadline
+
+`spread_line` is the closing number for a game already played and the current
+number for one still ahead, so a backfill of past seasons is always `--snapshot
+close`. In-season the crons write `friday` and `deadline`; the deadline pull is
+what makes the pool-vs-market gap measurable rather than look-ahead
+(notes/pool-spread-edge.md).
 """
 
-import os
+from __future__ import annotations
+
+import argparse
 import sys
+from pathlib import Path
 
-# Add the project root to the path
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(str(Path(__file__).parents[1] / "src"))
 
-from src.g_nfl.modelling.utils import get_week_spreads
-from src.g_nfl.utils.config import CUR_SEASON
-from src.g_nfl.utils.database import MarketLinesDatabase
+import nflreadpy as nfl  # noqa: E402
+import polars as pl  # noqa: E402
 
+from g_nfl.utils.config import CUR_SEASON  # noqa: E402
+from g_nfl.utils.database import MarketLinesDatabase, dump_table  # noqa: E402
 
-def fetch_and_store_market_lines(season: int, week: int) -> bool:
-    """Fetch market lines and store in database
-
-    Args:
-        season: NFL season year
-        week: Week number
-
-    Returns:
-        True if successful
-    """
-    try:
-        print(f"Fetching market lines for {season} Week {week}...")
-
-        # Get spreads and totals from nfl_data
-        games_df = get_week_spreads(week, season)
-
-        if games_df.empty:
-            print(f"No games found for {season} Week {week}")
-            return False
-
-        # Convert to dictionary format for database storage
-        lines = {}
-        for game_id, game in games_df.iterrows():
-            lines[game_id] = {
-                "spread": game.get("spread_line"),
-                "total": game.get("total_line"),
-            }
-
-        print(f"Found {len(lines)} games with market lines")
-
-        # Store in database
-        db = MarketLinesDatabase()
-        saved_count = db.save_market_lines(season, week, lines)
-
-        print(f"Successfully saved {saved_count} market lines to database")
-
-        # Print summary
-        spreads_count = sum(
-            1 for line in lines.values() if line.get("spread") is not None
-        )
-        totals_count = sum(
-            1 for line in lines.values() if line.get("total") is not None
-        )
-
-        print("Summary:")
-        print(f"  - Games with spreads: {spreads_count}")
-        print(f"  - Games with totals: {totals_count}")
-
-        return True
-
-    except Exception as e:
-        print(f"Error fetching/storing market lines: {e}")
-        return False
+SNAPSHOTS = ("open", "friday", "deadline", "close")
 
 
-def main():
-    """Main function"""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Update market lines in database")
-    parser.add_argument(
-        "--season", type=int, default=CUR_SEASON, help="NFL season year"
+def store_season(
+    season: int, snapshot: str, weeks: list[int] | None = None, dry_run: bool = False
+) -> int:
+    """Write one season's lines, a week at a time. Returns rows written."""
+    schedule = nfl.load_schedules(seasons=[season]).filter(
+        pl.col("spread_line").is_not_null()
     )
-    parser.add_argument("--week", type=int, required=True, help="Week number")
-    parser.add_argument(
-        "--weeks", type=str, help="Week range (e.g., '1-18' or '1,3,5')"
-    )
+    if weeks is not None:
+        schedule = schedule.filter(pl.col("week").is_in(weeks))
+    if schedule.is_empty():
+        print(f"  {season}: no games with a line")
+        return 0
 
+    db = MarketLinesDatabase()
+    written = 0
+    for week, block in schedule.group_by("week", maintain_order=True):
+        week = week[0] if isinstance(week, tuple) else week
+        lines = {
+            row["game_id"]: {"spread": row["spread_line"], "total": row["total_line"]}
+            for row in block.iter_rows(named=True)
+        }
+        if dry_run:
+            print(f"  {season} wk {week:>2}: would write {len(lines)} ({snapshot})")
+            written += len(lines)
+            continue
+        written += db.save_market_lines(season, week, lines, snapshot=snapshot)
+    return written
+
+
+def parse_seasons(spec: str) -> list[int]:
+    """'2020-2025' or '2021' or '2021,2023'."""
+    out: list[int] = []
+    for part in spec.split(","):
+        if "-" in part:
+            lo, hi = (int(x) for x in part.split("-"))
+            out.extend(range(lo, hi + 1))
+        else:
+            out.append(int(part))
+    return out
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--season", type=int, default=CUR_SEASON)
+    parser.add_argument("--seasons", help="range or list, e.g. 2020-2025")
+    parser.add_argument("--week", type=int, help="one week; omit for the whole season")
+    parser.add_argument("--weeks", help="range, e.g. 1-18")
+    parser.add_argument("--snapshot", choices=SNAPSHOTS, default="close")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    if args.weeks:
-        # Handle multiple weeks
-        if "-" in args.weeks:
-            # Range format: 1-18
-            start, end = map(int, args.weeks.split("-"))
-            weeks = list(range(start, end + 1))
-        else:
-            # Comma-separated format: 1,3,5
-            weeks = [int(w.strip()) for w in args.weeks.split(",")]
+    seasons = parse_seasons(args.seasons) if args.seasons else [args.season]
+    weeks = None
+    if args.week:
+        weeks = [args.week]
+    elif args.weeks:
+        lo, hi = (int(x) for x in args.weeks.split("-"))
+        weeks = list(range(lo, hi + 1))
 
-        success_count = 0
-        for week in weeks:
-            if fetch_and_store_market_lines(args.season, week):
-                success_count += 1
-            print()  # Add spacing between weeks
+    if not args.dry_run:
+        dump_table("market_lines")
 
-        print(f"Successfully updated {success_count}/{len(weeks)} weeks")
-
-    else:
-        # Single week
-        success = fetch_and_store_market_lines(args.season, args.week)
-        if not success:
-            sys.exit(1)
+    total = 0
+    for season in seasons:
+        total += store_season(season, args.snapshot, weeks, args.dry_run)
+    verb = "would write" if args.dry_run else "wrote"
+    print(f"{verb} {total} market lines ({args.snapshot})")
 
 
 if __name__ == "__main__":

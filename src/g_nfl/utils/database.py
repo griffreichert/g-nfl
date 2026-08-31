@@ -1,12 +1,54 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from supabase.client import Client
 
+from .paths import DATA_PATH
 from .supabase_client import get_supabase
+
+BACKUP_DIR = DATA_PATH / "backups"
+
+
+def dump_table(table: str, chunk: int = 1000) -> Path:
+    """Write every row of `table` to data/backups/ and return the path.
+
+    Call this before any bulk write. The project is on Supabase's free plan,
+    which has no backups, so a bad write is permanent. On 2026-08-31 a backfill
+    deleted 319 rows of 2025 pick-time market snapshots that no longer exist
+    anywhere.
+
+    `.order("id")` matters: range paging over an unordered query lets the server
+    return a different order per page, so pages overlap and other rows are never
+    read. Two runs without it disagreed by 107 games.
+    """
+    client = get_supabase()
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        page = (
+            client.table(table)
+            .select("*")
+            .order("id")
+            .range(offset, offset + chunk - 1)
+            .execute()
+            .data
+        )
+        rows.extend(page)
+        if len(page) < chunk:
+            break
+        offset += chunk
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = BACKUP_DIR / f"{table}_{stamp}.json"
+    path.write_text(json.dumps(rows, indent=2, default=str))
+    print(f"  backed up {len(rows)} rows of {table} -> {path}")
+    return path
 
 
 class PicksDatabase:
@@ -368,51 +410,68 @@ class MarketLinesDatabase:
         season: int,
         week: int,
         lines: dict[str, dict[str, float]],
-        replace: bool = True,
+        snapshot: str = "close",
     ) -> int:
-        """Save market lines to Supabase
+        """Save market lines to Supabase.
+
+        Upserts on (season, week, game_id, snapshot). Nothing is deleted.
+
+        A delete-then-insert stood here until 2026-08-31, when a backfill of
+        closing lines wiped 319 rows of 2025 pick-time snapshots that nobody
+        could see: RLS was enabled on the table with no policy, so every SELECT
+        returned empty without erroring, and the table read as empty when it was
+        not. Those snapshots are unrecoverable, the project has no backups, and
+        nflverse only publishes the close.
 
         Args:
             season: NFL season year
             week: Week number
             lines: Dictionary mapping game_id to line data {'spread': float, 'total': float}
-            replace: If True, replace existing lines for this season/week
+            snapshot: When the line was read. 'open', 'friday', 'deadline' or
+                'close'. A backfill from nflverse is always 'close'. The
+                in-season crons write 'friday' and 'deadline'.
 
         Returns:
             Number of lines saved
         """
-        # If replace is True, delete existing lines for this season/week
-        if replace:
-            self.client.table("market_lines").delete().eq("season", season).eq(
-                "week", week
-            ).execute()
+        from g_nfl.utils.web_app import normalize_game_id
 
-        # Prepare lines data for insertion
-        lines_data = []
-        for game_id, line_data in lines.items():
-            lines_data.append(
-                {
-                    "season": season,
-                    "week": week,
-                    "game_id": game_id,
-                    "spread": line_data.get("spread"),
-                    "total": line_data.get("total"),
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-            )
+        lines_data = [
+            {
+                "season": season,
+                "week": week,
+                "game_id": normalize_game_id(game_id),
+                "spread": line_data.get("spread"),
+                "total": line_data.get("total"),
+                "snapshot": snapshot,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            for game_id, line_data in lines.items()
+        ]
 
-        # Insert lines
         if lines_data:
-            self.client.table("market_lines").insert(lines_data).execute()
+            self.client.table("market_lines").upsert(
+                lines_data, on_conflict="season,week,game_id,snapshot"
+            ).execute()
             return len(lines_data)
         return 0
 
-    def get_market_lines(self, season: int, week: int | None = None) -> list[dict]:
+    #: Which snapshot to believe when a game has several, sharpest first.
+    SNAPSHOT_PRIORITY = ("close", "deadline", "friday", "open")
+
+    def get_market_lines(
+        self, season: int, week: int | None = None, snapshot: str | None = None
+    ) -> list[dict]:
         """Retrieve market lines from Supabase
 
         Args:
             season: NFL season year
             week: Week number, or None for the whole season
+            snapshot: Return only this snapshot. Omit to collapse to one row per
+                game, taking the sharpest available per `SNAPSHOT_PRIORITY` — the
+                close once a game has been played, the deadline pull while the
+                week is live. Grading needs one line per game, so callers that do
+                not care must not see the same game several times.
 
         Returns:
             List of market line dictionaries
@@ -420,9 +479,19 @@ class MarketLinesDatabase:
         query = self.client.table("market_lines").select("*").eq("season", season)
         if week is not None:
             query = query.eq("week", week)
+        if snapshot is not None:
+            return query.eq("snapshot", snapshot).execute().data
 
-        result = query.execute()
-        return result.data
+        rank = {s: i for i, s in enumerate(self.SNAPSHOT_PRIORITY)}
+        best: dict[str, dict] = {}
+        for row in query.execute().data:
+            gid = row["game_id"]
+            held = best.get(gid)
+            if held is None or rank.get(row.get("snapshot"), 99) < rank.get(
+                held.get("snapshot"), 99
+            ):
+                best[gid] = row
+        return list(best.values())
 
     def get_available_weeks(self, season: int) -> list[int]:
         """Get all weeks that have market lines data for a given season
@@ -469,46 +538,38 @@ class PoolSpreadsDatabase:
         season: int,
         week: int,
         spreads: dict[str, float],
-        replace: bool = True,
     ) -> int:
-        """Save pool spreads to Supabase
+        """Save pool spreads to Supabase.
+
+        Upserts on (season, week, game_id). Nothing is deleted, for the reason
+        given on `MarketLinesDatabase.save_market_lines`.
 
         Args:
             season: NFL season year
             week: Week number
             spreads: Dictionary mapping game_id to spread value
-            replace: If True, replace existing spreads for this season/week
 
         Returns:
             Number of spreads saved
         """
-        # Import normalize function
         from g_nfl.utils.web_app import normalize_game_id
 
-        # If replace is True, delete existing spreads for this season/week
-        if replace:
-            self.client.table("pool_spreads").delete().eq("season", season).eq(
-                "week", week
-            ).execute()
+        spreads_data = [
+            {
+                "season": season,
+                "week": week,
+                # zero-padded week, or the join to picks silently misses
+                "game_id": normalize_game_id(game_id),
+                "spread": spread,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            for game_id, spread in spreads.items()
+        ]
 
-        # Prepare spreads data for insertion
-        spreads_data = []
-        for game_id, spread in spreads.items():
-            # Normalize game_id to ensure zero-padded week format
-            normalized_id = normalize_game_id(game_id)
-            spreads_data.append(
-                {
-                    "season": season,
-                    "week": week,
-                    "game_id": normalized_id,
-                    "spread": spread,
-                    "created_at": datetime.utcnow().isoformat(),
-                }
-            )
-
-        # Insert spreads
         if spreads_data:
-            self.client.table("pool_spreads").insert(spreads_data).execute()
+            self.client.table("pool_spreads").upsert(
+                spreads_data, on_conflict="season,week,game_id"
+            ).execute()
             return len(spreads_data)
         return 0
 
