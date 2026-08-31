@@ -2,12 +2,19 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import type { AppConfig, GuardrailsResponse } from './types'
 
-export function useConfig() {
+/**
+ * Season, week, pickers and the survivor teams already spent.
+ *
+ * `picker` matters: the ban on reusing a survivor team is per entry, so the
+ * list is empty until the API knows whose entry it is. It used to be one
+ * global list in config.py covering the whole room.
+ */
+export function useConfig(picker?: string) {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    api.config().then(setConfig).catch((e) => setError(String(e)))
-  }, [])
+    api.config(picker).then(setConfig).catch((e) => setError(String(e)))
+  }, [picker])
   return { config, error }
 }
 

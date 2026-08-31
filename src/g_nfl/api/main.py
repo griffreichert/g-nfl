@@ -18,6 +18,7 @@ from g_nfl.picks.analytics import (
     summarize,
     team_appetite,
 )
+from g_nfl.picks.calendar import current_season, current_week
 from g_nfl.picks.grading import (
     BREAK_EVEN,
     grade_pick,
@@ -28,10 +29,7 @@ from g_nfl.picks.guardrails import RuleFit
 from g_nfl.picks.guardrails import fit as fit_guardrails
 from g_nfl.picks.history import DEFAULT_SEASONS, load_history
 from g_nfl.utils.config import (
-    CUR_SEASON,
-    CUR_WEEK,
     PICKERS,
-    SURVIVOR_USED_TEAMS,
     TEST_PICKER,
 )
 from g_nfl.utils.database import (
@@ -78,12 +76,32 @@ def health():
 
 
 @app.get("/api/config", response_model=AppConfig)
-def get_config():
+def get_config(picker: str | None = None):
+    """Season, week and the survivor teams already spent.
+
+    All three are derived. `CUR_SEASON` and `CUR_WEEK` were constants somebody
+    had to remember to bump and nobody did: nine days before the 2026 opener
+    they still read 2025 week 12. `SURVIVOR_USED_TEAMS` was one global list for
+    the whole room, which is wrong on the pool's own rules, since the ban on
+    reusing a team is per entry.
+    """
+    season = current_season()
     return AppConfig(
         pickers=PICKERS,
-        cur_season=CUR_SEASON,
-        cur_week=CUR_WEEK,
-        survivor_used_teams=SURVIVOR_USED_TEAMS,
+        cur_season=season,
+        cur_week=current_week(season),
+        survivor_used_teams=survivor_used(season, picker) if picker else [],
+    )
+
+
+def survivor_used(season: int, picker: str) -> list[str]:
+    """Teams this picker has already spent in survivor this season."""
+    return sorted(
+        {
+            p["team_picked"]
+            for p in PicksDatabase().get_season_picks(season)
+            if p["picker"] == picker and p.get("pick_type") == "survivor"
+        }
     )
 
 
@@ -184,13 +202,14 @@ def _guardrail(f) -> Guardrail:
 
 
 @app.get("/api/guardrails", response_model=GuardrailsResponse)
-def get_guardrails(season: int = CUR_SEASON, week: int | None = None):
+def get_guardrails(season: int | None = None, week: int | None = None):
     """The fitted vetoes, and which sides of this week's games trip them.
 
     Rules are fitted from the pick record on every call path through
     `_fitted_guardrails`, which caches: the fit reads six seasons out of
     Supabase and only changes when a season grades out.
     """
+    season = season or current_season()
     fits = _fitted_guardrails()
     rules = [f for f in fits if f.qualifies]
 

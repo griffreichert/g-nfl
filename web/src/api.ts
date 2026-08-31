@@ -31,7 +31,10 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
 }
 
 export const api = {
-  config: () => get<AppConfig>('/api/config'),
+  config: (picker?: string) =>
+    get<AppConfig>(
+      `/api/config${picker ? `?picker=${encodeURIComponent(picker)}` : ''}`
+    ),
   weeks: (season: number) => get<WeeksResponse>(`/api/weeks?season=${season}`),
   lines: (season: number, week: number) =>
     get<GameLine[]>(`/api/lines?season=${season}&week=${week}`),

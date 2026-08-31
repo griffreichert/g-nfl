@@ -31,10 +31,10 @@ const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
 
 export default function MakePicks() {
-  const { config, error: configError } = useConfig()
+  const [picker, setPicker] = useState<string>('')
+  const { config, error: configError } = useConfig(picker || undefined)
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { flagsFor, ruleById } = useGuardrails(season, week)
-  const [picker, setPicker] = useState<string>('')
 
   // Games are stamped with the week they were fetched for, so "still loading"
   // is derived from a stale stamp rather than flagged from inside the effect.

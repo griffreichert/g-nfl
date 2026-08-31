@@ -536,16 +536,31 @@ class MarketLinesDatabase:
         Returns:
             List of week numbers that have market lines data, sorted ascending
         """
-        query = self.client.table("market_lines").select("week").eq("season", season)
+        rows = fetch_all(
+            lambda: (
+                self.client.table("market_lines").select("week").eq("season", season)
+            )
+        )
+        return sorted({row["week"] for row in rows if row["week"]})
 
-        result = query.execute()
+    def seasons(self) -> list[int]:
+        """Every season with market lines, ascending."""
+        rows = fetch_all(lambda: self.client.table("market_lines").select("season"))
+        return sorted({row["season"] for row in rows if row["season"]})
 
-        if not result.data:
-            return []
-
-        # Extract unique weeks and sort them
-        weeks = list(set(row["week"] for row in result.data if row["week"]))
-        return sorted(weeks)
+    def games_per_week(self, season: int) -> dict[int, int]:
+        """How many distinct games each week of `season` has a line for."""
+        rows = fetch_all(
+            lambda: (
+                self.client.table("market_lines")
+                .select("week,game_id")
+                .eq("season", season)
+            )
+        )
+        by_week: dict[int, set[str]] = {}
+        for row in rows:
+            by_week.setdefault(row["week"], set()).add(row["game_id"])
+        return {week: len(games) for week, games in by_week.items()}
 
     def get_max_week_for_season(self, season: int) -> int | None:
         """Get the maximum week number that has market lines data for a given season

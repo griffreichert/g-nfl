@@ -313,5 +313,5 @@ def team_appetite(
                 "units": round(cell.units, 2) if cell else 0.0,
             }
         )
-    out.sort(key=lambda d: (d["appetite"] or 0), reverse=True)
+    out.sort(key=lambda d: d["appetite"] or 0, reverse=True)
     return out

@@ -446,7 +446,9 @@ function Slot({ label, have, need }: { label: string; have: number; need: number
 }
 
 export default function Field() {
-  const { config, error: configError } = useConfig()
+  // The board builds TEAM's entry, so TEAM's own spent teams are the ones that
+  // matter here.
+  const { config, error: configError } = useConfig('TEAM')
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
 
