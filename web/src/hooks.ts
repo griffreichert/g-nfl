@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from './api'
+import { api, token } from './api'
 import type { AppConfig, GuardrailsResponse } from './types'
 
 /**
@@ -80,4 +80,48 @@ export function useGuardrails(season: number | null, week: number | null) {
     flagsFor: (gameId: string, team: string) => flagged.get(`${gameId}|${team}`) ?? [],
     ruleById: (id: string) => byId.get(id),
   }
+}
+
+/**
+ * Who is signed in (#60).
+ *
+ * The picker used to be a dropdown, and the API believed it, so anyone could
+ * submit as anyone. Now a PIN buys a token, the token names the picker, and
+ * the dropdown is gone.
+ */
+export function useAuth() {
+  const [picker, setPicker] = useState<string | null>(null)
+  // No token means nothing to check, so the gate opens on the first render
+  // rather than after an effect has run and set state again.
+  const [checking, setChecking] = useState(() => token.get() !== null)
+
+  useEffect(() => {
+    if (!token.get()) return
+    let live = true
+    api
+      .me()
+      .then((r) => live && setPicker(r.picker))
+      // an expired or tampered token is the same as no token
+      .catch(() => {
+        token.clear()
+        if (live) setPicker(null)
+      })
+      .finally(() => live && setChecking(false))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  const login = async (who: string, pin: string) => {
+    const r = await api.login(who, pin)
+    token.set(r.token)
+    setPicker(r.picker)
+  }
+
+  const logout = () => {
+    token.clear()
+    setPicker(null)
+  }
+
+  return { picker, checking, login, logout }
 }

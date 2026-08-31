@@ -210,3 +210,9 @@ export interface GuardrailsResponse {
   flags: SideFlag[]
   fitted_on: number[]
 }
+
+export interface LoginResponse {
+  /** empty on /api/auth/me, which only confirms an existing token */
+  token: string
+  picker: string
+}

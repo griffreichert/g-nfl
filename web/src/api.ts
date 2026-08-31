@@ -4,6 +4,7 @@ import type {
   GameDetail,
   GameLine,
   GuardrailsResponse,
+  LoginResponse,
   Pick,
   PickRecord,
   StandingsResponse,
@@ -14,8 +15,22 @@ import type {
 // proxy forwards /api to localhost:8000.
 const BASE = import.meta.env.VITE_API_URL ?? ''
 
+const TOKEN_KEY = 'nohomers.token'
+
+export const token = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+}
+
+/** Bearer header when we hold a token, nothing when we do not. */
+const authHeaders = (): Record<string, string> => {
+  const t = token.get()
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
   return res.json()
 }
@@ -23,7 +38,7 @@ async function get<T>(path: string): Promise<T> {
 async function send<T>(method: string, path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`)
@@ -31,6 +46,9 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
 }
 
 export const api = {
+  login: (picker: string, pin: string) =>
+    send<LoginResponse>('POST', '/api/auth/login', { picker, pin }),
+  me: () => get<LoginResponse>('/api/auth/me'),
   config: (picker?: string) =>
     get<AppConfig>(
       `/api/config${picker ? `?picker=${encodeURIComponent(picker)}` : ''}`
@@ -49,7 +67,9 @@ export const api = {
   game: (gameId: string) => get<GameDetail>(`/api/games/${encodeURIComponent(gameId)}`),
   standings: (season: number) => get<StandingsResponse>(`/api/standings?season=${season}`),
   analytics: (season: number) => get<AnalyticsResponse>(`/api/analytics?season=${season}`),
-  savePicks: (season: number, week: number, picker: string, picks: Pick[]) =>
+  // `picker` is read from the token server-side. The body's copy is ignored
+  // except for TEAM, the entry the room submits together off the board.
+  savePicks: (season: number, week: number, picks: Pick[], picker?: string) =>
     send<{ saved: number }>('POST', '/api/picks', { season, week, picker, picks }),
   updatePoolSpread: (season: number, week: number, game_id: string, spread: number) =>
     send<{ success: boolean }>('PUT', '/api/pool-spreads', { season, week, game_id, spread }),

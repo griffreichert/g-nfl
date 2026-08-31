@@ -17,7 +17,15 @@ Configured via `render.yaml` (blueprint). One-time setup:
    - `SUPABASE_PUBLISHABLE_KEY` — Supabase publishable key (`sb_publishable_...`;
      legacy `SUPABASE_ANON_KEY` also supported)
    - `CORS_ORIGINS` — comma-separated, e.g. `https://<your-app>.vercel.app`
+   - `AUTH_SECRET` — signs the session tokens, 32 bytes or more (#60).
+     `python -c "import secrets; print(secrets.token_urlsafe(48))"`
+   - `PICKER_PINS` — every picker's PIN, PBKDF2-hashed. Generate the whole
+     object in one go: `uv run python scripts/make_pin.py Griffin 1234 Harry 5678`
 3. Deploys automatically on push to `main`
+
+Without `AUTH_SECRET` and `PICKER_PINS` every sign-in fails and no picks can be
+saved, which is the intended default for an unconfigured deploy. Rotating
+`AUTH_SECRET` signs everyone out.
 
 `requirements.txt` is generated from `uv.lock` (core deps only, no analysis/notebook
 tooling) — regenerate after dependency changes:

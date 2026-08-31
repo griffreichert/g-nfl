@@ -8,7 +8,7 @@ explicitly and will be replaced by session identity when auth is added.
 import os
 from functools import lru_cache
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from g_nfl.picks.analytics import (
@@ -30,6 +30,7 @@ from g_nfl.picks.guardrails import fit as fit_guardrails
 from g_nfl.picks.history import DEFAULT_SEASONS, load_history
 from g_nfl.utils.config import (
     PICKERS,
+    TEAM_PICKER,
     TEST_PICKER,
 )
 from g_nfl.utils.database import (
@@ -42,6 +43,7 @@ from g_nfl.utils.database import (
 )
 from g_nfl.utils.web_app import get_pool_spreads, normalize_game_id
 
+from .auth import authenticate, require_picker
 from .schemas import (
     AnalyticsResponse,
     AppConfig,
@@ -49,6 +51,8 @@ from .schemas import (
     GameLine,
     Guardrail,
     GuardrailsResponse,
+    LoginRequest,
+    LoginResponse,
     PickRecord,
     PoolSpreadUpdate,
     PoolSpreadUpdateResponse,
@@ -58,6 +62,9 @@ from .schemas import (
     StandingsResponse,
     WeeksResponse,
 )
+
+# bound once: FastAPI takes dependencies from argument defaults (ruff B008)
+_PICKER = Depends(require_picker)
 
 app = FastAPI(title="g-nfl API")
 
@@ -252,10 +259,35 @@ def get_picks(season: int, week: int, picker: str | None = None):
     ]
 
 
-@app.post("/api/picks", response_model=SavePicksResponse)
-def save_picks(req: SavePicksRequest):
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest):
+    """Swap a PIN for a token. The token is the only thing that names a picker."""
     if req.picker not in PICKERS:
-        raise HTTPException(400, f"Unknown picker: {req.picker}")
+        # same error as a wrong PIN, so this does not enumerate the room
+        raise HTTPException(401, "Wrong picker or PIN")
+    return LoginResponse(token=authenticate(req.picker, req.pin), picker=req.picker)
+
+
+@app.get("/api/auth/me", response_model=LoginResponse)
+def whoami(picker: str = _PICKER):
+    """Whether a stored token is still good, and who it belongs to."""
+    return LoginResponse(token="", picker=picker)
+
+
+@app.post("/api/picks", response_model=SavePicksResponse)
+def save_picks(req: SavePicksRequest, picker: str = _PICKER):
+    """Save a picker's week.
+
+    `picker` comes from the signed token and the one in the body is ignored.
+    Until #60 this endpoint trusted the body, so anyone could submit as anyone,
+    which made the ledger worthless as a record of who said what.
+
+    TEAM is the one exception. It is the entry the room submits together off
+    the board, so any signed-in picker may write it, and nobody may write it
+    while signed out.
+    """
+    if req.picker == TEAM_PICKER:
+        picker = TEAM_PICKER
 
     best_bets = sum(1 for p in req.picks if p.pick_type == "best_bet")
     if best_bets > 1:
@@ -286,7 +318,7 @@ def save_picks(req: SavePicksRequest):
 
     db = PicksDatabase()
     try:
-        saved = db.save_picks(req.season, req.week, picks_dict, req.picker)
+        saved = db.save_picks(req.season, req.week, picks_dict, picker)
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
@@ -340,7 +372,8 @@ def get_standings(season: int):
 
 
 @app.put("/api/pool-spreads", response_model=PoolSpreadUpdateResponse)
-def update_pool_spread(req: PoolSpreadUpdate):
+def update_pool_spread(req: PoolSpreadUpdate, picker: str = _PICKER):
+    """Enter a pool line. Signed in only: every ATS pick grades against these."""
     db = PoolSpreadsDatabase()
     success = db.update_pool_spread(
         req.season, req.week, normalize_game_id(req.game_id), req.spread

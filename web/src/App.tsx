@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
+import { useAuth } from './hooks'
 
 // Split per route so a page's charts and tables are fetched when someone opens
 // it, not on first paint. Recharts and TanStack Table are most of the bundle.
@@ -22,6 +23,8 @@ const tabs = [
 ]
 
 export default function App() {
+  const { picker, logout } = useAuth()
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border bg-card/85 backdrop-blur">
@@ -62,6 +65,15 @@ export default function App() {
             >
               <CircleQuestionMark className="size-5" />
             </NavLink>
+            {picker && (
+              <button
+                onClick={logout}
+                title={`Signed in as ${picker}`}
+                className="flex h-9 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                {picker} · out
+              </button>
+            )}
             <ThemeToggle />
           </div>
         </div>

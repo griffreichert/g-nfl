@@ -248,3 +248,14 @@ class GuardrailsResponse(BaseModel):
     rejected: list[Guardrail]
     flags: list[SideFlag]
     fitted_on: list[int]
+
+
+class LoginRequest(BaseModel):
+    picker: str
+    pin: str
+
+
+class LoginResponse(BaseModel):
+    #: empty on /api/auth/me, which only confirms an existing token
+    token: str
+    picker: str

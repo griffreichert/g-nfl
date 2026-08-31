@@ -35,6 +35,10 @@ PICKERS = [
 # appears in standings or in the team board's consensus.
 TEST_PICKER = "TEST"
 
+# The entry Reichert submits, decided on the weekly call. Not a person, so any
+# signed-in picker may write it from the board (#60).
+TEAM_PICKER = "TEAM"
+
 # Survivor pool used teams - teams that have already been picked and cannot be used again
 # Update this list each week after making survivor picks
 SURVIVOR_USED_TEAMS = [

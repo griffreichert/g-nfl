@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Check, ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import SignIn from '@/components/SignIn'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
   bestSide,
@@ -448,6 +449,7 @@ function Slot({ label, have, need }: { label: string; have: number; need: number
 export default function Field() {
   // The board builds TEAM's entry, so TEAM's own spent teams are the ones that
   // matter here.
+  const { picker: signedIn, checking, login } = useAuth()
   const { config, error: configError } = useConfig('TEAM')
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
@@ -687,7 +689,7 @@ export default function Field() {
           note: notes[noteKeyFor(choice.game_id, pool)]?.trim() || null,
         })
       }
-      const res = await api.savePicks(season, week, TEAM_PICKER, payload)
+      const res = await api.savePicks(season, week, payload, TEAM_PICKER)
       setSaved({ key: weekKey, msg: `Submitted ${res.saved} picks as TEAM` })
     } catch (e) {
       setSaved({ key: weekKey, msg: `Failed to save: ${e}` })
@@ -711,8 +713,13 @@ export default function Field() {
     return c
   }, [rows, flagsFor])
 
+  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
-  if (!config || season === null || week === null) return <Loading />
+  if (!config) return <Loading />
+  // The board writes TEAM's entry, so it needs a session even though the entry
+  // is not anyone's personal one.
+  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
+  if (season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">

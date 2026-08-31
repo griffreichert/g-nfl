@@ -15,6 +15,9 @@ dependencies = [
     "psycopg>=3.2.9,<4",
     "python-dotenv>=1.0.0,<2",
     "fastapi>=0.115.0",
+    # explicit: it arrives transitively through supabase, and the picks API
+    # signs its own session tokens with it
+    "pyjwt>=2.8,<3",
     "uvicorn[standard]>=0.30.0",
 ]
 

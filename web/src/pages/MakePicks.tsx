@@ -2,18 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import SignIn from '@/components/SignIn'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
 import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 interface GamePick {
   team_picked: string
@@ -31,8 +25,9 @@ const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
 
 export default function MakePicks() {
-  const [picker, setPicker] = useState<string>('')
-  const { config, error: configError } = useConfig(picker || undefined)
+  const { picker: signedIn, checking, login } = useAuth()
+  const picker = signedIn ?? ''
+  const { config, error: configError } = useConfig(signedIn ?? undefined)
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { flagsFor, ruleById } = useGuardrails(season, week)
 
@@ -198,7 +193,7 @@ export default function MakePicks() {
       return
     }
     try {
-      const res = await api.savePicks(season, week, picker, payload)
+      const res = await api.savePicks(season, week, payload)
       await navigator.clipboard.writeText(summary).catch(() => {})
       setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks — summary copied to clipboard` })
     } catch (e) {
@@ -215,8 +210,11 @@ export default function MakePicks() {
     setStatus(null)
   }
 
+  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
-  if (!config || season === null || week === null) return <Loading />
+  if (!config) return <Loading />
+  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
+  if (season === null || week === null) return <Loading />
 
   const mnfPickedHere = (g: GameLine) =>
     mnf !== null && (mnf === g.away_team || mnf === g.home_team)
@@ -348,18 +346,7 @@ export default function MakePicks() {
         weeks={weeks}
         onWeek={setWeek}
       >
-        <Select value={picker || undefined} onValueChange={setPicker}>
-          <SelectTrigger size="sm" className="w-full sm:w-40">
-            <SelectValue placeholder="Your name" />
-          </SelectTrigger>
-          <SelectContent>
-            {config.pickers.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <span className="text-sm font-medium text-muted-foreground">{picker}</span>
       </PageHeader>
 
       {status && (
@@ -369,12 +356,6 @@ export default function MakePicks() {
           }`}
         >
           {status.msg}
-        </p>
-      )}
-
-      {!picker && (
-        <p className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-          Pick your name above to start.
         </p>
       )}
 
