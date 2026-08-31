@@ -3,6 +3,7 @@ import type {
   AppConfig,
   GameDetail,
   GameLine,
+  GuardrailsResponse,
   Pick,
   PickRecord,
   StandingsResponse,
@@ -34,6 +35,10 @@ export const api = {
   weeks: (season: number) => get<WeeksResponse>(`/api/weeks?season=${season}`),
   lines: (season: number, week: number) =>
     get<GameLine[]>(`/api/lines?season=${season}&week=${week}`),
+  guardrails: (season: number, week?: number) =>
+    get<GuardrailsResponse>(
+      `/api/guardrails?season=${season}${week !== undefined ? `&week=${week}` : ''}`
+    ),
   picks: (season: number, week: number, picker?: string) =>
     get<PickRecord[]>(
       `/api/picks?season=${season}&week=${week}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`

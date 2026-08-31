@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from './api'
-import type { AppConfig } from './types'
+import type { AppConfig, GuardrailsResponse } from './types'
 
 export function useConfig() {
   const [config, setConfig] = useState<AppConfig | null>(null)
@@ -38,3 +38,39 @@ export function useSeasonWeek(config: AppConfig | null) {
 
 export const fmtSpread = (s: number | null | undefined) =>
   s === null || s === undefined ? 'TBD' : `${s > 0 ? '+' : ''}${s}`
+
+/**
+ * The fitted guardrails, and which sides of this week trip them (#58).
+ *
+ * Rules and rates both come from the API. The board holds no constants of its
+ * own, so it cannot drift from the record the way the old hard-coded band
+ * table did.
+ */
+export function useGuardrails(season: number | null, week: number | null) {
+  const [data, setData] = useState<GuardrailsResponse | null>(null)
+
+  useEffect(() => {
+    if (season === null) return
+    let live = true
+    api
+      .guardrails(season, week ?? undefined)
+      .then((r) => live && setData(r))
+      // a missing fit must not take the board down with it
+      .catch(() => live && setData(null))
+    return () => {
+      live = false
+    }
+  }, [season, week])
+
+  const flagged = new Map<string, string[]>()
+  for (const f of data?.flags ?? []) flagged.set(`${f.game_id}|${f.team}`, f.rule_ids)
+
+  const byId = new Map((data?.rules ?? []).map((r) => [r.id, r]))
+
+  return {
+    guardrails: data,
+    /** rule ids this side trips, empty when it is clean */
+    flagsFor: (gameId: string, team: string) => flagged.get(`${gameId}|${team}`) ?? [],
+    ruleById: (id: string) => byId.get(id),
+  }
+}

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { BANDS, BREAK_EVEN, HOMER_TEAMS, TEAM_2025 } from '@/lib/consensus'
+import { BREAK_EVEN, HOMER_TEAMS, TEAM_2025 } from '@/lib/consensus'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -119,11 +119,12 @@ export default function Help() {
         <p>Hover or tap a rating to see exactly what built it. The terms are:</p>
         <ul className="flex flex-col gap-1">
           <li>
-            <b className="text-foreground">Line size and venue</b> — the only measured term left.{' '}
-            {BANDS.map((b) => `${b.label} hit ${b.pct}%`).join(', ')} across{' '}
-            {BANDS.reduce((n, b) => n + b.n, 0)} graded games, and it splits further by venue: a
-            home side in the 3-7 band is 41.8%, a road side in the same band 52.1%. Home teams
-            getting or laying a field goal to a touchdown are the single worst thing we buy.
+            <b className="text-foreground">The guardrails</b> — the one measured term. Each is a
+            cut of our own record that hit below the field's own rate, and hit below it in most
+            seasons. They are served by the API and refitted from six seasons of picks on every
+            deploy, so this page can no longer tell you a number the record has moved on from.
+            They only ever say <i>not this side</i>: out of sample the rating reliably finds bad
+            picks and cannot rank the good ones.
           </li>
           <li>
             <b className="text-foreground">What used to be here</b> — split-or-agreed, the

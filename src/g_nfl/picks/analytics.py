@@ -102,8 +102,8 @@ def graded_rows(
         line = lines.get(gid)
         picked_home = p["team_picked"] == home
 
-        picked_pool = _from_picked(pool_lines.get(gid), picked_home)
-        picked_market = _from_picked(market_lines.get(gid), picked_home)
+        picked_pool = from_picked(pool_lines.get(gid), picked_home)
+        picked_market = from_picked(market_lines.get(gid), picked_home)
         gap = (
             None
             if picked_pool is None or picked_market is None
@@ -121,20 +121,20 @@ def graded_rows(
                 "opp": away if picked_home else home,
                 "picked_home": picked_home,
                 "line": line,
-                "picked_spread": _from_picked(line, picked_home),
+                "picked_spread": from_picked(line, picked_home),
                 "picked_pool": picked_pool,
                 "picked_market": picked_market,
                 # points the pool hands our side over the market. Positive is
                 # free value, negative means we picked into the gap.
                 "gap": gap,
-                "gap_side": None if gap is None else _gap_side(gap),
+                "gap_side": None if gap is None else gap_side(gap),
                 "won": outcome == "win",
             }
         )
     return rows
 
 
-def _from_picked(home_spread: float | None, picked_home: bool) -> float | None:
+def from_picked(home_spread: float | None, picked_home: bool) -> float | None:
     """A home-perspective spread seen from the picked team's side.
 
     Positive means the side is getting points, negative means laying them.
@@ -144,7 +144,7 @@ def _from_picked(home_spread: float | None, picked_home: bool) -> float | None:
     return -home_spread if picked_home else home_spread
 
 
-def _gap_side(gap: float, tol: float = 0.01) -> str:
+def gap_side(gap: float, tol: float = 0.01) -> str:
     """'better', 'same' or 'worse', from the picked side's point of view."""
     if gap > tol:
         return "better"

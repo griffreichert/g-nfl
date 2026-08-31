@@ -6,17 +6,27 @@ explicitly and will be replaced by session identity when auth is added.
 """
 
 import os
+from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
+from g_nfl.picks.analytics import (
+    from_picked,
+    gap_side,
+    graded_rows,
+    summarize,
+    team_appetite,
+)
 from g_nfl.picks.grading import (
     BREAK_EVEN,
     grade_pick,
     picker_standings,
     resolve_lines,
 )
+from g_nfl.picks.guardrails import RuleFit
+from g_nfl.picks.guardrails import fit as fit_guardrails
+from g_nfl.picks.history import DEFAULT_SEASONS, load_history
 from g_nfl.utils.config import (
     CUR_SEASON,
     CUR_WEEK,
@@ -39,11 +49,14 @@ from .schemas import (
     AppConfig,
     GameDetail,
     GameLine,
+    Guardrail,
+    GuardrailsResponse,
     PickRecord,
     PoolSpreadUpdate,
     PoolSpreadUpdateResponse,
     SavePicksRequest,
     SavePicksResponse,
+    SideFlag,
     StandingsResponse,
     WeeksResponse,
 )
@@ -116,6 +129,90 @@ def get_lines(season: int, week: int):
             )
         )
     return games
+
+
+@lru_cache(maxsize=1)
+def _fitted_guardrails() -> tuple[RuleFit, ...]:
+    """The rule fit, computed once per process.
+
+    Reads five seasons of pool picks and their lines out of Supabase, which is
+    far too slow to do per request and changes only when a season grades out.
+    A deploy clears it, and that is often enough.
+    """
+    return tuple(fit_guardrails(load_history()))
+
+
+def _candidate_side(game: GameLine, team: str) -> dict:
+    """A prospective pick, shaped like a row from `graded_rows`.
+
+    The guardrail predicates read one shape, so a side someone is thinking
+    about and a side they took six seasons ago go through the same code. That
+    is the point of serving this from the API instead of restating the rules in
+    TypeScript.
+    """
+    picked_home = team == game.home_team
+    line = game.pool_spread if game.pool_spread is not None else game.market_spread
+    pool = from_picked(game.pool_spread, picked_home)
+    market = from_picked(game.market_spread, picked_home)
+    gap = None if pool is None or market is None else pool - market
+    return {
+        "game_id": game.game_id,
+        "team": team,
+        "picked_home": picked_home,
+        "picked_spread": from_picked(line, picked_home),
+        "gap": gap,
+        "gap_side": None if gap is None else gap_side(gap),
+        "won": False,  # unused by the predicates, present for shape
+    }
+
+
+def _guardrail(f) -> Guardrail:
+    return Guardrail(
+        id=f.rule.id,
+        label=f.rule.label,
+        blurb=f.rule.blurb,
+        pct=f.shrunk_pct,
+        base_pct=f.base,
+        games=round(f.games, 1),
+        picks=f.picks,
+        units=f.units,
+        bad_seasons=f.bad_seasons,
+        seasons=len(f.by_season),
+        advisory=f.rule.advisory,
+        reason=f.reason,
+    )
+
+
+@app.get("/api/guardrails", response_model=GuardrailsResponse)
+def get_guardrails(season: int = CUR_SEASON, week: int | None = None):
+    """The fitted vetoes, and which sides of this week's games trip them.
+
+    Rules are fitted from the pick record on every call path through
+    `_fitted_guardrails`, which caches: the fit reads six seasons out of
+    Supabase and only changes when a season grades out.
+    """
+    fits = _fitted_guardrails()
+    rules = [f for f in fits if f.qualifies]
+
+    flags: list[SideFlag] = []
+    if week is not None:
+        for game in get_lines(season, week):
+            for team in (game.away_team, game.home_team):
+                side = _candidate_side(game, team)
+                tripped = [f.rule.id for f in rules if f.rule.matches(side)]
+                if tripped:
+                    flags.append(
+                        SideFlag(game_id=game.game_id, team=team, rule_ids=tripped)
+                    )
+
+    return GuardrailsResponse(
+        season=season,
+        week=week,
+        rules=[_guardrail(f) for f in rules],
+        rejected=[_guardrail(f) for f in fits if not f.qualifies],
+        flags=flags,
+        fitted_on=list(DEFAULT_SEASONS),
+    )
 
 
 @app.get("/api/picks", response_model=list[PickRecord])

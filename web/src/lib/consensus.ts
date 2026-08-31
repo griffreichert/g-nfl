@@ -15,63 +15,17 @@ const WEIGHT: Partial<Record<PickType, number>> = { best_bet: 2, regular: 1, mnf
 export const isAtsPick = (t: PickType) => t in WEIGHT
 
 /**
- * Spread bands crossed with venue. 2025, 677 graded ATS picks by the field over
- * 225 distinct games. Rebuild method + full table in `notes/pick-analytics.md`
- * ("Corrected board constants").
+ * No rates live in this file any more.
  *
- * These replace a set of per-pick rates that were badly overstated. The room
- * puts 3.0 votes on the average game, so a per-pick group-by counts the same
- * game three times and inflates every z-score by roughly sqrt(3). Rates here
- * are per game (a game we split 4-2 counts once, as 0.667) and then shrunk
- * toward the field's own 47.4% by sample size, so a thin cell cannot shout.
+ * `BANDS`, `BAND_VENUE` and `WORST_CELL` used to sit here: 2025-only, per-pick
+ * numbers that told the room a home side in the 3-7 band hit 36.6%. Six seasons
+ * put that cell at 50.0%, and nobody noticed for months because a number copied
+ * into TypeScript cannot be refitted and goes stale silently.
  *
- * What survived the correction: line size, and only in combination with venue.
- * What did not: the best-bet slot, venue on its own, and — the uncomfortable
- * one — whether the room was split. Those terms are gone from the rating
- * rather than kept at a smaller weight, because shrinkage put all three exactly
- * on the base rate. See `notes/pick-analytics.md`.
- *
- * ponytail: hard-coded rather than served from an endpoint — one season, and
- * it moves once a year. Recompute when 2026 grades out.
+ * The board now reads GET /api/guardrails, which fits every rule from the pick
+ * record on each deploy. See src/g_nfl/picks/guardrails.py and
+ * config/guardrails.yaml.
  */
-export const BANDS = [
-  { max: 3, label: '0-3', pct: 52.0, n: 92, tone: 'good' },
-  { max: 7, label: '3-7', pct: 45.1, n: 92, tone: 'bad' },
-  { max: Infinity, label: '7+', pct: 44.0, n: 41, tone: 'bad' },
-] as const
-
-/**
- * Shrunk ATS% by band and venue — the one cut with anything left in it.
- * Home teams laying or getting 3-7 are the single worst thing we do: 36.6%
- * over 71 games raw (z = -2.66), and the league covered 44.6% in that band,
- * so this is our side selection, not the season.
- */
-export const BAND_VENUE: Record<string, { home: number; road: number }> = {
-  '0-3': { home: 50.9, road: 49.4 },
-  '3-7': { home: 41.8, road: 52.1 },
-  '7+': { home: 48.6, road: 42.4 },
-}
-
-export type Band = (typeof BANDS)[number]
-
-/**
- * The single worst thing we buy: a home side laying or getting 3-7.
- * 36.6% over 71 games in 2025 (z = -2.66), against a league that covered
- * 44.6% in the same band — so it is our side selection, not the season.
- * Worth -61 units on its own, which is most of what the room lost.
- *
- * Exposed as its own predicate rather than left implicit in the rating,
- * because the pick pages have no rating on them and this is where the
- * money actually leaves.
- */
-export const WORST_CELL = { band: '3-7', pct: 36.6, games: 71, league: 44.6 } as const
-
-/** `spread` is home-perspective, the nflverse convention. */
-export const isWorstCell = (spread: number | null, pickedHome: boolean) =>
-  pickedHome && spread !== null && Math.abs(spread) > 3 && Math.abs(spread) <= 7
-
-export const bandFor = (spread: number | null): Band | null =>
-  spread === null ? null : (BANDS.find((b) => Math.abs(spread) < b.max) ?? BANDS[BANDS.length - 1])
 
 export interface SidePick {
   picker: string
@@ -85,7 +39,6 @@ export interface ConsensusRow {
   other: string
   /** pool spread from `side`'s perspective */
   spread: number | null
-  band: Band | null
   /** headcount on `side` */
   pk: number
   /** best bets among them */
@@ -225,7 +178,6 @@ export function buildConsensus(
       side,
       other,
       spread,
-      band: bandFor(spread),
       pk: sidePicks.length,
       bb: sidePicks.filter((p) => p.bb).length,
       net: Math.abs(home - away),
@@ -366,16 +318,20 @@ export const toRating = (edgePoints: number) =>
 /** Scale a part by the same slope the total used, so a breakdown adds up. */
 export const partRating = (value: number, slope: number) => value * slope
 
-const BAND_LABEL: Record<string, string> = {
-  '0-3': 'close line',
-  '3-7': 'mid line',
-  '7+': 'big line',
+export interface SidePenalty {
+  label: string
+  /** points of hit rate this rule costs, always negative */
+  value: number
 }
+
+/** No guardrails served, so every side scores on the field's base rate alone. */
+export const NO_PENALTIES = () => []
 
 export function scoreSide(
   row: ConsensusRow,
   team: string,
   attachment: Map<string, number>,
+  penalties: (gameId: string, team: string) => SidePenalty[] = NO_PENALTIES,
 ): Score {
   const picks = team === row.side ? row.sidePicks : row.otherPicks
   const parts: ScorePart[] = []
@@ -384,19 +340,12 @@ export function scoreSide(
   }
 
   // Every term is a delta against break-even, so the breakdown sums to the pill.
-  // One measured term now, not four: line size crossed with venue. The slot,
-  // venue-alone and split-vs-unanimous terms that used to sit here all shrank
-  // onto the base rate once games stopped being counted once per vote, so
-  // keeping them at any weight would be fitting noise. See BANDS.
-  const isHome = team === row.game.home_team
-  const bandLabel = row.band ? BAND_LABEL[row.band.label] : null
-  const measured = row.band
-    ? BAND_VENUE[row.band.label][isHome ? 'home' : 'road']
-    : FIELD_BASE
-  add(
-    bandLabel ? `${bandLabel}, ${isHome ? 'home' : 'road'}` : 'no pool line',
-    measured - BREAK_EVEN,
-  )
+  // The measured term is whatever the fitted guardrails say about this side, so
+  // the board and the backtest cannot disagree about what a bad side is. A side
+  // that trips nothing sits on the field's own base rate.
+  const tripped = penalties(row.game.game_id, team)
+  add('the field', FIELD_BASE - BREAK_EVEN)
+  for (const p of tripped) add(p.label, p.value)
 
   // judgement terms, floored so they can never swamp the band
   const homers = picks.filter((p) => isHomer(p.picker, team))
@@ -418,9 +367,13 @@ export function scoreSide(
 }
 
 /** The better of the two sides — what this game is worth to the room at all. */
-export const bestSide = (row: ConsensusRow, attachment: Map<string, number>) => {
-  const a = scoreSide(row, row.side, attachment)
-  const b = scoreSide(row, row.other, attachment)
+export const bestSide = (
+  row: ConsensusRow,
+  attachment: Map<string, number>,
+  penalties: (gameId: string, team: string) => SidePenalty[] = NO_PENALTIES,
+) => {
+  const a = scoreSide(row, row.side, attachment, penalties)
+  const b = scoreSide(row, row.other, attachment, penalties)
   return a.rating >= b.rating
     ? { team: row.side, score: a, other: row.other, otherScore: b }
     : { team: row.other, score: b, other: row.side, otherScore: a }

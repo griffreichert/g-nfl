@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Check, ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
+import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
-  BANDS,
   bestSide,
   buildAttachment,
   buildConsensus,
@@ -24,11 +23,11 @@ import {
   type ConsensusRow,
   type Overrides,
   type Score,
+  type SidePenalty,
   type Slate,
   type SlotType,
   type SidePick,
 } from '@/lib/consensus'
-import BandChart from '@/components/BandChart'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -179,6 +178,7 @@ function SideCell({
 function GameCard({
   row,
   attachment,
+  penalties,
   blocs,
   slate,
   full,
@@ -188,6 +188,7 @@ function GameCard({
 }: {
   row: ConsensusRow
   attachment: Map<string, number>
+  penalties: (gameId: string, team: string) => SidePenalty[]
   blocs: string[][]
   slate: Slate
   full: boolean
@@ -228,7 +229,7 @@ function GameCard({
             team={team}
             spread={spreadFor(row.game, team)}
             picks={team === row.side ? row.sidePicks : row.otherPicks}
-            score={scoreSide(row, team, attachment)}
+            score={scoreSide(row, team, attachment, penalties)}
             blocs={blocs}
             slot={chosen?.team === team ? chosen.type : null}
             disabled={locked}
@@ -447,6 +448,18 @@ function Slot({ label, have, need }: { label: string; have: number; need: number
 export default function Field() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
+
+  // The one measured term in every side's rating. Served fitted, so the board
+  // and the backtest cannot disagree about what a bad side is.
+  const penalties = useMemo(
+    () => (gameId: string, team: string) =>
+      flagsFor(gameId, team).flatMap((id) => {
+        const rule = ruleById(id)
+        return rule ? [{ label: rule.label, value: rule.pct * 100 - rule.base_pct * 100 }] : []
+      }),
+    [flagsFor, ruleById],
+  )
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [games, setGames] = useState<GameLine[]>([])
   const [fetchedSeason, setSeasonPicks] = useState<{
@@ -506,7 +519,7 @@ export default function Field() {
   const rows = useMemo(() => {
     const built = buildConsensus(games, picks, blocs)
     const best = new Map(
-      built.map((r) => [r.game.game_id, bestSide(r, attachment).score.rating]),
+      built.map((r) => [r.game.game_id, bestSide(r, attachment, penalties).score.rating]),
     )
     return built.sort(byScore(best))
   }, [games, picks, blocs, attachment])
@@ -538,7 +551,7 @@ export default function Field() {
     let regulars = 0
     let bb = false
     for (const r of rows) {
-      const best = bestSide(r, attachment)
+      const best = bestSide(r, attachment, penalties)
       if (r.game.is_mnf) out[r.game.game_id] = { team: best.team, type: 'mnf' }
       else if (!bb) {
         out[r.game.game_id] = { team: best.team, type: 'best_bet' }
@@ -686,14 +699,15 @@ export default function Field() {
     (p) => isVoter(p) && !pickers.includes(p),
   )
 
-  const bandCounts = useMemo(() => {
+  const flaggedSides = useMemo(() => {
     const c: Record<string, number> = {}
     for (const r of rows) {
-      const n = r.sidePicks.length + r.otherPicks.length
-      if (r.band) c[r.band.label] = (c[r.band.label] ?? 0) + n
+      for (const team of [r.game.away_team, r.game.home_team]) {
+        for (const id of flagsFor(r.game.game_id, team)) c[id] = (c[id] ?? 0) + 1
+      }
     }
     return c
-  }, [rows])
+  }, [rows, flagsFor])
 
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
   if (!config || season === null || week === null) return <Loading />
@@ -769,6 +783,7 @@ export default function Field() {
                   key={r.game.game_id}
                   row={r}
                   attachment={attachment}
+                  penalties={penalties}
                   blocs={blocs}
                   slate={slate}
                   full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
@@ -798,17 +813,39 @@ export default function Field() {
             />
 
             <div className="rounded-lg border border-border bg-card p-3">
-              <h2 className="text-sm font-bold">Where we win and lose</h2>
-              <p className="mb-1 text-xs text-muted-foreground">
-                2025, 225 graded games. Close lines 52%, 3-7 45%, 7+ 44% — and the worst cell in
-                the record is a home team laying or getting 3-7, at 37%. The instruction is avoid
-                big numbers, not close games are good: 52% is still under break-even.
+              <h2 className="text-sm font-bold">Where we lose</h2>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Fitted from{' '}
+                {guardrails?.fitted_on.length
+                  ? `${guardrails.fitted_on.length} seasons of our own picks`
+                  : 'the pick record'}
+                , refit on every deploy. A rule only appears here once it is below the
+                field's own rate and below it in most seasons.
               </p>
-              <BandChart counts={bandCounts} />
-              <p className="text-xs text-muted-foreground">
-                This week we have{' '}
-                {BANDS.map((b) => `${bandCounts[b.label] ?? 0} in ${b.label}`).join(', ')}.
-              </p>
+              <ul className="flex flex-col gap-2">
+                {(guardrails?.rules ?? []).map((r) => (
+                  <li key={r.id} className="text-xs">
+                    <span className="font-semibold text-foreground">{r.label}</span>{' '}
+                    <span className="text-loss">{(r.pct * 100).toFixed(1)}%</span>{' '}
+                    <span className="text-muted-foreground">
+                      against {(r.base_pct * 100).toFixed(1)}%, over {r.games.toFixed(0)} games
+                      {r.advisory ? ', advisory only' : ''}. {flaggedSides[r.id] ?? 0} sides
+                      this week.
+                    </span>
+                  </li>
+                ))}
+                {!guardrails?.rules.length && (
+                  <li className="text-xs text-muted-foreground">
+                    No rule currently clears the bar.
+                  </li>
+                )}
+              </ul>
+              {!!guardrails?.rejected.length && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Fitted and rejected:{' '}
+                  {guardrails.rejected.map((r) => `${r.label} (${r.reason})`).join('; ')}.
+                </p>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground">

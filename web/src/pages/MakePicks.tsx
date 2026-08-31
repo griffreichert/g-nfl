@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { WORST_CELL, isWorstCell } from '@/lib/consensus'
-import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
+import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
 import { ErrorNote, Loading } from '@/components/PageState'
@@ -34,6 +33,7 @@ const NOTE_INPUT_CLASS =
 export default function MakePicks() {
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  const { flagsFor, ruleById } = useGuardrails(season, week)
   const [picker, setPicker] = useState<string>('')
 
   // Games are stamped with the week they were fetched for, so "still loading"
@@ -223,20 +223,33 @@ export default function MakePicks() {
 
   /**
    * The board has a rating to lean on; this page has nothing, and this page is
-   * where most picks get made. One flag, on the one cell that cost us real
-   * money in 2025, shown only once the pick is on the board so it reads as a
-   * second thought rather than a lecture.
+   * where most picks get made. Guardrails are served fitted from the record
+   * (GET /api/guardrails), so this page holds no rates of its own. Shown only
+   * once the pick is on the board, so it reads as a second thought rather than
+   * a lecture.
    */
-  const worstCellWarning = (g: GameLine) => {
+  const guardrailWarning = (g: GameLine) => {
     const picked = g.is_mnf ? mnf : picks[g.game_id]?.team_picked
-    if (picked !== g.home_team) return null
-    if (!isWorstCell(effectiveSpread(g), true)) return null
+    if (!picked) return null
+    const tripped = flagsFor(g.game_id, picked)
+    if (!tripped.length) return null
     return (
-      <p className="col-span-6 pt-1 text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">Home {WORST_CELL.band}.</span>{' '}
-        Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} games, against a
-        league that covered {WORST_CELL.league}% here.
-      </p>
+      <div className="col-span-6 space-y-1 pt-1">
+        {tripped.map((id) => {
+          const rule = ruleById(id)
+          if (!rule) return null
+          return (
+            <p key={id} className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {rule.advisory ? 'Worth knowing' : 'Guardrail'}: {rule.label}.
+              </span>{' '}
+              {(rule.pct * 100).toFixed(1)}% over {rule.games.toFixed(0)} games,
+              against {(rule.base_pct * 100).toFixed(1)}% for everything else we
+              pick.
+            </p>
+          )
+        })}
+      </div>
     )
   }
 
@@ -409,7 +422,7 @@ export default function MakePicks() {
                 >
                   <ChevronRight className="size-4" />
                 </Link>
-                {worstCellWarning(g)}
+                {guardrailWarning(g)}
                 {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
                   <div className="col-span-6 pt-1">
                     {noteInput(

@@ -209,3 +209,42 @@ class GameDetail(BaseModel):
     graded_line_source: Literal["pool", "market"] | None = None
     team_weeks: list[TeamWeekStat] = []
     picks: list[GamePick] = []
+
+
+class Guardrail(BaseModel):
+    """One fitted veto rule, as the board renders it (#58)."""
+
+    id: str
+    label: str
+    blurb: str
+    #: shrunk hit rate for sides this rule matches
+    pct: float
+    #: the field's own rate over the same sample, for comparison
+    base_pct: float
+    games: float
+    picks: int
+    units: float
+    bad_seasons: int
+    seasons: int
+    #: reads data unavailable at pick time, so it advises and never vetoes
+    advisory: bool
+    reason: str
+
+
+class SideFlag(BaseModel):
+    """A side of a game that trips at least one guardrail."""
+
+    game_id: str
+    team: str
+    rule_ids: list[str]
+
+
+class GuardrailsResponse(BaseModel):
+    season: int
+    week: int | None
+    #: rules that cleared the bar, in the order the board shows them
+    rules: list[Guardrail]
+    #: rules that were fitted and rejected, kept so the room can see why
+    rejected: list[Guardrail]
+    flags: list[SideFlag]
+    fitted_on: list[int]

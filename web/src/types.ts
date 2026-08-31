@@ -175,3 +175,38 @@ export interface GameDetail {
   team_weeks: TeamWeekStat[]
   picks: GamePick[]
 }
+
+/** One fitted veto rule from GET /api/guardrails (#58). */
+export interface Guardrail {
+  id: string
+  label: string
+  blurb: string
+  /** shrunk hit rate for sides this rule matches */
+  pct: number
+  /** the field's own rate over the same sample */
+  base_pct: number
+  games: number
+  picks: number
+  units: number
+  bad_seasons: number
+  seasons: number
+  /** reads data unavailable at pick time, so it advises and never vetoes */
+  advisory: boolean
+  reason: string
+}
+
+export interface SideFlag {
+  game_id: string
+  team: string
+  rule_ids: string[]
+}
+
+export interface GuardrailsResponse {
+  season: number
+  week: number | null
+  rules: Guardrail[]
+  /** fitted and rejected, kept so the room can see what did not survive */
+  rejected: Guardrail[]
+  flags: SideFlag[]
+  fitted_on: number[]
+}

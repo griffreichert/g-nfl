@@ -1,14 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  bandFor,
   cycleSlot,
   buildAttachment,
   buildConsensus,
   byContention,
   findBlocs,
   isHomer,
-  isWorstCell,
   partRating,
   scoreSide,
   toRating,
@@ -44,16 +42,6 @@ test('spreadFor reads pool_spread as home-perspective', () => {
   assert.equal(spreadFor(g, 'GB'), 13.5)
   assert.equal(spreadFor(g, 'CAR'), -13.5)
   assert.equal(spreadFor(game('CAR', 'GB', null), 'GB'), null)
-})
-
-test('bandFor buckets on absolute spread, either sign', () => {
-  assert.equal(bandFor(2.5)?.label, '0-3')
-  assert.equal(bandFor(-2.5)?.label, '0-3')
-  assert.equal(bandFor(3)?.label, '3-7')
-  assert.equal(bandFor(-6.5)?.label, '3-7')
-  assert.equal(bandFor(7)?.label, '7+')
-  assert.equal(bandFor(14)?.label, '7+')
-  assert.equal(bandFor(null), null)
 })
 
 test('findBlocs collapses pickers who always agree', () => {
@@ -159,18 +147,20 @@ test('scoreRow is driven by line size crossed with venue', () => {
   const empty = new Map<string, number>()
   const gid = '2025_12_CAR_GB'
   const both = [pick('Ben', gid, 'GB'), pick('Harry', gid, 'CAR')]
+  const row = buildConsensus([game('CAR', 'GB', 5.5)], both)[0]
 
-  // The one thing 2025 still says after clustering: close games hit, big
-  // numbers do not.
-  const close = buildConsensus([game('CAR', 'GB', 2.5)], both)[0]
-  const big = buildConsensus([game('CAR', 'GB', 13.5)], both)[0]
-  assert.ok(scoreSide(close, 'GB', empty).rating > scoreSide(big, 'GB', empty).rating)
+  // The measured term is served, so the test supplies it. A side that trips a
+  // guardrail must rate below the side that does not, and the penalty is the
+  // rule's own distance from the field's base rate.
+  const penalise = (_gid: string, team: string) =>
+    team === 'GB' ? [{ label: 'road side of a 7+ line', value: -11 }] : []
 
-  // Home in the 3-7 band is the worst cell in the record, and it is worse
-  // than the road side of the same game. If this flips, the band/venue term
-  // has been wired up backwards.
-  const mid = buildConsensus([game('CAR', 'GB', 5.5)], both)[0]
-  assert.ok(scoreSide(mid, 'GB', empty).rating < scoreSide(mid, 'CAR', empty).rating)
+  assert.ok(
+    scoreSide(row, 'GB', empty, penalise).rating < scoreSide(row, 'CAR', empty, penalise).rating,
+  )
+
+  // With nothing served, both sides sit on the field's own rate.
+  assert.equal(scoreSide(row, 'GB', empty).rating, scoreSide(row, 'CAR', empty).rating)
 })
 
 test('agreement no longer moves the rating', () => {
@@ -306,17 +296,4 @@ test('a full entry refuses a new game but still allows swaps', () => {
   assert.deepEqual(cycleSlot(slate, 'r0', 'OTHER', false), {
     r0: { team: 'OTHER', type: 'regular' },
   })
-})
-
-test('isWorstCell fires only on home sides in the 3-7 band', () => {
-  // spread is home-perspective, so sign says who is favoured, not who we took
-  assert.ok(isWorstCell(5.5, true))     // home laying 5.5
-  assert.ok(isWorstCell(-5.5, true))    // home getting 5.5 — same band
-  assert.ok(!isWorstCell(5.5, false))   // road side of the same game is fine
-  assert.ok(!isWorstCell(2.5, true))    // close line
-  assert.ok(!isWorstCell(13.5, true))   // big line, a different cell
-  assert.ok(!isWorstCell(null, true))   // no line, nothing to say
-  // boundaries: 3 belongs to the close band, 7 to this one
-  assert.ok(!isWorstCell(3, true))
-  assert.ok(isWorstCell(7, true))
 })
