@@ -1,0 +1,54 @@
+# No Homers guardrails — the knobs. Rates are never written here.
+#
+# Every number a guardrail reports is fitted from the pick record at runtime
+# (g_nfl.picks.guardrails.fit). This file says which rules exist, where their
+# boundaries sit, and how good the evidence has to be before a rule is allowed
+# to flag a pick on the board. Edit it and redeploy; it moves about once a year.
+#
+# Why rules and not a ranking: out of sample the band rating separates 51.1%
+# (top half) from 45.0% (bottom half, z=-4.09), and dropping a picker-week's
+# lowest-rated pick changes nothing, because six picks in one entry rarely span
+# two cells. It finds bad picks. See notes/pick-behaviour.md.
+
+# Line-size bands, in points. 3 and 7 are the key numbers.
+bands: [3, 7]
+
+# Games a rule needs before its own rate is believed half way, the rest of the
+# weight going to the field's base rate. Fixed rather than estimated: each rule
+# is scored against "every other pick", two cells, and method of moments on two
+# cells hands back an infinite k whenever the larger cell sits near the base,
+# which pulls every rule onto the base rate whatever it scored. 25 games is
+# about a third of a season of one cut.
+prior_games: 25
+
+# Laying between these two numbers hit 44.8% over 424 picks. The other seven
+# spread buckets are all within 2 points of even.
+lay_trap:
+  low: 7.0
+  high: 9.5
+
+# The bar a rule clears before the board shows it.
+display:
+  # Shrunk rate must sit this far below the field's own base rate. A rule that
+  # lands on the base rate is telling us nothing.
+  min_edge_below_base: 0.01
+  # ...and it must be below base in at least this many of the seasons it was
+  # fitted on. "7+ home" swings from 27.7 to 66.7 and fails here, correctly.
+  min_bad_seasons: 4
+  # Cells thinner than this are not shown whatever they score.
+  min_games: 40
+
+rules:
+  road_7_plus:
+    active: true
+  home_0_3:
+    active: true
+  lay_trap:
+    active: true
+  pool_worse_than_market:
+    # Reads the market close, which is not knowable when picks are due. Fitting
+    # it is honest, acting on it is not, until the 2026 deadline snapshot exists
+    # (notes/pool-spread-edge.md). Advisory on the board, excluded from the
+    # walk-forward backtest.
+    active: true
+    advisory: true

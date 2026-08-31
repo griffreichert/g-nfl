@@ -13,6 +13,32 @@ from .supabase_client import get_supabase
 
 BACKUP_DIR = DATA_PATH / "backups"
 
+#: PostgREST returns at most this many rows and says nothing about the rest.
+PAGE = 1000
+
+
+def fetch_all(build, chunk: int = PAGE) -> list[dict]:
+    """Every row a query matches, paging past PostgREST's 1000-row cap.
+
+    `build` is called once per page and must return a fresh query builder, since
+    a builder cannot be executed twice. Any getter whose table can hold more than
+    `PAGE` rows for one filter has to go through here: `pool_picks` holds 2679
+    rows for 2025 alone, and a plain `.execute()` returned the first 1000 of them
+    with no error and no warning.
+
+    `.order("id")` is load-bearing. Range paging over an unordered query lets the
+    server return a different order per page, so pages overlap and other rows are
+    never read. Two runs of the same backfill disagreed by 107 games.
+    """
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        page = build().order("id").range(offset, offset + chunk - 1).execute().data
+        rows.extend(page)
+        if len(page) < chunk:
+            return rows
+        offset += chunk
+
 
 def dump_table(table: str, chunk: int = 1000) -> Path:
     """Write every row of `table` to data/backups/ and return the path.
@@ -178,8 +204,9 @@ class PicksDatabase:
 
     def get_season_picks(self, season: int) -> list[dict]:
         """All picks for a season, every picker and week."""
-        result = self.client.table("picks").select("*").eq("season", season).execute()
-        return result.data
+        return fetch_all(
+            lambda: self.client.table("picks").select("*").eq("season", season)
+        )
 
     def get_all_picks(self, limit: int | None = None) -> list[dict]:
         """Get all picks with optional limit
@@ -299,11 +326,12 @@ class PoolPicksDatabase:
 
     def get_picks(self, season: int, week: int | None = None) -> list[dict]:
         """Retrieve pool picks for a season (optionally one week)."""
-        query = self.client.table("pool_picks").select("*").eq("season", season)
-        if week is not None:
-            query = query.eq("week", week)
-        result = query.order("week").execute()
-        return result.data
+
+        def build():
+            query = self.client.table("pool_picks").select("*").eq("season", season)
+            return query.eq("week", week) if week is not None else query
+
+        return fetch_all(build)
 
 
 class GameResultsDatabase:
@@ -476,15 +504,21 @@ class MarketLinesDatabase:
         Returns:
             List of market line dictionaries
         """
-        query = self.client.table("market_lines").select("*").eq("season", season)
-        if week is not None:
-            query = query.eq("week", week)
+
+        def build():
+            query = self.client.table("market_lines").select("*").eq("season", season)
+            if week is not None:
+                query = query.eq("week", week)
+            if snapshot is not None:
+                query = query.eq("snapshot", snapshot)
+            return query
+
         if snapshot is not None:
-            return query.eq("snapshot", snapshot).execute().data
+            return fetch_all(build)
 
         rank = {s: i for i, s in enumerate(self.SNAPSHOT_PRIORITY)}
         best: dict[str, dict] = {}
-        for row in query.execute().data:
+        for row in fetch_all(build):
             gid = row["game_id"]
             held = best.get(gid)
             if held is None or rank.get(row.get("snapshot"), 99) < rank.get(

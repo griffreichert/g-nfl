@@ -1,4 +1,4 @@
-.PHONY: help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -29,6 +29,7 @@ help:
 	@echo "🤖 ML:"
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
+	@echo "  backtest-guardrails Replay the entry with the No Homers guardrails"
 	@echo "  market-ratings Market-derived power ratings (ARGS=\"--tune\" or \"--seasons 2023 2024\")"
 	@echo "  mlflow-ui     Open MLflow UI at http://localhost:5000"
 	@echo ""
@@ -127,6 +128,10 @@ train:
 backtest:
 	@echo "📈 Running walk-forward backtest..."
 	uv run python -m g_nfl.ml.evaluate $(ARGS)
+
+backtest-guardrails:
+	@echo "🚧 Replaying the entry with the No Homers guardrails..."
+	uv run python -m g_nfl.picks.backtest $(ARGS)
 
 market-ratings:
 	@echo "📊 Running market-derived power ratings..."
