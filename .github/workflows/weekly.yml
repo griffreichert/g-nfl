@@ -1,0 +1,81 @@
+name: Weekly pool data
+
+# Three jobs the season needs and nobody should have to remember.
+#
+# The deadline snapshot is the one with analytical teeth. Six seasons say the
+# only signal we have found is the gap between the pool line and the market, and
+# every measurement of it so far compares the pool's Friday number to Sunday's
+# close, which nobody can act on. A market line pulled just before picks are due
+# is the honest comparison, and it costs one cron entry
+# (notes/pool-spread-edge.md).
+#
+# Render's free plan has no cron jobs, and nflreadpy is not installed on the
+# deployed API, so this runs here.
+
+on:
+  schedule:
+    # Friday 10:00 ET, after the NY Post number is out.
+    - cron: "0 14 * * 5"
+    # Sunday 12:00 ET, roughly an hour before the first kickoff and the
+    # submission deadline.
+    - cron: "0 16 * * 0"
+    # Tuesday 10:00 ET, once Monday night has graded. This rolls the app over
+    # to the next week and fills the standings.
+    - cron: "0 14 * * 2"
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: "Market snapshot to write"
+        type: choice
+        options: [friday, deadline, close]
+        default: friday
+      results:
+        description: "Also refresh game results"
+        type: boolean
+        default: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      # Times are UTC and September is EDT, so the hour shifts by one when the
+      # clocks change in November. The schedule strings are the source of truth
+      # for which pull this is.
+      - name: Work out which run this is
+        id: which
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 14 * * 5") echo "snapshot=friday"   >> "$GITHUB_OUTPUT"
+                          echo "results=false"     >> "$GITHUB_OUTPUT" ;;
+            "0 16 * * 0") echo "snapshot=deadline" >> "$GITHUB_OUTPUT"
+                          echo "results=false"     >> "$GITHUB_OUTPUT" ;;
+            "0 14 * * 2") echo "snapshot=close"    >> "$GITHUB_OUTPUT"
+                          echo "results=true"      >> "$GITHUB_OUTPUT" ;;
+            *) echo "snapshot=${{ inputs.snapshot }}" >> "$GITHUB_OUTPUT"
+               echo "results=${{ inputs.results }}"   >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # Season defaults to the latest one we hold lines for. Snapshots of the
+      # same game coexist, so this never overwrites Friday's pull with Sunday's.
+      - name: Snapshot market lines
+        run: |
+          uv run python scripts/update_market_lines.py \
+            --snapshot "${{ steps.which.outputs.snapshot }}"
+
+      - name: Update game results
+        if: steps.which.outputs.results == 'true'
+        run: uv run python scripts/update_results.py

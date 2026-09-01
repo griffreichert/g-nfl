@@ -1,4 +1,4 @@
-.PHONY: backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: no-homers backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -18,7 +18,7 @@ help:
 	@echo "  deploy-prep   Generate requirements.txt for Render"
 	@echo ""
 	@echo "🧪 Data Management:"
-	@echo "  update-lines  Update market lines for current week"
+	@echo "  update-lines  Snapshot market lines (ARGS=\"--snapshot deadline\")"
 	@echo "  update-results Update final game results (for standings)"
 	@echo "  update-context Update game context + team EPA (for game detail)"
 	@echo "  verify-db     Verify database tables exist"
@@ -30,6 +30,7 @@ help:
 	@echo "  train         Train the spread model (ARGS=\"--seasons 2023 2024\")"
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
 	@echo "  backtest-guardrails Replay the entry with the No Homers guardrails"
+	@echo "  no-homers     Submit the mechanical entry (ARGS=--dry-run)"
 	@echo "  market-ratings Market-derived power ratings (ARGS=\"--tune\" or \"--seasons 2023 2024\")"
 	@echo "  mlflow-ui     Open MLflow UI at http://localhost:5000"
 	@echo ""
@@ -80,13 +81,11 @@ deploy-prep:
 	@echo "✅ requirements.txt updated"
 
 # Data Management
+# Season defaults to the latest one with lines; snapshot says when the pull
+# happened, and snapshots of the same game coexist (#58).
 update-lines:
-	@echo "📊 Updating market lines for week 1..."
-	uv run python scripts/update_market_lines.py --season 2025 --week 1
-
-update-lines-all:
-	@echo "📊 Updating market lines for all weeks..."
-	uv run python scripts/update_market_lines.py --season 2025 --weeks 1-18
+	@echo "📊 Updating market lines..."
+	uv run python scripts/update_market_lines.py $(ARGS)
 
 update-results:
 	@echo "🏁 Updating game results..."
@@ -108,8 +107,7 @@ pool-report:
 	@echo "📈 Pool pick-trend report..."
 	uv run python -m g_nfl.pool.analysis $(ARGS)
 
-# The season being drafted for. Not CUR_SEASON in config.py, which still reads
-# 2025 — see #81's PR.
+# The season being drafted for.
 SEASON ?= 2026
 
 ingest-fantasy:
@@ -128,6 +126,10 @@ train:
 backtest:
 	@echo "📈 Running walk-forward backtest..."
 	uv run python -m g_nfl.ml.evaluate $(ARGS)
+
+no-homers:
+	@echo "🤖 Submitting the mechanical entry..."
+	uv run python -m g_nfl.picks.nohomers $(ARGS)
 
 backtest-guardrails:
 	@echo "🚧 Replaying the entry with the No Homers guardrails..."

@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parents[1] / "src"))
 import nflreadpy as nfl  # noqa: E402
 import polars as pl  # noqa: E402
 
-from g_nfl.utils.config import CUR_SEASON  # noqa: E402
+from g_nfl.picks.calendar import current_season  # noqa: E402
 from g_nfl.utils.database import MarketLinesDatabase, dump_table  # noqa: E402
 
 SNAPSHOTS = ("open", "friday", "deadline", "close")
@@ -72,7 +72,9 @@ def parse_seasons(spec: str) -> list[int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--season", type=int, default=CUR_SEASON)
+    parser.add_argument(
+        "--season", type=int, help="defaults to the latest season we hold lines for"
+    )
     parser.add_argument("--seasons", help="range or list, e.g. 2020-2025")
     parser.add_argument("--week", type=int, help="one week; omit for the whole season")
     parser.add_argument("--weeks", help="range, e.g. 1-18")
@@ -80,7 +82,11 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    seasons = parse_seasons(args.seasons) if args.seasons else [args.season]
+    seasons = (
+        parse_seasons(args.seasons)
+        if args.seasons
+        else [args.season or current_season()]
+    )
     weeks = None
     if args.week:
         weeks = [args.week]

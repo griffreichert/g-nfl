@@ -29,6 +29,10 @@ PICKERS = [
     "Hunter",
     "bModel",
     "gModel",
+    # The mechanical entry (picks/nohomers.py). A picker in the ledger like any
+    # other, so the call has something with no judgement in it to be scored
+    # against.
+    "No Homers",
     "TEST",
 ]
 # Scratch profile: it can save picks, but it is not a competitor and never
