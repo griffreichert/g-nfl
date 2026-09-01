@@ -112,8 +112,8 @@ export function useAuth() {
     }
   }, [])
 
-  const login = async (who: string, pin: string) => {
-    const r = await api.login(who, pin)
+  const login = async (who: string, passphrase: string) => {
+    const r = await api.login(who, passphrase)
     token.set(r.token)
     setPicker(r.picker)
   }

@@ -252,7 +252,7 @@ class GuardrailsResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     picker: str
-    pin: str
+    passphrase: str
 
 
 class LoginResponse(BaseModel):

@@ -239,11 +239,17 @@ def get_picks(season: int, week: int, picker: str | None = None):
 
 @app.post("/api/auth/login", response_model=LoginResponse)
 def login(req: LoginRequest):
-    """Swap a PIN for a token. The token is the only thing that names a picker."""
+    """Swap the room's passphrase for a token naming the picker you chose.
+
+    The name is self-asserted, since everyone in the pool is trusted. The token
+    is still the only thing the write endpoints read it from, so a session
+    cannot save under a different name than it signed in with.
+    """
     if req.picker not in PICKERS:
-        # same error as a wrong PIN, so this does not enumerate the room
-        raise HTTPException(401, "Wrong picker or PIN")
-    return LoginResponse(token=authenticate(req.picker, req.pin), picker=req.picker)
+        raise HTTPException(401, "Unknown picker")
+    return LoginResponse(
+        token=authenticate(req.picker, req.passphrase), picker=req.picker
+    )
 
 
 @app.get("/api/auth/me", response_model=LoginResponse)

@@ -1,28 +1,29 @@
-"""Per-picker PIN, exchanged for a signed token (#60).
+"""One passphrase for the room, then you say who you are (#60).
 
-Until now `POST /api/picks` took the picker from the request body, so anyone
-could submit as anyone. The pool is six family members and two models, and the
-whole point of the ledger is that a week's picks are attributable, so the entry
-that loses an argument on the call cannot be quietly rewritten afterwards.
+The site is six family members and two models. Everyone in it is trusted, so
+the passphrase exists to keep the internet out and nothing more. Once you are
+in, you choose your name from a dropdown and the API takes your word for it.
 
-Threat model is a cousin, not an attacker. A four-digit PIN over HTTPS is
-proportionate. What is not proportionate is storing those PINs in the clear, so
-the environment holds PBKDF2 hashes and `scripts/make_pin.py` generates them.
+The token still carries the name, so every endpoint that writes reads the
+picker from `require_picker` and ignores whatever the request body claims.
+That keeps one browser session pinned to one name, which is what stops a stale
+tab saving Harry's week under Chuck.
 
 Configuration, both on Render and in `.env`:
 
-    AUTH_SECRET   long random string; signs the tokens
-    PICKER_PINS   {"Griffin": "<hash from make_pin.py>", ...}
+    AUTH_SECRET      long random string; signs the tokens
+    APP_PASSPHRASE   the one passphrase the room shares
 
-With `PICKER_PINS` unset every login fails, which is the right default for a
+With `APP_PASSPHRASE` unset every login fails, which is the right default for a
 deploy nobody has configured yet.
+
+Per-picker PINs did this job until 2026-09-01. That code is kept and tested in
+`pins.py`, unwired, with the two-line change that turns it back on.
 """
 
 from __future__ import annotations
 
-import hashlib
 import hmac
-import json
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -30,10 +31,6 @@ import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-#: PBKDF2-HMAC-SHA256. 600k iterations is the OWASP 2023 figure for this
-#: primitive, and a four-digit PIN needs the work factor more than a password
-#: does: the whole keyspace is 10,000 guesses.
-ITERATIONS = 600_000
 ALGORITHM = "HS256"
 
 #: Long enough that the room is not logging in every Sunday, short enough that
@@ -48,33 +45,9 @@ bearer = HTTPBearer(auto_error=False)
 _BEARER = Depends(bearer)
 
 
-def hash_pin(pin: str, salt: bytes | None = None) -> str:
-    """`salt$hash`, both hex. What `PICKER_PINS` stores."""
-    salt = salt or os.urandom(16)
-    digest = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, ITERATIONS)
-    return f"{salt.hex()}${digest.hex()}"
-
-
-def verify_pin(pin: str, stored: str) -> bool:
-    """Constant-time check of a PIN against a `salt$hash` string."""
-    try:
-        salt_hex, digest_hex = stored.split("$")
-        salt = bytes.fromhex(salt_hex)
-    except ValueError:
-        return False
-    candidate = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, ITERATIONS)
-    return hmac.compare_digest(candidate.hex(), digest_hex)
-
-
-def _pins() -> dict[str, str]:
-    raw = os.getenv("PICKER_PINS", "").strip()
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # a malformed env var must fail every login, never allow all of them
-        return {}
+def _passphrase() -> str:
+    """The configured passphrase, or empty when nobody has set one."""
+    return os.getenv("APP_PASSPHRASE", "").strip()
 
 
 #: RFC 7518 3.2 for HS256. PyJWT warns below this; refusing is better than
@@ -93,15 +66,21 @@ def _secret() -> str:
     return secret
 
 
-def authenticate(picker: str, pin: str) -> str:
-    """Check a PIN and mint a token, or raise 401.
+def check_passphrase(passphrase: str) -> bool:
+    """Constant-time check against `APP_PASSPHRASE`.
 
-    The same message covers an unknown picker and a wrong PIN, so the response
-    does not confirm who is in the pool.
+    An unset passphrase fails every attempt rather than allowing all of them.
     """
-    stored = _pins().get(picker)
-    if not stored or not verify_pin(pin, stored):
-        raise HTTPException(401, "Wrong picker or PIN")
+    expected = _passphrase()
+    if not expected:
+        return False
+    return hmac.compare_digest(passphrase.strip(), expected)
+
+
+def authenticate(picker: str, passphrase: str) -> str:
+    """Check the passphrase and mint a token naming `picker`, or raise 401."""
+    if not check_passphrase(passphrase):
+        raise HTTPException(401, "Wrong passphrase")
 
     expires = datetime.now(UTC) + timedelta(days=TOKEN_DAYS)
     return jwt.encode({"sub": picker, "exp": expires}, _secret(), algorithm=ALGORITHM)
@@ -127,7 +106,7 @@ def require_picker(
     """FastAPI dependency: the signed-in picker.
 
     Endpoints that write take the picker from here and ignore anything in the
-    body, which is what closes the impersonation hole.
+    body, so a session stays pinned to the name it signed in with.
     """
     if creds is None:
         raise HTTPException(401, "Sign in to do that")

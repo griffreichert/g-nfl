@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Generate the PICKER_PINS value for the picks API (#60).
 
+**Dormant.** The site signs in with one shared passphrase (`APP_PASSPHRASE`),
+so `PICKER_PINS` is read by nothing today. `src/g_nfl/api/pins.py` explains what
+to change to switch back to per-picker PINs; this script is what feeds it.
+
     uv run python scripts/make_pin.py Griffin 1234 Harry 5678
 
 Prints a JSON object to paste into `.env` and into Render's environment. PINs
@@ -19,7 +23,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parents[1] / "src"))
 
-from g_nfl.api.auth import hash_pin  # noqa: E402
+from g_nfl.api.pins import hash_pin  # noqa: E402
 
 
 def main() -> None:

@@ -47,8 +47,8 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
 }
 
 export const api = {
-  login: (picker: string, pin: string) =>
-    send<LoginResponse>('POST', '/api/auth/login', { picker, pin }),
+  login: (picker: string, passphrase: string) =>
+    send<LoginResponse>('POST', '/api/auth/login', { picker, passphrase }),
   me: () => get<LoginResponse>('/api/auth/me'),
   config: (picker?: string) =>
     get<AppConfig>(

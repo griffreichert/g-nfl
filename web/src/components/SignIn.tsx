@@ -9,34 +9,33 @@ import {
 } from '@/components/ui/select'
 
 /**
- * Name plus a four-digit PIN (#60).
+ * One passphrase for the room, then say who you are (#60).
  *
- * The name used to be enough, and the API believed it, so anyone could submit
- * as anyone. A ledger of who picked what is only worth keeping if the entries
- * are attributable.
+ * Everyone in the pool is trusted, so the passphrase keeps the internet out and
+ * the name is taken on trust. The session stays pinned to the name it signed in
+ * with, which is what stops a stale tab saving one person's week under another.
  */
 export default function SignIn({
   pickers,
   onSignIn,
 }: {
   pickers: string[]
-  onSignIn: (picker: string, pin: string) => Promise<void>
+  onSignIn: (picker: string, passphrase: string) => Promise<void>
 }) {
   const [picker, setPicker] = useState('')
-  const [pin, setPin] = useState('')
+  const [passphrase, setPassphrase] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {
-    if (!picker || !pin) return
+    if (!picker || !passphrase) return
     setBusy(true)
     setError(null)
     try {
-      await onSignIn(picker, pin)
+      await onSignIn(picker, passphrase)
     } catch {
-      // the API gives the same answer for a wrong name and a wrong PIN
-      setError('Wrong name or PIN.')
-      setPin('')
+      setError('Wrong passphrase.')
+      setPassphrase('')
     } finally {
       setBusy(false)
     }
@@ -46,7 +45,7 @@ export default function SignIn({
     <div className="mx-auto mt-12 w-full max-w-xs rounded-lg border border-border bg-card p-4">
       <h1 className="mb-1 text-sm font-bold">Sign in</h1>
       <p className="mb-3 text-xs text-muted-foreground">
-        Your picks are saved against whoever is signed in.
+        Your picks are saved against whoever is signed in. Sessions last 30 days.
       </p>
 
       <div className="flex flex-col gap-2">
@@ -65,18 +64,17 @@ export default function SignIn({
 
         <input
           type="password"
-          inputMode="numeric"
           autoComplete="current-password"
-          placeholder="PIN"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
+          placeholder="Passphrase"
+          value={passphrase}
+          onChange={(e) => setPassphrase(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           className="h-9 rounded-md border border-border bg-background px-3 text-sm"
         />
 
         {error && <p className="text-xs text-loss">{error}</p>}
 
-        <Button size="sm" onClick={submit} disabled={busy || !picker || !pin}>
+        <Button size="sm" onClick={submit} disabled={busy || !picker || !passphrase}>
           {busy ? 'Checking…' : 'Sign in'}
         </Button>
       </div>

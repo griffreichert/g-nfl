@@ -1,10 +1,10 @@
-"""PIN login and the impersonation hole it closes (#60).
+"""Passphrase login, and the session pinning it gives (#60).
 
-`POST /api/picks` used to take the picker from the request body, so anyone
-could submit as anyone and the ledger recorded fiction.
+`POST /api/picks` used to take the picker from the request body, so a stale tab
+could save one person's week under another's name. The token names the picker
+now, and the body is ignored.
 """
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -14,16 +14,13 @@ from fastapi.testclient import TestClient
 from g_nfl.api import auth
 from g_nfl.api.main import app
 
-# One salt/hash pair, generated once so the 600k-iteration PBKDF2 runs twice
-# in this module rather than once per test.
-PIN = "1234"
-HASH = auth.hash_pin(PIN)
+PASSPHRASE = "go-browns"
 
 
 @pytest.fixture
 def env(monkeypatch):
     monkeypatch.setenv("AUTH_SECRET", "test-secret-long-enough-for-hs256-x")
-    monkeypatch.setenv("PICKER_PINS", json.dumps({"Griffin": HASH}))
+    monkeypatch.setenv("APP_PASSPHRASE", PASSPHRASE)
 
 
 @pytest.fixture
@@ -31,23 +28,32 @@ def client(env):
     return TestClient(app)
 
 
-def test_the_right_pin_returns_a_token(client):
-    r = client.post("/api/auth/login", json={"picker": "Griffin", "pin": PIN})
+def test_the_right_passphrase_returns_a_token_naming_the_picker(client):
+    r = client.post(
+        "/api/auth/login", json={"picker": "Griffin", "passphrase": PASSPHRASE}
+    )
     assert r.status_code == 200
     assert auth.read_token(r.json()["token"]) == "Griffin"
 
 
-def test_the_wrong_pin_is_refused(client):
-    r = client.post("/api/auth/login", json={"picker": "Griffin", "pin": "9999"})
+def test_the_wrong_passphrase_is_refused(client):
+    r = client.post("/api/auth/login", json={"picker": "Griffin", "passphrase": "nope"})
     assert r.status_code == 401
 
 
-def test_an_unknown_picker_gets_the_same_error_as_a_wrong_pin(client):
-    """The response must not confirm who is in the pool."""
-    unknown = client.post("/api/auth/login", json={"picker": "Mallory", "pin": PIN})
-    wrong = client.post("/api/auth/login", json={"picker": "Griffin", "pin": "9999"})
-    assert unknown.status_code == wrong.status_code == 401
-    assert unknown.json()["detail"] == wrong.json()["detail"]
+def test_surrounding_whitespace_is_forgiven(client):
+    """Phones add a trailing space on paste, and that is not a wrong password."""
+    r = client.post(
+        "/api/auth/login", json={"picker": "Griffin", "passphrase": f"  {PASSPHRASE} "}
+    )
+    assert r.status_code == 200
+
+
+def test_an_unknown_picker_is_refused(client):
+    r = client.post(
+        "/api/auth/login", json={"picker": "Mallory", "passphrase": PASSPHRASE}
+    )
+    assert r.status_code == 401
 
 
 def test_saving_picks_without_a_token_is_refused(client):
@@ -59,8 +65,8 @@ def test_saving_picks_without_a_token_is_refused(client):
 
 
 def test_the_body_cannot_name_a_different_picker(client):
-    """Harry's token saves as Harry however the body is addressed."""
-    token = auth.authenticate("Griffin", PIN)
+    """A session saves under the name it signed in with, whatever the body says."""
+    token = auth.authenticate("Griffin", PASSPHRASE)
     saved = {}
 
     def _save(season, week, picks, picker):
@@ -81,7 +87,7 @@ def test_the_body_cannot_name_a_different_picker(client):
 
 def test_team_may_be_written_by_any_signed_in_picker(client):
     """TEAM is the entry the room submits together off the board."""
-    token = auth.authenticate("Griffin", PIN)
+    token = auth.authenticate("Griffin", PASSPHRASE)
     saved = {}
 
     def _save(season, week, picks, picker):
@@ -109,7 +115,7 @@ def test_team_still_needs_a_session(client):
 
 
 def test_a_tampered_token_is_refused(client):
-    token = auth.authenticate("Griffin", PIN)
+    token = auth.authenticate("Griffin", PASSPHRASE)
     head, payload, sig = token.split(".")
     with pytest.raises(HTTPException) as e:
         auth.read_token(f"{head}.{payload}.{sig[:-2]}xx")
@@ -117,29 +123,34 @@ def test_a_tampered_token_is_refused(client):
 
 
 def test_a_token_signed_with_another_secret_is_refused(client, monkeypatch):
-    token = auth.authenticate("Griffin", PIN)
+    token = auth.authenticate("Griffin", PASSPHRASE)
     monkeypatch.setenv("AUTH_SECRET", "a-different-secret-also-long-enough")
     with pytest.raises(HTTPException) as e:
         auth.read_token(token)
     assert e.value.status_code == 401
 
 
-def test_no_pins_configured_means_nobody_gets_in(client, monkeypatch):
-    monkeypatch.delenv("PICKER_PINS")
-    r = client.post("/api/auth/login", json={"picker": "Griffin", "pin": PIN})
+def test_no_passphrase_configured_means_nobody_gets_in(client, monkeypatch):
+    """An unset variable must refuse everyone, never admit everyone."""
+    monkeypatch.delenv("APP_PASSPHRASE")
+    r = client.post(
+        "/api/auth/login", json={"picker": "Griffin", "passphrase": PASSPHRASE}
+    )
     assert r.status_code == 401
 
 
-def test_a_malformed_pins_variable_fails_closed(client, monkeypatch):
-    monkeypatch.setenv("PICKER_PINS", "{not json")
-    r = client.post("/api/auth/login", json={"picker": "Griffin", "pin": PIN})
+def test_an_empty_passphrase_does_not_match_an_unset_one(client, monkeypatch):
+    monkeypatch.setenv("APP_PASSPHRASE", "")
+    r = client.post("/api/auth/login", json={"picker": "Griffin", "passphrase": ""})
     assert r.status_code == 401
 
 
 def test_a_short_secret_is_refused_rather_than_warned_about(client, monkeypatch):
     """A guessable signing key is worse than no auth, because it looks like auth."""
     monkeypatch.setenv("AUTH_SECRET", "short")
-    r = client.post("/api/auth/login", json={"picker": "Griffin", "pin": PIN})
+    r = client.post(
+        "/api/auth/login", json={"picker": "Griffin", "passphrase": PASSPHRASE}
+    )
     assert r.status_code == 503
 
 
