@@ -32,7 +32,14 @@ export function useSeasonWeek(config: AppConfig | null) {
     api.weeks(season).then((r) => {
       const ws = r.weeks.length ? r.weeks : Array.from({ length: 18 }, (_, i) => i + 1)
       setWeeks(ws)
-      setWeek((w) => (w !== null && ws.includes(w) ? w : r.max_week ?? ws[ws.length - 1]))
+      // Open on the week the pool is on, which holds until that week's last
+      // game is graded. `max_week` is the furthest week we hold lines for, so
+      // it jumps to 18 the moment anyone snapshots the whole season ahead.
+      setWeek((w) =>
+        w !== null && ws.includes(w)
+          ? w
+          : r.current_week ?? r.max_week ?? ws[ws.length - 1]
+      )
     })
   }, [season])
 

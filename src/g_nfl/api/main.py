@@ -115,7 +115,11 @@ def survivor_used(season: int, picker: str) -> list[str]:
 def get_weeks(season: int):
     db = MarketLinesDatabase()
     weeks = db.get_available_weeks(season)
-    return WeeksResponse(weeks=weeks, max_week=max(weeks) if weeks else None)
+    return WeeksResponse(
+        weeks=weeks,
+        max_week=max(weeks) if weeks else None,
+        current_week=current_week(season) if weeks else None,
+    )
 
 
 @app.get("/api/lines", response_model=list[GameLine])

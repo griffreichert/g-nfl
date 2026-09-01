@@ -267,7 +267,7 @@ export default function MakePicks() {
   const regularCount = Object.keys(picks).length
   const maxReached = regularCount >= MAX_REGULAR_PICKS
 
-  const teamButton = (g: GameLine, team: string) => {
+  const teamButton = (g: GameLine, team: string, side: 'away' | 'home') => {
     const isMnfGame = g.is_mnf
     const pick = picks[g.game_id]
     const selected = isMnfGame ? mnf === team : pick?.team_picked === team
@@ -287,7 +287,12 @@ export default function MakePicks() {
         size="sm"
         onClick={() => clickTeam(g, team)}
         disabled={disabled}
-        className={`w-full font-medium ${tone}`}
+        // Capped and pushed toward the middle, so the two buttons stay the same
+        // width on every row and meet the line column instead of drifting with
+        // the width of the browser.
+        className={`w-full max-w-56 font-medium ${
+          side === 'away' ? 'justify-self-end' : 'justify-self-start'
+        } ${tone}`}
       >
         {isMnfGame && selected && <Moon className="size-3.5" />}
         {isBest && <Star className="size-3.5 fill-current" />}
@@ -390,10 +395,13 @@ export default function MakePicks() {
             {games.map((g) => (
               <div
                 key={g.game_id}
-                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+                // The line column is a fixed width per breakpoint, not `auto`.
+                // Sized on its widest content ("+10.5 / 46.5"), so a long line
+                // no longer shoves the buttons sideways on that one row.
+                className="grid grid-cols-[1.5rem_1fr_3.5rem_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:grid-cols-[1.5rem_1fr_6.5rem_1fr_1.5rem_1rem] sm:gap-2 sm:px-3 md:grid-cols-[1.5rem_1fr_11rem_1fr_1.5rem_1rem]"
               >
                 <img src={teamLogo(g.away_team)} className="size-6" alt="" />
-                {teamButton(g, g.away_team)}
+                {teamButton(g, g.away_team, 'away')}
                 <span className="tabular whitespace-nowrap px-1 text-center text-xs sm:text-sm">
                   <span className="font-semibold">{fmtSpread(g.pool_spread)}</span>
                   <span className="hidden text-muted-foreground sm:inline">
@@ -405,7 +413,7 @@ export default function MakePicks() {
                     / {g.market_total ?? '—'}
                   </span>
                 </span>
-                {teamButton(g, g.home_team)}
+                {teamButton(g, g.home_team, 'home')}
                 <img src={teamLogo(g.home_team)} className="size-6" alt="" />
                 {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
                 <Link

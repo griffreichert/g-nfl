@@ -17,6 +17,10 @@ class AppConfig(BaseModel):
 class WeeksResponse(BaseModel):
     weeks: list[int]
     max_week: int | None
+    #: The week the pool is on: the first with a game still to be played (#61).
+    #: What a page should open on. `max_week` is the furthest week we hold lines
+    #: for, which runs ahead as soon as anyone snapshots a future week.
+    current_week: int | None
 
 
 class GameLine(BaseModel):

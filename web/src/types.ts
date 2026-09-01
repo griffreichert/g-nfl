@@ -10,6 +10,8 @@ export interface AppConfig {
 export interface WeeksResponse {
   weeks: number[]
   max_week: number | null
+  /** The week the pool is on. What a page opens to, in preference to max_week. */
+  current_week: number | null
 }
 
 export interface GameLine {
