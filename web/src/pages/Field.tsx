@@ -665,6 +665,23 @@ export default function Field() {
   const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
   const notes = { ...savedNotes, ...noteEdits }
 
+  // What the room saw when it picked, from the picked side. Grading joins the
+  // line tables and ignores this column, so it is a record rather than an
+  // input; it used to store the market number even though the pool grades
+  // against its own.
+  const spreadSeen = (gameId: string, team: string) => {
+    const game = games.find((g) => g.game_id === gameId)
+    return game ? spreadFor(game, team) : null
+  }
+
+  // Overriding a guardrail is allowed and has to be explained. The rules find
+  // bad picks reliably and cannot rank good ones, so the room keeps the last
+  // word; what it does not keep is the ability to do it silently.
+  const unexplained = Object.entries(slate)
+    .filter(([gameId, v]) => flagsFor(gameId, v.team).length)
+    .filter(([gameId, v]) => !notes[noteKeyFor(gameId, v.type)]?.trim())
+    .map(([gameId, v]) => `${v.team} (${flagsFor(gameId, v.team).length})`)
+
   const saveSlate = async () => {
     if (season === null || week === null) return
     setSaving(true)
@@ -673,7 +690,7 @@ export default function Field() {
         game_id,
         team_picked: v.team,
         pick_type: v.type,
-        spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+        spread: spreadSeen(game_id, v.team),
         note: notes[noteKeyFor(game_id, v.type)]?.trim() || null,
       }))
       for (const [pool, choice] of [
@@ -685,7 +702,7 @@ export default function Field() {
           game_id: choice.game_id,
           team_picked: choice.team,
           pick_type: pool,
-          spread: games.find((g) => g.game_id === choice.game_id)?.market_spread ?? null,
+          spread: spreadSeen(choice.game_id, choice.team),
           note: notes[noteKeyFor(choice.game_id, pool)]?.trim() || null,
         })
       }
@@ -757,10 +774,23 @@ export default function Field() {
                 <Slot label="Dog" have={underdog ? 1 : 0} need={1} />
                 <Slot label="Survivor" have={survivor ? 1 : 0} need={1} />
               </span>
-              <Button size="sm" className="ml-auto" onClick={saveSlate} disabled={saving}>
+              <Button
+                size="sm"
+                className="ml-auto"
+                onClick={saveSlate}
+                disabled={saving || unexplained.length > 0}
+              >
                 {saving ? 'Saving…' : 'Submit as TEAM'}
               </Button>
             </div>
+
+            {unexplained.length > 0 && (
+              <p className="rounded-md bg-loss/15 px-3 py-2 text-sm text-loss">
+                {unexplained.join(', ')} {unexplained.length === 1 ? 'trips' : 'trip'} a
+                guardrail. Say why in the note on that game before submitting. The rules
+                do not get the last word, but an override should be on the record.
+              </p>
+            )}
 
             {saved?.key === weekKey && <p className="text-sm text-win">{saved.msg}</p>}
 

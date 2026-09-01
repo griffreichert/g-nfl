@@ -164,13 +164,26 @@ export default function MakePicks() {
     return lines.length ? `${picker}'s Week ${week} Picks\n\n${lines.join('\n')}` : ''
   }, [picks, survivor, underdog, mnf, games, picker, week])
 
+  // What the picker saw, from the side they took. Grading joins the line
+  // tables and ignores this column, so it records rather than decides; it used
+  // to store the market number even though the pool grades against its own.
+  const spreadSeen = (game: GameLine | undefined, team: string) => {
+    if (!game) return null
+    const home = effectiveSpread(game)
+    if (home === null) return null
+    return team === game.home_team ? home : -home
+  }
+
   const save = async () => {
     if (!picker || season === null || week === null) return
     const payload: Pick[] = Object.entries(picks).map(([game_id, p]) => ({
       game_id,
       team_picked: p.team_picked,
       pick_type: p.pick_type,
-      spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+      spread: spreadSeen(
+        games.find((g) => g.game_id === game_id),
+        p.team_picked
+      ),
       note: notes[noteKey(game_id, p.pick_type)]?.trim() || null,
     }))
     const special = (team: string | null, type: Pick['pick_type']) => {
@@ -181,7 +194,7 @@ export default function MakePicks() {
           game_id: g.game_id,
           team_picked: team,
           pick_type: type,
-          spread: g.market_spread,
+          spread: spreadSeen(g, team),
           note: notes[noteKey(g.game_id, type)]?.trim() || null,
         })
     }
