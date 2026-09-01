@@ -226,6 +226,9 @@ def get_picks(season: int, week: int, picker: str | None = None):
             team_picked=p["team_picked"],
             pick_type=p.get("pick_type", "regular"),
             spread=p.get("spread"),
+            # stored since #70 and never returned, so a saved reason vanished on
+            # reload and the board asked for it again (#58)
+            note=p.get("note"),
             picker=p["picker"],
             season=p["season"],
             week=p["week"],

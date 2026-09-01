@@ -118,3 +118,17 @@ def test_an_unstarted_season_is_a_state_not_an_error():
     assert analytics.status_code == 200
     assert analytics.json()["picks"] == 0
     assert analytics.json()["cuts"] == []
+
+
+def test_a_saved_note_is_returned_with_the_pick():
+    """Notes were stored and never read back, so a reason vanished on reload."""
+    with patch("g_nfl.api.main.PicksDatabase") as p:
+        p.return_value.get_picks.return_value = [
+            {
+                **_pick("Griffin", G1, "BBB"),
+                "note": "line moved two points our way",
+            }
+        ]
+        r = TestClient(app).get("/api/picks?season=2026&week=1")
+
+    assert r.json()[0]["note"] == "line moved two points our way"
