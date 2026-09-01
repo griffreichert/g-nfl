@@ -13,6 +13,7 @@ import polars as pl
 
 from g_nfl.ml.features.availability import AVAIL_COLS
 from g_nfl.ml.features.matrix import META_COLS
+from g_nfl.ml.features.preseason import PRESEASON_PREFIX
 from g_nfl.ml.features.qb_change import QB_CHANGE_COLS
 
 # qb_change cols ride the matrix for the additive prediction adjustment
@@ -37,9 +38,22 @@ class FeatureSet:
         return self.selector(matrix)
 
 
+def _is_preseason(col: str) -> bool:
+    """Preseason block columns: `pre_diff_*` and the `home_`/`away_`-prefixed
+    per-side ones (see `features.preseason`)."""
+    return col.startswith(PRESEASON_PREFIX) or col.removeprefix("home_").removeprefix(
+        "away_"
+    ).startswith(PRESEASON_PREFIX)
+
+
 def _all_team_stat_cols(matrix: pl.DataFrame) -> list[str]:
+    """Every in-season team column. Excludes the preseason block so that
+    building the matrix with ``preseason=True`` does not silently change
+    what ``v1_team`` means -- ``v3_early`` is the set that wants it."""
     return [
-        c for c in matrix.columns if c not in META_COLS and c not in ADJUSTMENT_COLS
+        c
+        for c in matrix.columns
+        if c not in META_COLS and c not in ADJUSTMENT_COLS and not _is_preseason(c)
     ]
 
 
@@ -108,8 +122,39 @@ V2_ADJ_LEAN = FeatureSet(
     selector=_adj_lean_cols,
 )
 
+
+def _early_cols(matrix: pl.DataFrame) -> list[str]:
+    """In-season columns plus the preseason block plus ``week``.
+
+    In week 1 every in-season column is null (the matrix lags a week and
+    week 0 does not exist), so without the preseason block the model
+    returns one constant for the whole slate -- see
+    `notes/modelling/early-weeks.md`. Requires a matrix built with
+    ``preseason=True``.
+    """
+    pre = [c for c in matrix.columns if _is_preseason(c)]
+    if not pre:
+        raise ValueError(
+            "no preseason columns in matrix; build it with preseason=True "
+            "(build_features/backtest) before using this feature set"
+        )
+    week = ["week"] if "week" in matrix.columns else []
+    return _all_team_stat_cols(matrix) + pre + week
+
+
+V3_EARLY = FeatureSet(
+    name="v3_early",
+    description=(
+        "v1_team plus the preseason block (prior-season form and market "
+        "rating, coach/QB change, draft capital, snap retention) and week. "
+        "The early-regime set: weeks 1-4, where in-season stats are null or "
+        "one game deep."
+    ),
+    selector=_early_cols,
+)
+
 FEATURE_SETS: dict[str, FeatureSet] = {
-    fs.name: fs for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN]
+    fs.name: fs for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN, V3_EARLY]
 }
 
 

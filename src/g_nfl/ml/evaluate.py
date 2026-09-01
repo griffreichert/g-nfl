@@ -33,10 +33,12 @@ from g_nfl.ml.data import (
     load_injuries,
     load_pbp,
     load_players,
+    load_rosters_weekly,
     load_schedule,
     load_snap_counts,
 )
 from g_nfl.ml.features import build_features
+from g_nfl.ml.features.matrix import META_COLS
 from g_nfl.ml.features.qb_change import apply_qb_adjustment
 from g_nfl.ml.features.registry import get_feature_set
 from g_nfl.ml.features.windows import DEFAULT_ROLLING_WEEKS
@@ -109,7 +111,7 @@ def walk_forward_predictions(
         )
         preds = model.predict(test_df.select(feature_cols).to_numpy())
         out.append(
-            test_df.drop(feature_cols).with_columns(
+            test_df.drop([c for c in feature_cols if c not in META_COLS]).with_columns(
                 pred=pl.Series(preds, dtype=pl.Float64),
                 n_train=pl.lit(train_df.height),
             )
@@ -462,6 +464,7 @@ def backtest(
     carryover_k: float | None = None,
     carryover_c: float | None = None,
     with_injuries: bool = False,
+    preseason: bool = False,
     schedule_ctx: bool = False,
     qb_ctx: bool = False,
     qb_history: int = 3,
@@ -527,9 +530,18 @@ def backtest(
     )
     draft = (
         load_draft_picks(seasons, cache_dir=cache_dir, refresh=refresh)
-        if carryover_c is not None
+        if (carryover_c is not None or preseason)
         else None
     )
+    rosters = (
+        load_rosters_weekly(seasons, cache_dir=cache_dir, refresh=refresh)
+        if preseason
+        else None
+    )
+    if preseason and snaps is None:
+        snaps = load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh)
+    if preseason and players is None:
+        players = load_players(cache_dir=cache_dir, refresh=refresh)
     ml_margins = None
     if ml_odds:
         ref_seasons = list(range(MARGIN_REF_START, min(seasons)))
@@ -562,6 +574,8 @@ def backtest(
         ml_margins=ml_margins,
         availability=injuries if availability else None,
         players=players,
+        preseason=preseason,
+        rosters=rosters,
         opp_adjust=opp_adjust,
         opp_lambda=opp_lambda,
         opp_prior_weight=opp_prior_weight,
@@ -601,6 +615,7 @@ def backtest(
             "carryover_k": carryover_k,
             "carryover_c": carryover_c,
             "with_injuries": with_injuries,
+            "preseason": preseason,
             "schedule_ctx": schedule_ctx,
             "qb_ctx": qb_ctx,
             "qb_change": qb_change,
@@ -654,6 +669,15 @@ def main(argv: list[str] | None = None) -> None:
         "--injuries",
         action="store_true",
         help="L3 team-week injury burden features (no lag)",
+    )
+    parser.add_argument(
+        "--preseason",
+        action="store_true",
+        help=(
+            "attach the preseason block (prior-season form and market rating, "
+            "coach/QB change, draft capital, snap retention); pair with "
+            "--feature-set v3_early to train on it"
+        ),
     )
     parser.add_argument(
         "--schedule",

@@ -55,6 +55,8 @@ def standardize_teams(team):
         "OAK": "LV",
         "SD": "LAC",
         "STL": "LA",
+        # pre-2020 rosters_weekly abbreviates the same move differently
+        "SL": "LA",
         # nflreadpy draft_picks uses PFR-style 3-letter codes
         "GNB": "GB",
         "KAN": "KC",
