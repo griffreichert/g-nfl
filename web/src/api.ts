@@ -4,6 +4,7 @@ import type {
   GameDetail,
   GameLine,
   GuardrailsResponse,
+  LedgerResponse,
   LoginResponse,
   Pick,
   PickRecord,
@@ -65,6 +66,7 @@ export const api = {
       `/api/picks?season=${season}&week=${week}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`
     ),
   game: (gameId: string) => get<GameDetail>(`/api/games/${encodeURIComponent(gameId)}`),
+  ledger: (season: number) => get<LedgerResponse>(`/api/ledger?season=${season}`),
   standings: (season: number) => get<StandingsResponse>(`/api/standings?season=${season}`),
   analytics: (season: number) => get<AnalyticsResponse>(`/api/analytics?season=${season}`),
   // `picker` is read from the token server-side. The body's copy is ignored

@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import { useAuth } from './hooks'
 
@@ -12,6 +12,7 @@ const GameDetail = lazy(() => import('./pages/GameDetail'))
 const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
 const Standings = lazy(() => import('./pages/Standings'))
 const Analytics = lazy(() => import('./pages/Analytics'))
+const Ledger = lazy(() => import('./pages/Ledger'))
 const Help = lazy(() => import('./pages/Help'))
 
 const tabs = [
@@ -19,6 +20,7 @@ const tabs = [
   { to: '/view', label: 'Team', icon: Users },
   { to: '/standings', label: 'Standings', icon: LineChart },
   { to: '/spreads', label: 'Lines', icon: Ruler },
+  { to: '/ledger', label: 'Ledger', icon: Scale },
   { to: '/analytics', label: 'Analytics', icon: ChartColumn },
 ]
 
@@ -89,6 +91,7 @@ export default function App() {
             <Route path="/game/:gameId" element={<GameDetail />} />
             <Route path="/standings" element={<Standings />} />
             <Route path="/spreads" element={<ManageSpreads />} />
+            <Route path="/ledger" element={<Ledger />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/help" element={<Help />} />
           </Routes>

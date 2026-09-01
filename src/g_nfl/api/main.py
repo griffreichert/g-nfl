@@ -11,6 +11,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from g_nfl.picks import ledger
 from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
 from g_nfl.picks.calendar import current_season, current_week
 from g_nfl.picks.grading import (
@@ -46,6 +47,9 @@ from .schemas import (
     GameLine,
     Guardrail,
     GuardrailsResponse,
+    LedgerEntry,
+    LedgerResponse,
+    LedgerWeek,
     LoginRequest,
     LoginResponse,
     PickRecord,
@@ -293,6 +297,42 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
+
+
+@app.get("/api/ledger", response_model=LedgerResponse)
+def get_ledger(season: int | None = None):
+    """TEAM against the entries it could have submitted instead.
+
+    Two independent sources say the weekly call costs about 1.5 points of hit
+    rate against its own members (notes/pick-behaviour.md). This is that
+    comparison run live, in pool points, so a losing process shows up in week 8
+    rather than in April.
+    """
+    season = season or current_season()
+    picks = PicksDatabase().get_season_picks(season)
+    picks = [p for p in picks if p["picker"] != TEST_PICKER]
+    for p in picks:
+        p["game_id"] = normalize_game_id(p["game_id"])
+
+    def _normalized(rows: list[dict]) -> list[dict]:
+        return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]
+
+    lines = resolve_lines(
+        _normalized(PoolSpreadsDatabase().get_pool_spreads(season)),
+        _normalized(MarketLinesDatabase().get_market_lines(season)),
+    )
+    results = {
+        normalize_game_id(r["game_id"]): r["result"]
+        for r in GameResultsDatabase().get_results(season)
+        if r.get("result") is not None
+    }
+
+    weeks = ledger.weekly(picks, results, lines)
+    return LedgerResponse(
+        season=season,
+        weeks=[LedgerWeek(**w) for w in weeks],
+        standings=[LedgerEntry(**e) for e in ledger.standings(weeks)],
+    )
 
 
 @app.get("/api/standings", response_model=StandingsResponse)

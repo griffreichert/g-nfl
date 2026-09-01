@@ -216,3 +216,27 @@ export interface LoginResponse {
   token: string
   picker: string
 }
+
+export interface LedgerWeek {
+  week: number
+  entry: string
+  points: number
+  available: number
+  running: number
+  /** which member "Best member" was following that week */
+  leader: string | null
+}
+
+export interface LedgerEntry {
+  entry: string
+  points: number
+  available: number
+  weeks: number
+  share: number | null
+}
+
+export interface LedgerResponse {
+  season: number
+  weeks: LedgerWeek[]
+  standings: LedgerEntry[]
+}

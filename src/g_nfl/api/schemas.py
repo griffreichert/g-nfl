@@ -259,3 +259,27 @@ class LoginResponse(BaseModel):
     #: empty on /api/auth/me, which only confirms an existing token
     token: str
     picker: str
+
+
+class LedgerWeek(BaseModel):
+    week: int
+    entry: str
+    points: float
+    available: float
+    running: float
+    #: which member "Best member" was following that week, else None
+    leader: str | None = None
+
+
+class LedgerEntry(BaseModel):
+    entry: str
+    points: float
+    available: float
+    weeks: int
+    share: float | None
+
+
+class LedgerResponse(BaseModel):
+    season: int
+    weeks: list[LedgerWeek]
+    standings: list[LedgerEntry]
