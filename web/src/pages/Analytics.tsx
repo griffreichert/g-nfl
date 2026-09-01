@@ -372,17 +372,26 @@ export default function Analytics() {
         onSeason={setSeason}
       />
 
-      {/* A season with no graded picks 404s. That is an answer, not a crash. */}
       {error && (
         <EmptyState
-          title={`Nothing graded for ${season}`}
+          title={`Could not load ${season}`}
           detail="Cuts appear once picks and results exist for the season."
           note={error}
         />
       )}
+
+      {/* A season nobody has picked in comes back empty rather than as an
+          error, so say so instead of drawing a page of zeroes. */}
+      {!error && ready && data && data.picks === 0 && (
+        <EmptyState
+          title={`Nothing graded for ${season}`}
+          detail="Cuts appear once picks and results exist for the season."
+        />
+      )}
+
       {!error && !ready && <Loading />}
 
-      {!error && ready && data && (
+      {!error && ready && data && data.picks > 0 && (
         <>
           <Sample d={data} />
           {data.cuts.map((c) => (

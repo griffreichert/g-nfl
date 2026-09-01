@@ -353,8 +353,15 @@ def get_standings(season: int):
         for p in PicksDatabase().get_season_picks(season)
         if p["picker"] != TEST_PICKER
     ]
+    # An empty season is the normal state of week 1, not an error. Returning
+    # 404 here put "Failed to load" on the Standings page on opening day.
     if not picks:
-        raise HTTPException(404, f"No picks for season {season}")
+        return StandingsResponse(
+            season=season,
+            break_even_pct=BREAK_EVEN,
+            graded_through_week=None,
+            standings=[],
+        )
     for p in picks:
         p["game_id"] = normalize_game_id(p["game_id"])
 
@@ -455,8 +462,18 @@ def get_analytics(season: int):
         # TEAM is the room's own average; counting it double-counts everyone
         if p["picker"] not in (TEST_PICKER, "TEAM")
     ]
+    # Same as Standings: nothing picked yet is a state, not a failure.
     if not picks:
-        raise HTTPException(404, f"No picks for season {season}")
+        return AnalyticsResponse(
+            season=season,
+            picks=0,
+            games=0,
+            votes_per_game=0.0,
+            base_pct=BREAK_EVEN,
+            break_even_pct=BREAK_EVEN,
+            cuts=[],
+            teams=[],
+        )
 
     def _normalized(rows: list[dict]) -> list[dict]:
         return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]

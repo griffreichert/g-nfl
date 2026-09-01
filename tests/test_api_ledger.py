@@ -86,3 +86,35 @@ def test_an_ungraded_season_returns_an_empty_table_rather_than_failing():
 
     assert r.status_code == 200
     assert r.json()["standings"] == []
+
+
+def _empty_db():
+    """Every read empty: the state of a season nobody has picked in."""
+    return (
+        patch("g_nfl.api.main.PicksDatabase"),
+        patch("g_nfl.api.main.PoolSpreadsDatabase"),
+        patch("g_nfl.api.main.MarketLinesDatabase"),
+        patch("g_nfl.api.main.GameResultsDatabase"),
+    )
+
+
+def test_an_unstarted_season_is_a_state_not_an_error():
+    """Week 1 opens with no picks anywhere. Both pages 404'd on that."""
+    picks, pool, market, results = _empty_db()
+    with picks as p, pool as ps, market as m, results as r:
+        p.return_value.get_season_picks.return_value = []
+        ps.return_value.get_pool_spreads.return_value = []
+        m.return_value.get_market_lines.return_value = []
+        r.return_value.get_results.return_value = []
+        client = TestClient(app)
+
+        standings = client.get("/api/standings?season=2026")
+        analytics = client.get("/api/analytics?season=2026")
+
+    assert standings.status_code == 200
+    assert standings.json()["standings"] == []
+    assert standings.json()["graded_through_week"] is None
+
+    assert analytics.status_code == 200
+    assert analytics.json()["picks"] == 0
+    assert analytics.json()["cuts"] == []
