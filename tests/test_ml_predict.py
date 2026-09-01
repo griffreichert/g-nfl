@@ -10,13 +10,14 @@ import polars as pl
 import pytest
 
 from g_nfl.ml import predict as predict_mod
-from g_nfl.ml.predict import EARLY_WEEK_CUTOFF, feature_set_for, predict_week
+from g_nfl.ml.predict import DEEP_SEASONS_START, predict_week, training_seasons
 
 
-def test_feature_set_switches_at_the_cutoff():
-    assert feature_set_for(1) == "v3_early"
-    assert feature_set_for(EARLY_WEEK_CUTOFF) == "v3_early"
-    assert feature_set_for(EARLY_WEEK_CUTOFF + 1) == "v1_team"
+def test_training_window_is_deep_and_ends_at_the_season():
+    seasons = training_seasons(2026)
+    assert seasons[0] == DEEP_SEASONS_START
+    assert seasons[-1] == 2026
+    assert len(seasons) > 5
 
 
 @pytest.fixture
