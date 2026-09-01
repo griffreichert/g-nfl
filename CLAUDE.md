@@ -194,6 +194,41 @@ hard boundary where a consumer genuinely requires it (and prefer porting that co
 and is being removed (see #23). Use `nflreadpy` loaders (`load_schedules`, `load_pbp`,
 `load_teams`, `load_player_stats`, `load_rosters`, …) — they return polars natively.
 
+## Writing to Supabase — read this before any bulk write
+
+**The project is on Supabase's free plan. There are no backups. A bad write is
+permanent.** On 2026-08-31 a backfill of closing lines deleted 319 rows of 2025
+pick-time market snapshots. They do not exist anywhere now: nflverse publishes
+only the close, and no local copy was ever made.
+
+That happened because of a trap worth knowing:
+
+**An empty result does not mean an empty table.** RLS enabled on a table with no
+policy makes every `SELECT` return `[]` and every `count='exact'` return `0`,
+with no error raised. `market_lines` and `pool_spreads` both read as empty while
+holding hundreds of rows. Adding the write policy made them visible, and by then
+the delete had run.
+
+Rules:
+
+1. **Call `dump_table("<name>")` before any bulk write.** It writes every row to
+   `data/backups/<table>_<timestamp>.json`. `scripts/backfill_pool_spreads.py`
+   and `scripts/update_market_lines.py` both do this.
+2. **Upsert, never delete-then-insert.** Use `.upsert(rows, on_conflict="a,b,c")`
+   against the table's unique key. Both `save_pool_spreads` and
+   `save_market_lines` were delete-then-insert until 2026-08-31.
+3. **Confirm a table is empty by a second signal before trusting the count.**
+   `min(id)` above 1 means rows were deleted. `created_at` on the surviving rows
+   dates the last write. Both are visible in the Supabase SQL editor, which
+   bypasses RLS.
+4. **A `--dry-run` proves nothing about a delete**, because it skips the write
+   path entirely. Dry-run output was clean before all 319 rows went.
+5. **Page with `.order("id")`.** `.range()` over an unordered query lets the
+   server return a different order per page, so pages overlap and other rows are
+   never read. Two runs of the same backfill disagreed by 107 games.
+   `PoolPicksDatabase.get_picks(2025)` does not page at all and silently
+   truncates at PostgREST's 1000-row cap against 2679 rows — fix before using it.
+
 ## Data Integration Notes
 
 **Google Sheets Integration**:

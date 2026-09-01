@@ -6,22 +6,27 @@ explicitly and will be replaced by session identity when auth is added.
 """
 
 import os
+from functools import lru_cache
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from g_nfl.picks import ledger
 from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
+from g_nfl.picks.calendar import current_season, current_week
 from g_nfl.picks.grading import (
     BREAK_EVEN,
     grade_pick,
     picker_standings,
     resolve_lines,
 )
+from g_nfl.picks.guardrails import RuleFit
+from g_nfl.picks.guardrails import fit as fit_guardrails
+from g_nfl.picks.history import DEFAULT_SEASONS, load_history
+from g_nfl.picks.sides import candidate_side
 from g_nfl.utils.config import (
-    CUR_SEASON,
-    CUR_WEEK,
     PICKERS,
-    SURVIVOR_USED_TEAMS,
+    TEAM_PICKER,
     TEST_PICKER,
 )
 from g_nfl.utils.database import (
@@ -34,19 +39,31 @@ from g_nfl.utils.database import (
 )
 from g_nfl.utils.web_app import get_pool_spreads, normalize_game_id
 
+from .auth import authenticate, require_picker
 from .schemas import (
     AnalyticsResponse,
     AppConfig,
     GameDetail,
     GameLine,
+    Guardrail,
+    GuardrailsResponse,
+    LedgerEntry,
+    LedgerResponse,
+    LedgerWeek,
+    LoginRequest,
+    LoginResponse,
     PickRecord,
     PoolSpreadUpdate,
     PoolSpreadUpdateResponse,
     SavePicksRequest,
     SavePicksResponse,
+    SideFlag,
     StandingsResponse,
     WeeksResponse,
 )
+
+# bound once: FastAPI takes dependencies from argument defaults (ruff B008)
+_PICKER = Depends(require_picker)
 
 app = FastAPI(title="g-nfl API")
 
@@ -65,12 +82,32 @@ def health():
 
 
 @app.get("/api/config", response_model=AppConfig)
-def get_config():
+def get_config(picker: str | None = None):
+    """Season, week and the survivor teams already spent.
+
+    All three are derived. `CUR_SEASON` and `CUR_WEEK` were constants somebody
+    had to remember to bump and nobody did: nine days before the 2026 opener
+    they still read 2025 week 12. `SURVIVOR_USED_TEAMS` was one global list for
+    the whole room, which is wrong on the pool's own rules, since the ban on
+    reusing a team is per entry.
+    """
+    season = current_season()
     return AppConfig(
         pickers=PICKERS,
-        cur_season=CUR_SEASON,
-        cur_week=CUR_WEEK,
-        survivor_used_teams=SURVIVOR_USED_TEAMS,
+        cur_season=season,
+        cur_week=current_week(season),
+        survivor_used_teams=survivor_used(season, picker) if picker else [],
+    )
+
+
+def survivor_used(season: int, picker: str) -> list[str]:
+    """Teams this picker has already spent in survivor this season."""
+    return sorted(
+        {
+            p["team_picked"]
+            for p in PicksDatabase().get_season_picks(season)
+            if p["picker"] == picker and p.get("pick_type") == "survivor"
+        }
     )
 
 
@@ -78,7 +115,11 @@ def get_config():
 def get_weeks(season: int):
     db = MarketLinesDatabase()
     weeks = db.get_available_weeks(season)
-    return WeeksResponse(weeks=weeks, max_week=max(weeks) if weeks else None)
+    return WeeksResponse(
+        weeks=weeks,
+        max_week=max(weeks) if weeks else None,
+        current_week=current_week(season) if weeks else None,
+    )
 
 
 @app.get("/api/lines", response_model=list[GameLine])
@@ -118,6 +159,67 @@ def get_lines(season: int, week: int):
     return games
 
 
+@lru_cache(maxsize=1)
+def _fitted_guardrails() -> tuple[RuleFit, ...]:
+    """The rule fit, computed once per process.
+
+    Reads five seasons of pool picks and their lines out of Supabase, which is
+    far too slow to do per request and changes only when a season grades out.
+    A deploy clears it, and that is often enough.
+    """
+    return tuple(fit_guardrails(load_history()))
+
+
+def _guardrail(f) -> Guardrail:
+    return Guardrail(
+        id=f.rule.id,
+        label=f.rule.label,
+        blurb=f.rule.blurb,
+        pct=f.shrunk_pct,
+        base_pct=f.base,
+        games=round(f.games, 1),
+        picks=f.picks,
+        units=f.units,
+        bad_seasons=f.bad_seasons,
+        seasons=len(f.by_season),
+        advisory=f.rule.advisory,
+        reason=f.reason,
+    )
+
+
+@app.get("/api/guardrails", response_model=GuardrailsResponse)
+def get_guardrails(season: int | None = None, week: int | None = None):
+    """The fitted vetoes, and which sides of this week's games trip them.
+
+    Rules are fitted from the pick record on every call path through
+    `_fitted_guardrails`, which caches: the fit reads six seasons out of
+    Supabase and only changes when a season grades out.
+    """
+    season = season or current_season()
+    fits = _fitted_guardrails()
+    rules = [f for f in fits if f.qualifies]
+
+    flags: list[SideFlag] = []
+    if week is not None:
+        for game in get_lines(season, week):
+            for team in (game.away_team, game.home_team):
+                side = candidate_side(game, team)
+                tripped = [f.rule.id for f in rules if f.rule.matches(side)]
+                if tripped:
+                    flags.append(
+                        SideFlag(game_id=game.game_id, team=team, rule_ids=tripped)
+                    )
+
+    return GuardrailsResponse(
+        season=season,
+        week=week,
+        rules=[_guardrail(f) for f in rules],
+        rejected=[_guardrail(f) for f in fits if not f.qualifies],
+        flags=flags,
+        fitted_on=list(DEFAULT_SEASONS),
+    )
+
+
 @app.get("/api/picks", response_model=list[PickRecord])
 def get_picks(season: int, week: int, picker: str | None = None):
     db = PicksDatabase()
@@ -128,6 +230,9 @@ def get_picks(season: int, week: int, picker: str | None = None):
             team_picked=p["team_picked"],
             pick_type=p.get("pick_type", "regular"),
             spread=p.get("spread"),
+            # stored since #70 and never returned, so a saved reason vanished on
+            # reload and the board asked for it again (#58)
+            note=p.get("note"),
             picker=p["picker"],
             season=p["season"],
             week=p["week"],
@@ -136,10 +241,41 @@ def get_picks(season: int, week: int, picker: str | None = None):
     ]
 
 
-@app.post("/api/picks", response_model=SavePicksResponse)
-def save_picks(req: SavePicksRequest):
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(req: LoginRequest):
+    """Swap the room's passphrase for a token naming the picker you chose.
+
+    The name is self-asserted, since everyone in the pool is trusted. The token
+    is still the only thing the write endpoints read it from, so a session
+    cannot save under a different name than it signed in with.
+    """
     if req.picker not in PICKERS:
-        raise HTTPException(400, f"Unknown picker: {req.picker}")
+        raise HTTPException(401, "Unknown picker")
+    return LoginResponse(
+        token=authenticate(req.picker, req.passphrase), picker=req.picker
+    )
+
+
+@app.get("/api/auth/me", response_model=LoginResponse)
+def whoami(picker: str = _PICKER):
+    """Whether a stored token is still good, and who it belongs to."""
+    return LoginResponse(token="", picker=picker)
+
+
+@app.post("/api/picks", response_model=SavePicksResponse)
+def save_picks(req: SavePicksRequest, picker: str = _PICKER):
+    """Save a picker's week.
+
+    `picker` comes from the signed token and the one in the body is ignored.
+    Until #60 this endpoint trusted the body, so anyone could submit as anyone,
+    which made the ledger worthless as a record of who said what.
+
+    TEAM is the one exception. It is the entry the room submits together off
+    the board, so any signed-in picker may write it, and nobody may write it
+    while signed out.
+    """
+    if req.picker == TEAM_PICKER:
+        picker = TEAM_PICKER
 
     best_bets = sum(1 for p in req.picks if p.pick_type == "best_bet")
     if best_bets > 1:
@@ -170,10 +306,46 @@ def save_picks(req: SavePicksRequest):
 
     db = PicksDatabase()
     try:
-        saved = db.save_picks(req.season, req.week, picks_dict, req.picker)
+        saved = db.save_picks(req.season, req.week, picks_dict, picker)
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
+
+
+@app.get("/api/ledger", response_model=LedgerResponse)
+def get_ledger(season: int | None = None):
+    """TEAM against the entries it could have submitted instead.
+
+    Two independent sources say the weekly call costs about 1.5 points of hit
+    rate against its own members (notes/pick-behaviour.md). This is that
+    comparison run live, in pool points, so a losing process shows up in week 8
+    rather than in April.
+    """
+    season = season or current_season()
+    picks = PicksDatabase().get_season_picks(season)
+    picks = [p for p in picks if p["picker"] != TEST_PICKER]
+    for p in picks:
+        p["game_id"] = normalize_game_id(p["game_id"])
+
+    def _normalized(rows: list[dict]) -> list[dict]:
+        return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]
+
+    lines = resolve_lines(
+        _normalized(PoolSpreadsDatabase().get_pool_spreads(season)),
+        _normalized(MarketLinesDatabase().get_market_lines(season)),
+    )
+    results = {
+        normalize_game_id(r["game_id"]): r["result"]
+        for r in GameResultsDatabase().get_results(season)
+        if r.get("result") is not None
+    }
+
+    weeks = ledger.weekly(picks, results, lines)
+    return LedgerResponse(
+        season=season,
+        weeks=[LedgerWeek(**w) for w in weeks],
+        standings=[LedgerEntry(**e) for e in ledger.standings(weeks)],
+    )
 
 
 @app.get("/api/standings", response_model=StandingsResponse)
@@ -194,8 +366,15 @@ def get_standings(season: int):
         for p in PicksDatabase().get_season_picks(season)
         if p["picker"] != TEST_PICKER
     ]
+    # An empty season is the normal state of week 1, not an error. Returning
+    # 404 here put "Failed to load" on the Standings page on opening day.
     if not picks:
-        raise HTTPException(404, f"No picks for season {season}")
+        return StandingsResponse(
+            season=season,
+            break_even_pct=BREAK_EVEN,
+            graded_through_week=None,
+            standings=[],
+        )
     for p in picks:
         p["game_id"] = normalize_game_id(p["game_id"])
 
@@ -224,7 +403,8 @@ def get_standings(season: int):
 
 
 @app.put("/api/pool-spreads", response_model=PoolSpreadUpdateResponse)
-def update_pool_spread(req: PoolSpreadUpdate):
+def update_pool_spread(req: PoolSpreadUpdate, picker: str = _PICKER):
+    """Enter a pool line. Signed in only: every ATS pick grades against these."""
     db = PoolSpreadsDatabase()
     success = db.update_pool_spread(
         req.season, req.week, normalize_game_id(req.game_id), req.spread
@@ -295,8 +475,18 @@ def get_analytics(season: int):
         # TEAM is the room's own average; counting it double-counts everyone
         if p["picker"] not in (TEST_PICKER, "TEAM")
     ]
+    # Same as Standings: nothing picked yet is a state, not a failure.
     if not picks:
-        raise HTTPException(404, f"No picks for season {season}")
+        return AnalyticsResponse(
+            season=season,
+            picks=0,
+            games=0,
+            votes_per_game=0.0,
+            base_pct=BREAK_EVEN,
+            break_even_pct=BREAK_EVEN,
+            cuts=[],
+            teams=[],
+        )
 
     def _normalized(rows: list[dict]) -> list[dict]:
         return [{**r, "game_id": normalize_game_id(r["game_id"])} for r in rows]

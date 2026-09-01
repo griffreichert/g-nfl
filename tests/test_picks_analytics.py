@@ -59,6 +59,66 @@ def test_a_split_game_contributes_its_own_split():
     assert math.isclose(cell.raw_pct, 2 / 3)
 
 
+def test_a_venue_cut_no_longer_sums_to_one_game_per_side():
+    """The room takes both sides of 54% of the games it picks. Counting each
+    side as a whole game made home and road exact complements, so every band
+    summed to 100% and the table reported which team covered.
+    """
+    picks = [
+        _pick("a", GID, "BBB", True),
+        _pick("b", GID, "BBB", True),
+        _pick("c", GID, "BBB", True),
+        _pick("d", GID, "AAA", False),
+    ]
+    rows = graded_rows(picks, RESULTS, LINES)
+    by_venue = cells(rows, lambda r: r["picked_home"])
+    assert math.isclose(by_venue[True].games, 0.75)
+    assert math.isclose(by_venue[False].games, 0.25)
+    # one game in, one game out, however the room split it
+    assert math.isclose(sum(c.games for c in by_venue.values()), 1.0)
+
+
+def test_an_evenly_split_game_cancels_itself():
+    picks = [
+        _pick("a", GID, "BBB", True),
+        _pick("b", GID, "AAA", False),
+    ]
+    rows = graded_rows(picks, RESULTS, LINES)
+    by_venue = cells(rows, lambda r: r["picked_home"])
+    assert math.isclose(by_venue[True].wins, 0.5)
+    assert math.isclose(by_venue[False].wins, 0.0)
+    # the room had no collective opinion, so the game contributes half a win
+    assert math.isclose(sum(c.wins for c in by_venue.values()), 0.5)
+
+
+def test_gap_columns_say_which_side_the_pool_prices_better():
+    # home BBB laying 3 in the pool, 4 on the market. Taking BBB in the pool
+    # means laying a point less, so the pool prices our side better.
+    rows = graded_rows(
+        [_pick("a", GID, "BBB", True), _pick("b", GID, "AAA", False)],
+        RESULTS,
+        LINES,
+        pool_lines={GID: 3.0},
+        market_lines={GID: 4.0},
+    )
+    home, away = (
+        (r for r in rows if r["picked_home"]),
+        (r for r in rows if not r["picked_home"]),
+    )
+    home_row, away_row = next(home), next(away)
+    assert home_row["picked_pool"] == -3.0
+    assert math.isclose(home_row["gap"], 1.0)
+    assert home_row["gap_side"] == "better"
+    assert math.isclose(away_row["gap"], -1.0)
+    assert away_row["gap_side"] == "worse"
+
+
+def test_gap_is_absent_without_both_line_sources():
+    (row,) = graded_rows([_pick("a", GID, "BBB", True)], RESULTS, LINES)
+    assert row["gap"] is None
+    assert row["gap_side"] is None
+
+
 def test_no_excess_spread_means_no_signal_and_full_shrinkage():
     # two cells sitting exactly on the base rate: nothing to learn
     flat = [Cell("a"), Cell("b")]

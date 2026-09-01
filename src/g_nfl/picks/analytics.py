@@ -75,8 +75,20 @@ def graded_rows(
     picks: list[dict[str, Any]],
     results: dict[str, float],
     lines: dict[str, float],
+    pool_lines: dict[str, float] | None = None,
+    market_lines: dict[str, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Every ATS pick with its outcome, line and derived attributes."""
+    """Every ATS pick with its outcome, line and derived attributes.
+
+    `pool_lines` and `market_lines` are optional and unlock the gap columns.
+    Whether the pool prices our side better or worse than the market is the
+    largest single leak in the record: 28% of picks take the side the pool
+    prices worse, and those hit 45.2% (n=1098, z=-3.20). See
+    notes/pick-behaviour.md.
+    """
+    pool_lines = pool_lines or {}
+    market_lines = market_lines or {}
+
     rows = []
     for p in picks:
         if p.get("pick_type", "regular") not in ATS_PICK_TYPES:
@@ -89,9 +101,19 @@ def graded_rows(
         home, away = parts[3], parts[2]
         line = lines.get(gid)
         picked_home = p["team_picked"] == home
+
+        picked_pool = from_picked(pool_lines.get(gid), picked_home)
+        picked_market = from_picked(market_lines.get(gid), picked_home)
+        gap = (
+            None
+            if picked_pool is None or picked_market is None
+            else picked_pool - picked_market
+        )
+
         rows.append(
             {
                 "picker": p["picker"],
+                "season": p.get("season"),
                 "week": p["week"],
                 "game_id": gid,
                 "slot": p.get("pick_type", "regular"),
@@ -99,24 +121,65 @@ def graded_rows(
                 "opp": away if picked_home else home,
                 "picked_home": picked_home,
                 "line": line,
-                # from the picked team's view: negative = we laid points
-                "picked_spread": (
-                    None if line is None else (-line if picked_home else line)
-                ),
+                "picked_spread": from_picked(line, picked_home),
+                "picked_pool": picked_pool,
+                "picked_market": picked_market,
+                # points the pool hands our side over the market. Positive is
+                # free value, negative means we picked into the gap.
+                "gap": gap,
+                "gap_side": None if gap is None else gap_side(gap),
                 "won": outcome == "win",
             }
         )
     return rows
 
 
+def from_picked(home_spread: float | None, picked_home: bool) -> float | None:
+    """A home-perspective spread seen from the picked team's side.
+
+    Positive means the side is getting points, negative means laying them.
+    """
+    if home_spread is None:
+        return None
+    return -home_spread if picked_home else home_spread
+
+
+def gap_side(gap: float, tol: float = 0.01) -> str:
+    """'better', 'same' or 'worse', from the picked side's point of view."""
+    if gap > tol:
+        return "better"
+    if gap < -tol:
+        return "worse"
+    return "same"
+
+
 def cells(
     rows: Iterable[dict[str, Any]], key: Callable[[dict], Any]
 ) -> dict[Any, Cell]:
-    """Group rows into cells, collapsing multiple votes on a game into one.
+    """Group rows into cells, weighting each game by the room's lean on it.
 
-    A game the room split contributes its own split, so a 4-2 game is
-    0.667 of one observation rather than six.
+    A game contributes one observation in total, split across the cells its
+    votes fall in. So a game the room takes 4-2 gives 0.667 of an observation
+    to the majority side's cell and 0.333 to the other, and a 6-0 gives a whole
+    one to a single cell.
+
+    The weighting is what makes a venue cut mean anything. The room takes both
+    sides of 54% of the games it picks (82% in 2025), and counting each side as
+    a full game made the home and road rows exact complements: every band summed
+    to 100%, so the table reported which team covered instead of whether the
+    room was right. A 3-3 split now cancels itself, which is the honest reading
+    of a game the room had no collective opinion on.
+
+    See notes/pick-behaviour.md, "The board constants were measuring the wrong
+    thing".
     """
+    rows = list(rows)
+    votes_per_game: dict[str, int] = defaultdict(int)
+    for r in rows:
+        if key(r) is not None:
+            votes_per_game[r["game_id"]] += 1
+
+    # cell -> game -> [won flags from this cell's votes on that game]
     per_game: dict[Any, dict[str, list[bool]]] = defaultdict(lambda: defaultdict(list))
     out: dict[Any, Cell] = {}
     for r in rows:
@@ -127,10 +190,13 @@ def cells(
         cell = out.setdefault(k, Cell(k))
         cell.picks += 1
         cell.pick_wins += int(r["won"])
+
     for k, games in per_game.items():
         cell = out[k]
-        cell.games = float(len(games))
-        cell.wins = sum(sum(v) / len(v) for v in games.values())
+        for game_id, won in games.items():
+            share = votes_per_game[game_id]
+            cell.games += len(won) / share
+            cell.wins += sum(won) / share
     return out
 
 
@@ -247,5 +313,5 @@ def team_appetite(
                 "units": round(cell.units, 2) if cell else 0.0,
             }
         )
-    out.sort(key=lambda d: (d["appetite"] or 0), reverse=True)
+    out.sort(key=lambda d: d["appetite"] or 0, reverse=True)
     return out

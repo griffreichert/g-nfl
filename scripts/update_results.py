@@ -14,7 +14,7 @@ import sys
 
 import nflreadpy as nfl
 
-from g_nfl.utils.config import CUR_SEASON
+from g_nfl.picks.calendar import current_season
 from g_nfl.utils.database import GameResultsDatabase
 from g_nfl.utils.web_app import normalize_game_id
 
@@ -51,7 +51,7 @@ def main():
         "--season",
         type=int,
         nargs="+",
-        default=[CUR_SEASON],
+        default=[current_season()],
         help="NFL season year(s)",
     )
     args = parser.parse_args()

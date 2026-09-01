@@ -17,6 +17,10 @@ class AppConfig(BaseModel):
 class WeeksResponse(BaseModel):
     weeks: list[int]
     max_week: int | None
+    #: The week the pool is on: the first with a game still to be played (#61).
+    #: What a page should open on. `max_week` is the furthest week we hold lines
+    #: for, which runs ahead as soon as anyone snapshots a future week.
+    current_week: int | None
 
 
 class GameLine(BaseModel):
@@ -209,3 +213,77 @@ class GameDetail(BaseModel):
     graded_line_source: Literal["pool", "market"] | None = None
     team_weeks: list[TeamWeekStat] = []
     picks: list[GamePick] = []
+
+
+class Guardrail(BaseModel):
+    """One fitted veto rule, as the board renders it (#58)."""
+
+    id: str
+    label: str
+    blurb: str
+    #: shrunk hit rate for sides this rule matches
+    pct: float
+    #: the field's own rate over the same sample, for comparison
+    base_pct: float
+    games: float
+    picks: int
+    units: float
+    bad_seasons: int
+    seasons: int
+    #: reads data unavailable at pick time, so it advises and never vetoes
+    advisory: bool
+    reason: str
+
+
+class SideFlag(BaseModel):
+    """A side of a game that trips at least one guardrail."""
+
+    game_id: str
+    team: str
+    rule_ids: list[str]
+
+
+class GuardrailsResponse(BaseModel):
+    season: int
+    week: int | None
+    #: rules that cleared the bar, in the order the board shows them
+    rules: list[Guardrail]
+    #: rules that were fitted and rejected, kept so the room can see why
+    rejected: list[Guardrail]
+    flags: list[SideFlag]
+    fitted_on: list[int]
+
+
+class LoginRequest(BaseModel):
+    picker: str
+    passphrase: str
+
+
+class LoginResponse(BaseModel):
+    #: empty on /api/auth/me, which only confirms an existing token
+    token: str
+    picker: str
+
+
+class LedgerWeek(BaseModel):
+    week: int
+    entry: str
+    points: float
+    available: float
+    running: float
+    #: which member "Best member" was following that week, else None
+    leader: str | None = None
+
+
+class LedgerEntry(BaseModel):
+    entry: str
+    points: float
+    available: float
+    weeks: int
+    share: float | None
+
+
+class LedgerResponse(BaseModel):
+    season: int
+    weeks: list[LedgerWeek]
+    standings: list[LedgerEntry]

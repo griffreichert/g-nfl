@@ -1,7 +1,8 @@
 import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
+import { useAuth } from './hooks'
 
 // Split per route so a page's charts and tables are fetched when someone opens
 // it, not on first paint. Recharts and TanStack Table are most of the bundle.
@@ -11,6 +12,7 @@ const GameDetail = lazy(() => import('./pages/GameDetail'))
 const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
 const Standings = lazy(() => import('./pages/Standings'))
 const Analytics = lazy(() => import('./pages/Analytics'))
+const Ledger = lazy(() => import('./pages/Ledger'))
 const Help = lazy(() => import('./pages/Help'))
 
 const tabs = [
@@ -18,10 +20,13 @@ const tabs = [
   { to: '/view', label: 'Team', icon: Users },
   { to: '/standings', label: 'Standings', icon: LineChart },
   { to: '/spreads', label: 'Lines', icon: Ruler },
+  { to: '/ledger', label: 'Ledger', icon: Scale },
   { to: '/analytics', label: 'Analytics', icon: ChartColumn },
 ]
 
 export default function App() {
+  const { picker, logout } = useAuth()
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b border-border bg-card/85 backdrop-blur">
@@ -62,6 +67,15 @@ export default function App() {
             >
               <CircleQuestionMark className="size-5" />
             </NavLink>
+            {picker && (
+              <button
+                onClick={logout}
+                title={`Signed in as ${picker}`}
+                className="flex h-9 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                {picker} · out
+              </button>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -77,6 +91,7 @@ export default function App() {
             <Route path="/game/:gameId" element={<GameDetail />} />
             <Route path="/standings" element={<Standings />} />
             <Route path="/spreads" element={<ManageSpreads />} />
+            <Route path="/ledger" element={<Ledger />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/help" element={<Help />} />
           </Routes>

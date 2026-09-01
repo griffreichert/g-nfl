@@ -2,19 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { WORST_CELL, isWorstCell } from '@/lib/consensus'
-import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
+import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import SignIn from '@/components/SignIn'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
 import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 interface GamePick {
   team_picked: string
@@ -32,9 +25,11 @@ const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
 
 export default function MakePicks() {
-  const { config, error: configError } = useConfig()
+  const { picker: signedIn, checking, login } = useAuth()
+  const picker = signedIn ?? ''
+  const { config, error: configError } = useConfig(signedIn ?? undefined)
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
-  const [picker, setPicker] = useState<string>('')
+  const { flagsFor, ruleById } = useGuardrails(season, week)
 
   // Games are stamped with the week they were fetched for, so "still loading"
   // is derived from a stale stamp rather than flagged from inside the effect.
@@ -169,13 +164,26 @@ export default function MakePicks() {
     return lines.length ? `${picker}'s Week ${week} Picks\n\n${lines.join('\n')}` : ''
   }, [picks, survivor, underdog, mnf, games, picker, week])
 
+  // What the picker saw, from the side they took. Grading joins the line
+  // tables and ignores this column, so it records rather than decides; it used
+  // to store the market number even though the pool grades against its own.
+  const spreadSeen = (game: GameLine | undefined, team: string) => {
+    if (!game) return null
+    const home = effectiveSpread(game)
+    if (home === null) return null
+    return team === game.home_team ? home : -home
+  }
+
   const save = async () => {
     if (!picker || season === null || week === null) return
     const payload: Pick[] = Object.entries(picks).map(([game_id, p]) => ({
       game_id,
       team_picked: p.team_picked,
       pick_type: p.pick_type,
-      spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+      spread: spreadSeen(
+        games.find((g) => g.game_id === game_id),
+        p.team_picked
+      ),
       note: notes[noteKey(game_id, p.pick_type)]?.trim() || null,
     }))
     const special = (team: string | null, type: Pick['pick_type']) => {
@@ -186,7 +194,7 @@ export default function MakePicks() {
           game_id: g.game_id,
           team_picked: team,
           pick_type: type,
-          spread: g.market_spread,
+          spread: spreadSeen(g, team),
           note: notes[noteKey(g.game_id, type)]?.trim() || null,
         })
     }
@@ -198,7 +206,7 @@ export default function MakePicks() {
       return
     }
     try {
-      const res = await api.savePicks(season, week, picker, payload)
+      const res = await api.savePicks(season, week, payload)
       await navigator.clipboard.writeText(summary).catch(() => {})
       setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks — summary copied to clipboard` })
     } catch (e) {
@@ -215,35 +223,51 @@ export default function MakePicks() {
     setStatus(null)
   }
 
+  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
-  if (!config || season === null || week === null) return <Loading />
+  if (!config) return <Loading />
+  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
+  if (season === null || week === null) return <Loading />
 
   const mnfPickedHere = (g: GameLine) =>
     mnf !== null && (mnf === g.away_team || mnf === g.home_team)
 
   /**
    * The board has a rating to lean on; this page has nothing, and this page is
-   * where most picks get made. One flag, on the one cell that cost us real
-   * money in 2025, shown only once the pick is on the board so it reads as a
-   * second thought rather than a lecture.
+   * where most picks get made. Guardrails are served fitted from the record
+   * (GET /api/guardrails), so this page holds no rates of its own. Shown only
+   * once the pick is on the board, so it reads as a second thought rather than
+   * a lecture.
    */
-  const worstCellWarning = (g: GameLine) => {
+  const guardrailWarning = (g: GameLine) => {
     const picked = g.is_mnf ? mnf : picks[g.game_id]?.team_picked
-    if (picked !== g.home_team) return null
-    if (!isWorstCell(effectiveSpread(g), true)) return null
+    if (!picked) return null
+    const tripped = flagsFor(g.game_id, picked)
+    if (!tripped.length) return null
     return (
-      <p className="col-span-6 pt-1 text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">Home {WORST_CELL.band}.</span>{' '}
-        Our worst cell — {WORST_CELL.pct}% over {WORST_CELL.games} games, against a
-        league that covered {WORST_CELL.league}% here.
-      </p>
+      <div className="col-span-6 space-y-1 pt-1">
+        {tripped.map((id) => {
+          const rule = ruleById(id)
+          if (!rule) return null
+          return (
+            <p key={id} className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                {rule.advisory ? 'Worth knowing' : 'Guardrail'}: {rule.label}.
+              </span>{' '}
+              {(rule.pct * 100).toFixed(1)}% over {rule.games.toFixed(0)} games,
+              against {(rule.base_pct * 100).toFixed(1)}% for everything else we
+              pick.
+            </p>
+          )
+        })}
+      </div>
     )
   }
 
   const regularCount = Object.keys(picks).length
   const maxReached = regularCount >= MAX_REGULAR_PICKS
 
-  const teamButton = (g: GameLine, team: string) => {
+  const teamButton = (g: GameLine, team: string, side: 'away' | 'home') => {
     const isMnfGame = g.is_mnf
     const pick = picks[g.game_id]
     const selected = isMnfGame ? mnf === team : pick?.team_picked === team
@@ -263,7 +287,12 @@ export default function MakePicks() {
         size="sm"
         onClick={() => clickTeam(g, team)}
         disabled={disabled}
-        className={`w-full font-medium ${tone}`}
+        // Capped and pushed toward the middle, so the two buttons stay the same
+        // width on every row and meet the line column instead of drifting with
+        // the width of the browser.
+        className={`w-full max-w-56 font-medium ${
+          side === 'away' ? 'justify-self-end' : 'justify-self-start'
+        } ${tone}`}
       >
         {isMnfGame && selected && <Moon className="size-3.5" />}
         {isBest && <Star className="size-3.5 fill-current" />}
@@ -335,18 +364,7 @@ export default function MakePicks() {
         weeks={weeks}
         onWeek={setWeek}
       >
-        <Select value={picker || undefined} onValueChange={setPicker}>
-          <SelectTrigger size="sm" className="w-full sm:w-40">
-            <SelectValue placeholder="Your name" />
-          </SelectTrigger>
-          <SelectContent>
-            {config.pickers.map((p) => (
-              <SelectItem key={p} value={p}>
-                {p}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <span className="text-sm font-medium text-muted-foreground">{picker}</span>
       </PageHeader>
 
       {status && (
@@ -356,12 +374,6 @@ export default function MakePicks() {
           }`}
         >
           {status.msg}
-        </p>
-      )}
-
-      {!picker && (
-        <p className="rounded-md border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
-          Pick your name above to start.
         </p>
       )}
 
@@ -383,10 +395,13 @@ export default function MakePicks() {
             {games.map((g) => (
               <div
                 key={g.game_id}
-                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+                // The line column is a fixed width per breakpoint, not `auto`.
+                // Sized on its widest content ("+10.5 / 46.5"), so a long line
+                // no longer shoves the buttons sideways on that one row.
+                className="grid grid-cols-[1.5rem_1fr_3.5rem_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:grid-cols-[1.5rem_1fr_6.5rem_1fr_1.5rem_1rem] sm:gap-2 sm:px-3 md:grid-cols-[1.5rem_1fr_11rem_1fr_1.5rem_1rem]"
               >
                 <img src={teamLogo(g.away_team)} className="size-6" alt="" />
-                {teamButton(g, g.away_team)}
+                {teamButton(g, g.away_team, 'away')}
                 <span className="tabular whitespace-nowrap px-1 text-center text-xs sm:text-sm">
                   <span className="font-semibold">{fmtSpread(g.pool_spread)}</span>
                   <span className="hidden text-muted-foreground sm:inline">
@@ -398,7 +413,7 @@ export default function MakePicks() {
                     / {g.market_total ?? '—'}
                   </span>
                 </span>
-                {teamButton(g, g.home_team)}
+                {teamButton(g, g.home_team, 'home')}
                 <img src={teamLogo(g.home_team)} className="size-6" alt="" />
                 {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
                 <Link
@@ -409,7 +424,7 @@ export default function MakePicks() {
                 >
                   <ChevronRight className="size-4" />
                 </Link>
-                {worstCellWarning(g)}
+                {guardrailWarning(g)}
                 {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
                   <div className="col-span-6 pt-1">
                     {noteInput(

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Check, ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
+import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import SignIn from '@/components/SignIn'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
-  BANDS,
   bestSide,
   buildAttachment,
   buildConsensus,
@@ -24,11 +24,11 @@ import {
   type ConsensusRow,
   type Overrides,
   type Score,
+  type SidePenalty,
   type Slate,
   type SlotType,
   type SidePick,
 } from '@/lib/consensus'
-import BandChart from '@/components/BandChart'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -179,6 +179,7 @@ function SideCell({
 function GameCard({
   row,
   attachment,
+  penalties,
   blocs,
   slate,
   full,
@@ -188,6 +189,7 @@ function GameCard({
 }: {
   row: ConsensusRow
   attachment: Map<string, number>
+  penalties: (gameId: string, team: string) => SidePenalty[]
   blocs: string[][]
   slate: Slate
   full: boolean
@@ -228,7 +230,7 @@ function GameCard({
             team={team}
             spread={spreadFor(row.game, team)}
             picks={team === row.side ? row.sidePicks : row.otherPicks}
-            score={scoreSide(row, team, attachment)}
+            score={scoreSide(row, team, attachment, penalties)}
             blocs={blocs}
             slot={chosen?.team === team ? chosen.type : null}
             disabled={locked}
@@ -445,8 +447,23 @@ function Slot({ label, have, need }: { label: string; have: number; need: number
 }
 
 export default function Field() {
-  const { config, error: configError } = useConfig()
+  // The board builds TEAM's entry, so TEAM's own spent teams are the ones that
+  // matter here.
+  const { picker: signedIn, checking, login } = useAuth()
+  const { config, error: configError } = useConfig('TEAM')
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
+
+  // The one measured term in every side's rating. Served fitted, so the board
+  // and the backtest cannot disagree about what a bad side is.
+  const penalties = useMemo(
+    () => (gameId: string, team: string) =>
+      flagsFor(gameId, team).flatMap((id) => {
+        const rule = ruleById(id)
+        return rule ? [{ label: rule.label, value: rule.pct * 100 - rule.base_pct * 100 }] : []
+      }),
+    [flagsFor, ruleById],
+  )
   const [picks, setPicks] = useState<PickRecord[]>([])
   const [games, setGames] = useState<GameLine[]>([])
   const [fetchedSeason, setSeasonPicks] = useState<{
@@ -506,7 +523,7 @@ export default function Field() {
   const rows = useMemo(() => {
     const built = buildConsensus(games, picks, blocs)
     const best = new Map(
-      built.map((r) => [r.game.game_id, bestSide(r, attachment).score.rating]),
+      built.map((r) => [r.game.game_id, bestSide(r, attachment, penalties).score.rating]),
     )
     return built.sort(byScore(best))
   }, [games, picks, blocs, attachment])
@@ -538,7 +555,7 @@ export default function Field() {
     let regulars = 0
     let bb = false
     for (const r of rows) {
-      const best = bestSide(r, attachment)
+      const best = bestSide(r, attachment, penalties)
       if (r.game.is_mnf) out[r.game.game_id] = { team: best.team, type: 'mnf' }
       else if (!bb) {
         out[r.game.game_id] = { team: best.team, type: 'best_bet' }
@@ -648,6 +665,23 @@ export default function Field() {
   const [noteEdits, setNoteEdits] = useState<Record<string, string>>({})
   const notes = { ...savedNotes, ...noteEdits }
 
+  // What the room saw when it picked, from the picked side. Grading joins the
+  // line tables and ignores this column, so it is a record rather than an
+  // input; it used to store the market number even though the pool grades
+  // against its own.
+  const spreadSeen = (gameId: string, team: string) => {
+    const game = games.find((g) => g.game_id === gameId)
+    return game ? spreadFor(game, team) : null
+  }
+
+  // Overriding a guardrail is allowed and has to be explained. The rules find
+  // bad picks reliably and cannot rank good ones, so the room keeps the last
+  // word; what it does not keep is the ability to do it silently.
+  const unexplained = Object.entries(slate)
+    .filter(([gameId, v]) => flagsFor(gameId, v.team).length)
+    .filter(([gameId, v]) => !notes[noteKeyFor(gameId, v.type)]?.trim())
+    .map(([gameId, v]) => `${v.team} (${flagsFor(gameId, v.team).length})`)
+
   const saveSlate = async () => {
     if (season === null || week === null) return
     setSaving(true)
@@ -656,7 +690,7 @@ export default function Field() {
         game_id,
         team_picked: v.team,
         pick_type: v.type,
-        spread: games.find((g) => g.game_id === game_id)?.market_spread ?? null,
+        spread: spreadSeen(game_id, v.team),
         note: notes[noteKeyFor(game_id, v.type)]?.trim() || null,
       }))
       for (const [pool, choice] of [
@@ -668,11 +702,11 @@ export default function Field() {
           game_id: choice.game_id,
           team_picked: choice.team,
           pick_type: pool,
-          spread: games.find((g) => g.game_id === choice.game_id)?.market_spread ?? null,
+          spread: spreadSeen(choice.game_id, choice.team),
           note: notes[noteKeyFor(choice.game_id, pool)]?.trim() || null,
         })
       }
-      const res = await api.savePicks(season, week, TEAM_PICKER, payload)
+      const res = await api.savePicks(season, week, payload, TEAM_PICKER)
       setSaved({ key: weekKey, msg: `Submitted ${res.saved} picks as TEAM` })
     } catch (e) {
       setSaved({ key: weekKey, msg: `Failed to save: ${e}` })
@@ -686,17 +720,23 @@ export default function Field() {
     (p) => isVoter(p) && !pickers.includes(p),
   )
 
-  const bandCounts = useMemo(() => {
+  const flaggedSides = useMemo(() => {
     const c: Record<string, number> = {}
     for (const r of rows) {
-      const n = r.sidePicks.length + r.otherPicks.length
-      if (r.band) c[r.band.label] = (c[r.band.label] ?? 0) + n
+      for (const team of [r.game.away_team, r.game.home_team]) {
+        for (const id of flagsFor(r.game.game_id, team)) c[id] = (c[id] ?? 0) + 1
+      }
     }
     return c
-  }, [rows])
+  }, [rows, flagsFor])
 
+  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
-  if (!config || season === null || week === null) return <Loading />
+  if (!config) return <Loading />
+  // The board writes TEAM's entry, so it needs a session even though the entry
+  // is not anyone's personal one.
+  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
+  if (season === null || week === null) return <Loading />
 
   return (
     <div className="flex flex-col gap-4">
@@ -734,10 +774,23 @@ export default function Field() {
                 <Slot label="Dog" have={underdog ? 1 : 0} need={1} />
                 <Slot label="Survivor" have={survivor ? 1 : 0} need={1} />
               </span>
-              <Button size="sm" className="ml-auto" onClick={saveSlate} disabled={saving}>
+              <Button
+                size="sm"
+                className="ml-auto"
+                onClick={saveSlate}
+                disabled={saving || unexplained.length > 0}
+              >
                 {saving ? 'Saving…' : 'Submit as TEAM'}
               </Button>
             </div>
+
+            {unexplained.length > 0 && (
+              <p className="rounded-md bg-loss/15 px-3 py-2 text-sm text-loss">
+                {unexplained.join(', ')} {unexplained.length === 1 ? 'trips' : 'trip'} a
+                guardrail. Say why in the note on that game before submitting. The rules
+                do not get the last word, but an override should be on the record.
+              </p>
+            )}
 
             {saved?.key === weekKey && <p className="text-sm text-win">{saved.msg}</p>}
 
@@ -769,6 +822,7 @@ export default function Field() {
                   key={r.game.game_id}
                   row={r}
                   attachment={attachment}
+                  penalties={penalties}
                   blocs={blocs}
                   slate={slate}
                   full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
@@ -798,17 +852,39 @@ export default function Field() {
             />
 
             <div className="rounded-lg border border-border bg-card p-3">
-              <h2 className="text-sm font-bold">Where we win and lose</h2>
-              <p className="mb-1 text-xs text-muted-foreground">
-                2025, 225 graded games. Close lines 52%, 3-7 45%, 7+ 44% — and the worst cell in
-                the record is a home team laying or getting 3-7, at 37%. The instruction is avoid
-                big numbers, not close games are good: 52% is still under break-even.
+              <h2 className="text-sm font-bold">Where we lose</h2>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Fitted from{' '}
+                {guardrails?.fitted_on.length
+                  ? `${guardrails.fitted_on.length} seasons of our own picks`
+                  : 'the pick record'}
+                , refit on every deploy. A rule only appears here once it is below the
+                field's own rate and below it in most seasons.
               </p>
-              <BandChart counts={bandCounts} />
-              <p className="text-xs text-muted-foreground">
-                This week we have{' '}
-                {BANDS.map((b) => `${bandCounts[b.label] ?? 0} in ${b.label}`).join(', ')}.
-              </p>
+              <ul className="flex flex-col gap-2">
+                {(guardrails?.rules ?? []).map((r) => (
+                  <li key={r.id} className="text-xs">
+                    <span className="font-semibold text-foreground">{r.label}</span>{' '}
+                    <span className="text-loss">{(r.pct * 100).toFixed(1)}%</span>{' '}
+                    <span className="text-muted-foreground">
+                      against {(r.base_pct * 100).toFixed(1)}%, over {r.games.toFixed(0)} games
+                      {r.advisory ? ', advisory only' : ''}. {flaggedSides[r.id] ?? 0} sides
+                      this week.
+                    </span>
+                  </li>
+                ))}
+                {!guardrails?.rules.length && (
+                  <li className="text-xs text-muted-foreground">
+                    No rule currently clears the bar.
+                  </li>
+                )}
+              </ul>
+              {!!guardrails?.rejected.length && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Fitted and rejected:{' '}
+                  {guardrails.rejected.map((r) => `${r.label} (${r.reason})`).join('; ')}.
+                </p>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground">
