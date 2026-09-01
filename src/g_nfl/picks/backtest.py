@@ -185,6 +185,15 @@ def run(
     return out
 
 
+def _share(points: float, available: float) -> str:
+    """`" (44.8%)"`, or nothing at all when no points were on offer.
+
+    Available is zero until the entry has submitted something, which is the
+    state of every week 1.
+    """
+    return f" ({points / available:.1%})" if available else ""
+
+
 def report(rows: list[dict[str, Any]], entry_pickers: set[str]) -> str:
     """Both schemes, both policies, as a markdown table."""
     from g_nfl.picks.guardrails import fit as fit_rules
@@ -213,8 +222,8 @@ def report(rows: list[dict[str, Any]], entry_pickers: set[str]) -> str:
             av = sum(r.available for r in res)
             v = sum(r.vetoed for r in res)
             lines.append(
-                f"| {scheme} | {policy} | {a:.0f} ({a / av:.1%}) | "
-                f"{g:.0f} ({g / av:.1%}) | {av:.0f} | {v} | {g - a:+.0f} |"
+                f"| {scheme} | {policy} | {a:.0f}{_share(a, av)} | "
+                f"{g:.0f}{_share(g, av)} | {av:.0f} | {v} | {g - a:+.0f} |"
             )
 
     lines += [

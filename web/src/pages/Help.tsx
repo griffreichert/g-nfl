@@ -39,6 +39,60 @@ export default function Help() {
           </Link>{' '}
           page is where the meeting builds it.
         </p>
+        <p>
+          Sign in with your name and a PIN. Your picks are saved against whoever is signed
+          in, so the record of who said what is worth keeping.
+        </p>
+      </Section>
+
+      <Section title="What the site is for">
+        <p>
+          It is a veto machine and a ledger. Over six seasons nobody in this pool has shown
+          skill: the pool as a whole went 50.12% and its best entry sits exactly where chance
+          puts the best of sixteen. Two entries are past the noise threshold on the losing
+          side and one of them is us.
+        </p>
+        <p>
+          So the site does not try to find winners. It flags the sides we lose on, and it
+          keeps score against the entries we could have submitted instead. Getting from{' '}
+          {TEAM_2025.rate}% to the pool's own 50% is worth more than any edge anyone here has
+          demonstrated, and it needs no skill at all.
+        </p>
+        <p>
+          Run <code>make case</code> for the full argument with every number in it, generated
+          from the same code that runs this site.
+        </p>
+      </Section>
+
+      <Section title="The guardrails">
+        <p>
+          A red flag on a side means our own record says we lose on that kind of pick, over
+          five seasons and in most of them individually. The rules and their rates are fitted
+          from the record and served to this page, so nothing here can quietly go stale.
+        </p>
+        <p>
+          They only ever say <i>not this side</i>. Out of sample the rating reliably finds bad
+          picks and cannot rank good ones, so it never tells you what to take. You can
+          override any of them on the TEAM entry; you just have to say why in the note, so the
+          override is on the record.
+        </p>
+      </Section>
+
+      <Section title="The ledger">
+        <p>
+          The{' '}
+          <Link to="/ledger" className="text-primary underline-offset-4 hover:underline">
+            Ledger
+          </Link>{' '}
+          scores TEAM every week against the entries it could have been: the majority of us,
+          whoever was leading going into that week, the mechanical{' '}
+          <b className="text-foreground">No Homers</b> entry, and the two models.
+        </p>
+        <p>
+          This exists because two separate sources say the meeting costs us about 1.5 points
+          of hit rate against our own members. If TEAM keeps losing to the majority, that is
+          the finding, and we change how we do this in October rather than in April.
+        </p>
       </Section>
 
       <Section title="What one entry contains">

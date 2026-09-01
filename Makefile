@@ -1,4 +1,4 @@
-.PHONY: no-homers backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: case no-homers backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -31,6 +31,7 @@ help:
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
 	@echo "  backtest-guardrails Replay the entry with the No Homers guardrails"
 	@echo "  no-homers     Submit the mechanical entry (ARGS=--dry-run)"
+	@echo "  case          Build the case for the room (ARGS=\"--output case.md\")"
 	@echo "  market-ratings Market-derived power ratings (ARGS=\"--tune\" or \"--seasons 2023 2024\")"
 	@echo "  mlflow-ui     Open MLflow UI at http://localhost:5000"
 	@echo ""
@@ -126,6 +127,10 @@ train:
 backtest:
 	@echo "📈 Running walk-forward backtest..."
 	uv run python -m g_nfl.ml.evaluate $(ARGS)
+
+case:
+	@echo "📣 Building the case for the room..."
+	uv run python -m g_nfl.picks.report $(ARGS)
 
 no-homers:
 	@echo "🤖 Submitting the mechanical entry..."
