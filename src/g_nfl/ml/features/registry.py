@@ -46,14 +46,26 @@ def _is_preseason(col: str) -> bool:
     ).startswith(PRESEASON_PREFIX)
 
 
+def _is_opponent_adjusted(col: str) -> bool:
+    """Opponent-adjustment output (`opponent.add_opponent_ratings`)."""
+    return "_adj_" in col or col == "adj_rating_diff"
+
+
 def _all_team_stat_cols(matrix: pl.DataFrame) -> list[str]:
     """Every in-season team column. Excludes the preseason block so that
     building the matrix with ``preseason=True`` does not silently change
-    what ``v1_team`` means -- ``v3_early`` is the set that wants it."""
+    what ``v1_team`` means -- ``v3_early`` is the set that wants it.
+    Excludes the opponent-adjustment block for the same reason: building
+    with ``opp_adjust=True`` must not change what the other sets mean, and
+    ``v5_early_adj`` takes only the one netted column it measured as
+    better than the rest."""
     return [
         c
         for c in matrix.columns
-        if c not in META_COLS and c not in ADJUSTMENT_COLS and not _is_preseason(c)
+        if c not in META_COLS
+        and c not in ADJUSTMENT_COLS
+        and not _is_preseason(c)
+        and not _is_opponent_adjusted(c)
     ]
 
 
@@ -180,8 +192,48 @@ V4_EARLY_LEAN = FeatureSet(
     selector=_lean_early_cols,
 )
 
+# Opponent adjustment, as ONE netted column. `adj_rating_diff` is
+# (home_off + away_def) - (away_off + home_def), which is the quantity that
+# maps to a point spread, and handing the tree the pieces instead is worse:
+# paired on 2687 games it beats the champion by 0.087 MAE against the close
+# (t=+4.48), while all 13 ratings manage +0.071 and splitting into off/def
+# diffs *costs* 0.041 (t=-2.56, weeks 2-4 worst at -0.116). Strength of
+# schedule faced is redundant on top of it (-0.019) -- the ridge already
+# conditions each rating on the opponents played.
+#
+# The off/def split is still worth knowing even though it does not ship:
+# `epa_off_diff` carries 9.59% of gain against `epa_def_diff`'s 4.06%, so
+# offence outweighs defence 2.4:1 in rating a team.
+#
+# Pays late, not early: weeks 9+ +0.112 (t=+3.98), week 1 +0.018 (t=0.24).
+# In week 1 the ridge trains on the prior season alone, so it restates what
+# the preseason block already carries. Buys nothing against the actual
+# result (-0.001), same wall as everything else.
+# See `notes/modelling/opponent-adjustment.md`.
+
+
+def _early_adj_cols(matrix: pl.DataFrame) -> list[str]:
+    """`v4_early_lean` plus the single netted opponent-adjustment column."""
+    if "adj_rating_diff" not in matrix.columns:
+        raise ValueError(
+            "no adj_rating_diff in matrix; build it with opp_adjust=True "
+            "(build_features/backtest) before using this feature set"
+        )
+    return _lean_early_cols(matrix) + ["adj_rating_diff"]
+
+
+V5_EARLY_ADJ = FeatureSet(
+    name="v5_early_adj",
+    description=(
+        "v4_early_lean plus adj_rating_diff, the netted opponent-adjusted "
+        "off/def rating difference from the per-week ridge."
+    ),
+    selector=_early_adj_cols,
+)
+
 FEATURE_SETS: dict[str, FeatureSet] = {
-    fs.name: fs for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN, V3_EARLY, V4_EARLY_LEAN]
+    fs.name: fs
+    for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN, V3_EARLY, V4_EARLY_LEAN, V5_EARLY_ADJ]
 }
 
 

@@ -286,3 +286,36 @@ def test_v4_lean_is_v3_without_the_rolling_window(schedule, pbp):
     assert set(v4) == set(v3) - {"home_epa_mean_last_4w"}
     for keep in ("home_epa_mean_season", "home_epa_mean_carry", "pre_diff_mkt_rating"):
         assert keep in v4
+
+
+def test_v5_adds_the_netted_adjustment_and_needs_it(schedule, pbp):
+    """One netted column beats handing the tree the pieces, so `v5_early_adj`
+    takes `adj_rating_diff` alone (see the registry comment)."""
+    pre = preseason_features(pbp, schedule)
+    base = schedule.filter(pl.col("season") == 2024).select(
+        "game_id",
+        "season",
+        "week",
+        "home_team",
+        "away_team",
+        "result",
+        "spread_line",
+        pl.lit(0.1).alias("home_epa_mean_season"),
+    )
+    without_adj = add_preseason(base, pre)
+    with_adj = without_adj.with_columns(
+        pl.lit(0.5).alias("adj_rating_diff"),
+        pl.lit(0.2).alias("home_epa_adj_off"),
+    )
+
+    v4 = get_feature_set("v4_early_lean").columns(with_adj)
+    v5 = get_feature_set("v5_early_adj").columns(with_adj)
+
+    assert "adj_rating_diff" in v5
+    assert set(v5) == set(v4) | {"adj_rating_diff"}
+    # the per-side ratings measured worse than the netted column, so v5 is
+    # explicitly not "every adj col"
+    assert "home_epa_adj_off" not in v5
+
+    with pytest.raises(ValueError, match="opp_adjust=True"):
+        get_feature_set("v5_early_adj").columns(without_adj)

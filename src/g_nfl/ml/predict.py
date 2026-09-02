@@ -7,7 +7,7 @@ exactly what `evaluate.walk_forward_predictions` does per fold, so the
 number the site shows and the number the backtest reports come from the
 same code path.
 
-**Why `v4_early_lean`, every week.** The game matrix lags team stats by a
+**Why `v5_early_adj`, every week.** The game matrix lags team stats by a
 week, so a week-1 game has no stats row to join and every in-season
 feature is null. Left alone the model answers with one constant for the
 whole slate and ``edge = pred - spread`` then ranks the board by
@@ -21,6 +21,16 @@ actual result (t=+1.91), paired on the same 2687 games. Weeks 2-4 carry
 it, where a four-week window is mostly padding from a one-game season.
 The prior-season `_carry` columns do the job the rolling window was
 meant to; removing *those* instead costs 0.025 (t=-1.65).
+
+`v5_early_adj` adds one more column, `adj_rating_diff`: the netted
+opponent-adjusted rating difference from the per-week ridge, worth a
+further 0.087 of MAE against the close (t=+4.48) on the same 2687 games.
+It is the largest single-feature gain measured. It pays in weeks 9+
+(+0.112, t=+3.98) and not in week 1 (+0.018, t=0.24), because a week-1
+ridge trains on the prior season alone and restates what the preseason
+block already carries. Handing the tree the pieces instead of the netted
+number is worse in every arm tried; the detail is in
+`notes/modelling/opponent-adjustment.md`.
 
 On a 5-season window the block looked like it cost late-season MAE, and
 the first cut of this job switched back to `v1_team` from week 5. On the
@@ -67,7 +77,7 @@ from g_nfl.ml.models.spread import SpreadModel
 from g_nfl.ml.train import CHAMPION_PARAMS, DEFAULT_CARRYOVER_K, DEFAULT_TARGET
 
 #: The feature set every week is predicted with (see the module note).
-FEATURE_SET = "v4_early_lean"
+FEATURE_SET = "v5_early_adj"
 
 #: Training window. Deep history is what makes the preseason block pay:
 #: the pbp cache starts in 2013 and a season needs a prior season behind
@@ -121,6 +131,7 @@ def build_matrix(
         snaps=load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh),
         rosters=load_rosters_weekly(seasons, cache_dir=cache_dir, refresh=refresh),
         players=load_players(cache_dir=cache_dir, refresh=refresh),
+        opp_adjust=True,
     )
 
 

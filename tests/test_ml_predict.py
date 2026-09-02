@@ -49,6 +49,13 @@ def matrix() -> pl.DataFrame:
                         "pre_diff_mkt_rating": strength[home] - strength[away],
                         "home_pre_mkt_rating": strength[home],
                         "away_pre_mkt_rating": strength[away],
+                        # opponent adjustment: the ridge fits week 1 off the
+                        # prior season, so this is present in every week too.
+                        # Deliberately not a clean multiple of the spread --
+                        # a real rating disagrees with the line, and a
+                        # perfectly collinear one makes the fit exact.
+                        "adj_rating_diff": (strength[home] - strength[away]) / 10
+                        + (0.4 if i % 2 else -0.4),
                     }
                 )
     return pl.DataFrame(rows)
