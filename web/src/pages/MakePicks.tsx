@@ -4,6 +4,13 @@ import { ChevronRight, Clipboard, Dog, Moon, Skull, Star, Trash2 } from 'lucide-
 import { api, teamLogo } from '../api'
 import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick } from '../types'
+import {
+  MAX_ATS_NON_MNF,
+  MAX_REGULAR,
+  isComplete,
+  shortfall,
+  type SlotTally,
+} from '@/lib/consensus'
 import PageHeader from '@/components/PageHeader'
 import ActionBar, { Slot } from '@/components/ActionBar'
 import { ErrorNote, Loading } from '@/components/PageState'
@@ -13,8 +20,6 @@ interface GamePick {
   team_picked: string
   pick_type: 'regular' | 'best_bet'
 }
-
-const MAX_REGULAR_PICKS = 6
 
 // A note is keyed the way the API keys a pick: special slots are prefixed so a
 // survivor and a regular pick on the same game keep separate notes.
@@ -76,6 +81,9 @@ export default function MakePicks() {
   const [mnf, setMnf] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  // When the server last took this week from us. Null means never, and also
+  // means "saved before #131 shipped", which reads as time unknown (#131).
+  const [submitted, setSubmitted] = useState<{ key: string; at: string | null } | null>(null)
   const loading = season !== null && week !== null && fetched.key !== weekKey
 
   // Load games for the selected week
@@ -124,6 +132,14 @@ export default function MakePicks() {
         notes: savedNotes,
       }
       setBaseline({ key: `${season}-${week}`, json: JSON.stringify(saved) })
+      setSubmitted(
+        existing.length
+          ? {
+              key: `${season}-${week}`,
+              at: existing.map((p) => p.submitted_at).find(Boolean) ?? null,
+            }
+          : null,
+      )
 
       const restored = readDraft(draftKeyFor(picker, season, week))
       const show = restored ?? saved
@@ -164,7 +180,7 @@ export default function MakePicks() {
         const next = { ...cur }
         const existing = cur[game.game_id]
         if (!existing || existing.team_picked !== team) {
-          if (!existing && Object.keys(cur).length >= MAX_REGULAR_PICKS) return cur
+          if (!existing && Object.keys(cur).length >= MAX_ATS_NON_MNF) return cur
           next[game.game_id] = { team_picked: team, pick_type: 'regular' }
         } else if (existing.pick_type === 'regular') {
           // Promote, demoting whoever held the slot -- the same swap the board
@@ -243,8 +259,12 @@ export default function MakePicks() {
     return team === game.home_team ? home : -home
   }
 
-  const save = async () => {
+  const save = async (submitting: boolean) => {
     if (!picker || season === null || week === null) return
+    if (submitting && !complete) {
+      setStatus({ kind: 'err', msg: `Still short: ${missing.join(', ')}` })
+      return
+    }
     const payload: Pick[] = Object.entries(picks).map(([game_id, p]) => ({
       game_id,
       team_picked: p.team_picked,
@@ -280,7 +300,13 @@ export default function MakePicks() {
       // and the draft it was holding is no longer worth keeping.
       setBaseline({ key: weekKey, json: currentJson })
       if (draftKey) localStorage.removeItem(draftKey)
-      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks` })
+      setSubmitted({ key: weekKey, at: new Date().toISOString() })
+      setStatus({
+        kind: 'ok',
+        msg: submitting
+          ? `Submitted ${res.saved} picks for week ${week}`
+          : `Saved ${res.saved} picks. Still short: ${missing.join(', ')}`,
+      })
     } catch (e) {
       setStatus({ kind: 'err', msg: `Failed to save: ${e}` })
     }
@@ -346,8 +372,16 @@ export default function MakePicks() {
     )
   }
 
-  const regularCount = Object.keys(picks).length
-  const maxReached = regularCount >= MAX_REGULAR_PICKS
+  const tally: SlotTally = {
+    bb: Object.values(picks).filter((p) => p.pick_type === 'best_bet').length,
+    regular: Object.values(picks).filter((p) => p.pick_type === 'regular').length,
+    mnf: mnf ? 1 : 0,
+    underdog: underdog ? 1 : 0,
+    survivor: survivor ? 1 : 0,
+  }
+  const missing = shortfall(tally)
+  const complete = isComplete(tally)
+  const maxReached = Object.keys(picks).length >= MAX_ATS_NON_MNF
 
   const teamButton = (g: GameLine, team: string, side: 'away' | 'home') => {
     const isMnfGame = g.is_mnf
@@ -460,18 +494,49 @@ export default function MakePicks() {
           <ActionBar
             slots={
               <>
-                <Slot label="regular" have={regularCount} need={MAX_REGULAR_PICKS} />
-                <Slot label="survivor" have={survivor ? 1 : 0} need={1} />
-                <Slot label="underdog" have={underdog ? 1 : 0} need={1} />
-                <Slot label="MNF" have={mnf ? 1 : 0} need={1} />
+                <Slot label="best bet" have={tally.bb} need={1} />
+                <Slot label="regular" have={tally.regular} need={MAX_REGULAR} />
+                <Slot label="MNF" have={tally.mnf} need={1} />
+                <Slot label="dog" have={tally.underdog} need={1} />
+                <Slot label="survivor" have={tally.survivor} need={1} />
               </>
             }
           >
             {dirty && <span className="text-xs text-muted-foreground">unsaved</span>}
-            <Button size="sm" onClick={save} disabled={!dirty && !!baseline}>
-              Save picks
+            {/* Save keeps a half-finished week; submit is the one that says
+                the week is done. Both write the same rows — the difference is
+                that submit refuses an incomplete slate and save does not, so a
+                draft can survive a closed tab without pretending to be an
+                entry (#128). */}
+            <Button size="sm" variant="outline" onClick={() => save(false)} disabled={!dirty}>
+              Save draft
+            </Button>
+            <Button size="sm" onClick={() => save(true)} disabled={!complete}>
+              Submit picks
             </Button>
           </ActionBar>
+
+          {/* The shortfall, named. "5/6 regular" tells you a number is wrong;
+              this tells you what to go and do. */}
+          {missing.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Still to pick: <b className="text-foreground">{missing.join(', ')}</b>.
+            </p>
+          ) : (
+            submitted?.key === weekKey && (
+              <p className="text-sm text-muted-foreground">
+                Submitted{' '}
+                {submitted.at
+                  ? new Date(submitted.at).toLocaleString(undefined, {
+                      weekday: 'short',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })
+                  : 'at an unknown time'}
+                .
+              </p>
+            )
+          )}
 
           <div className="divide-y divide-border rounded-lg border border-border bg-card">
             {games.map((g) => (

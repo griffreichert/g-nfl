@@ -34,8 +34,8 @@ export default function Help() {
           page during the week. Then we get together and agree the one set of picks Reichert
           submits to the pool — that entry is called <b className="text-foreground">TEAM</b>, and
           the{' '}
-          <Link to="/view" className="text-primary underline-offset-4 hover:underline">
-            Team
+          <Link to="/" className="text-primary underline-offset-4 hover:underline">
+            Make Picks
           </Link>{' '}
           page is where the meeting builds it.
         </p>
@@ -81,10 +81,10 @@ export default function Help() {
       <Section title="The ledger">
         <p>
           The{' '}
-          <Link to="/ledger" className="text-primary underline-offset-4 hover:underline">
-            Ledger
+          <Link to="/performance" className="text-primary underline-offset-4 hover:underline">
+            Performance
           </Link>{' '}
-          scores TEAM every week against the entries it could have been: the majority of us,
+          page scores TEAM every week against the entries it could have been: the majority of us,
           whoever was leading going into that week, the mechanical{' '}
           <b className="text-foreground">No Homers</b> entry, and the two models.
         </p>

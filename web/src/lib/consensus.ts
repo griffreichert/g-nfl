@@ -404,7 +404,59 @@ export type Slate = Record<string, SlotPick>
 /** A room decision that overrules the proposal; null means "we took this off". */
 export type Overrides = Record<string, SlotPick | null>
 
+/**
+ * Two numbers, both 5 and 6, and both right (#128).
+ *
+ * `MAX_REGULAR` counts regulars alone. `MAX_ATS_NON_MNF` counts the bucket the
+ * pool caps at six: the best bet plus the five regulars, one per game. The
+ * picks page used to keep its own `MAX_REGULAR_PICKS = 6` and the board used
+ * this file's 5, so the two pages disagreed about a full slate and neither
+ * name said which frame it was counting in. src/g_nfl/api/main.py names the
+ * same pair on the write path.
+ */
 export const MAX_REGULAR = 5
+export const MAX_ATS_NON_MNF = MAX_REGULAR + 1
+
+/**
+ * What a submitted week has to contain (notes/SCORING.md): one best bet at
+ * 2pts, five regulars at 1pt, the Monday game, one underdog, one survivor.
+ * The first three sit on distinct games, which one pick per game gives us for
+ * free. Underdog and survivor may reuse a game.
+ */
+export interface SlotTally {
+  bb: number
+  regular: number
+  mnf: number
+  underdog: number
+  survivor: number
+}
+
+export const SLOT_NEEDS: SlotTally = {
+  bb: 1,
+  regular: MAX_REGULAR,
+  mnf: 1,
+  underdog: 1,
+  survivor: 1,
+}
+
+/** Slots still short, named the way the action bar says them. */
+export function shortfall(have: SlotTally): string[] {
+  const label: Record<keyof SlotTally, string> = {
+    bb: 'best bet',
+    regular: 'regular',
+    mnf: 'MNF',
+    underdog: 'dog',
+    survivor: 'survivor',
+  }
+  const out: string[] = []
+  for (const k of Object.keys(SLOT_NEEDS) as (keyof SlotTally)[]) {
+    const missing = SLOT_NEEDS[k] - have[k]
+    if (missing > 0) out.push(missing > 1 ? `${missing} ${label[k]}` : label[k])
+  }
+  return out
+}
+
+export const isComplete = (have: SlotTally) => shortfall(have).length === 0
 
 export const slotCounts = (slate: Slate) => {
   const v = Object.values(slate)
@@ -453,4 +505,70 @@ export function cycleSlot(slate: Slate, gameId: string, team: string, isMnf: boo
   }
 
   return { [gameId]: null }
+}
+
+/**
+ * One promotable side: a (game, team) pair at least one of us took, or one
+ * TEAM already holds.
+ *
+ * The board used to render all sixteen games whether anybody had an opinion on
+ * them or not, so the room read past eight dead rows to find the six it was
+ * arguing about. A side nobody suggested cannot be promoted, so it is not a
+ * candidate (#127).
+ */
+export interface Candidate {
+  row: ConsensusRow
+  team: string
+  other: string
+  spread: number | null
+  picks: SidePick[]
+  score: Score
+  /** independent opinions on this side, after collapsing pickers who vote together */
+  blocs: number
+  /** best bets among them */
+  bb: number
+  /** pool points on this side minus the other, so a contested side reads near zero */
+  net: number
+}
+
+/** Pool points a side carries: a best bet is two, everything else is one. */
+const pts = (picks: SidePick[]) => picks.reduce((n, p) => n + (p.bb ? 2 : 1), 0)
+
+export function buildCandidates(
+  rows: ConsensusRow[],
+  attachment: Map<string, number>,
+  penalties: (gameId: string, team: string) => SidePenalty[],
+  blocs: string[][],
+  slate: Slate,
+): Candidate[] {
+  const out: Candidate[] = []
+  for (const row of rows) {
+    for (const team of [row.side, row.other]) {
+      const picks = team === row.side ? row.sidePicks : row.otherPicks
+      const opposite = team === row.side ? row.otherPicks : row.sidePicks
+      // Nobody suggested it and it is not in the entry, so there is nothing to
+      // promote and nothing to argue about.
+      if (picks.length === 0 && slate[row.game.game_id]?.team !== team) continue
+      out.push({
+        row,
+        team,
+        other: team === row.side ? row.other : row.side,
+        spread: spreadFor(row.game, team),
+        picks,
+        score: scoreSide(row, team, attachment, penalties),
+        blocs: blocCount(picks, blocs),
+        bb: picks.filter((p) => p.bb).length,
+        net: pts(picks) - pts(opposite),
+      })
+    }
+  }
+  // Best expected side first. Net breaks a tie, then how contested the game
+  // is, so two equal scores put the one still worth discussing on top.
+  return out.sort(
+    (a, b) =>
+      b.score.rating - a.score.rating ||
+      b.net - a.net ||
+      b.row.contention - a.row.contention ||
+      a.row.game.away_team.localeCompare(b.row.game.away_team),
+  )
 }

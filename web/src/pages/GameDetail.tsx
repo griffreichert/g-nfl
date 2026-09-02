@@ -221,7 +221,7 @@ export default function GameDetailPage() {
 
   const back = (
     <Link
-      to="/view"
+      to="/"
       className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-4" /> Back

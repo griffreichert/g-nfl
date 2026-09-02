@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
   bestSide,
   buildAttachment,
+  buildCandidates,
   buildConsensus,
   cycleSlot,
   byScore,
@@ -14,17 +15,19 @@ import {
   findBlocs,
   isAtsPick,
   isVoter,
+  isComplete,
   MAX_REGULAR,
+  shortfall,
   slotCounts,
-  scoreSide,
   spreadFor,
   TEAM_2025,
   TEAM_PICKER,
+  type Candidate,
   type ConsensusRow,
   type Overrides,
   type Score,
-  type SidePenalty,
   type Slate,
+  type SlotTally,
   type SlotType,
   type SidePick,
 } from '@/lib/consensus'
@@ -33,7 +36,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/PageHeader'
 import ActionBar, { Slot } from '@/components/ActionBar'
-import { ErrorNote, Loading } from '@/components/PageState'
+import { EmptyState, ErrorNote, Loading } from '@/components/PageState'
 
 /** The two side pools. Separate objectives, separate games, own state. */
 type Pool = 'underdog' | 'survivor'
@@ -110,146 +113,151 @@ const SLOT_LABEL: Record<SlotType, string> = {
   mnf: 'MNF',
 }
 
-/**
- * One side of a game, laid out to mirror the picks page: away on the left,
- * home on the right, facing each other. Rating and who is on it sit underneath
- * the team rather than beside it, so the columns line up down the board.
- */
-function SideCell({
-  team,
-  spread,
-  picks,
-  score,
-  blocs,
+/** The promote control. Off, regular, best bet, off — one tap each way. */
+function SlotButton({
   slot,
-  disabled,
-  home,
+  locked,
   onPick,
 }: {
-  team: string
-  spread: number | null
-  picks: SidePick[]
-  score: Score
-  blocs: string[][]
   slot: SlotType | null
-  disabled: boolean
-  home: boolean
+  locked: boolean
   onPick: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onPick}
-      disabled={disabled}
-      className={`flex min-w-0 flex-col gap-1.5 rounded-md border p-2 transition-colors ${
-        home ? 'items-end text-right' : 'items-start text-left'
-      } ${
-        slot
-          ? slot === 'best_bet'
-            ? 'border-bb bg-bb-soft'
-            : 'border-pick bg-pick-soft'
-          : 'border-border/40 hover:border-border'
+      disabled={locked}
+      aria-label={slot ? `${SLOT_LABEL[slot]} — tap to change` : 'Promote this side'}
+      className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md border px-2 text-xs font-bold transition-colors disabled:opacity-35 ${
+        slot === 'best_bet'
+          ? 'border-bb bg-bb text-primary-foreground'
+          : slot
+            ? 'border-pick bg-pick text-primary-foreground'
+            : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
       }`}
     >
-      <span className={`flex items-center gap-1.5 ${home ? 'flex-row-reverse' : ''}`}>
-        <img src={teamLogo(team)} alt="" className={`size-6 ${picks.length ? '' : 'opacity-40'}`} />
-        <span className="font-semibold">{team}</span>
-        <span className="tabular text-sm text-muted-foreground">{fmtSpread(spread)}</span>
-      </span>
-
-      <span className={`flex items-center gap-1.5 ${home ? 'flex-row-reverse' : ''}`}>
-        <Rating score={score} />
-        {slot && (
-          <span className="inline-flex items-center gap-1 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-bold text-background">
-            {slot === 'best_bet' && <Star className="size-3 fill-current" />}
-            {SLOT_LABEL[slot]}
-          </span>
-        )}
-      </span>
-
-      <span className={`flex flex-wrap gap-1 ${home ? 'justify-end' : ''}`}>
-        {toChips(picks, blocs).map((c) => (
-          <Chip key={c.picks.join('+')} picks={c.picks} bb={c.bb} />
-        ))}
-      </span>
+      {slot === 'best_bet' && <Star className="size-3.5 fill-current" />}
+      {slot ? SLOT_LABEL[slot] : '+'}
     </button>
   )
 }
 
-function GameCard({
-  row,
-  attachment,
-  penalties,
+/**
+ * One candidate, as a row of the promotion table.
+ *
+ * Phone keeps the four columns a decision needs — the side, what it is worth,
+ * how many of us are on it, and the control. PK collapses blocs in parentheses
+ * when they differ from the headcount, so a 5 that is really a 4 says so. BB,
+ * NET and WHO appear as the screen widens; on a phone WHO sits under the row
+ * when the entry holds the side, which is when it matters.
+ */
+function CandidateRow({
+  c,
   blocs,
-  slate,
-  full,
+  slot,
+  locked,
+  flags,
   onPick,
   note,
   onNote,
 }: {
-  row: ConsensusRow
-  attachment: Map<string, number>
-  penalties: (gameId: string, team: string) => SidePenalty[]
+  c: Candidate
   blocs: string[][]
-  slate: Slate
-  full: boolean
-  onPick: (team: string) => void
+  slot: SlotType | null
+  locked: boolean
+  flags: number
+  onPick: () => void
   note: string
   onNote: (v: string) => void
 }) {
-  const chosen = slate[row.game.game_id]
-  // A full slate locks games we haven't used; a game already in the entry stays
-  // live so the room can switch sides without dismantling the slate first.
-  const locked = full && !chosen
-  const { away_team: away, home_team: home } = row.game
-
+  const { away_team: away, home_team: home } = c.row.game
   return (
     <div
-      className={`rounded-lg border bg-card p-2 ${
-        chosen ? 'border-foreground/25' : 'border-border'
-      } ${locked ? 'opacity-70' : ''}`}
+      className={`border-t border-border first:border-t-0 ${
+        slot ? 'bg-pick-soft/40' : ''
+      } ${locked ? 'opacity-50' : ''}`}
     >
-      <div className="flex items-center px-2 pb-1">
-        {row.game.is_mnf && (
-          <p className="text-[11px] font-medium text-muted-foreground">Monday night</p>
-        )}
-        {/* Its own control: tapping a side is a pick, so the card can't be a link. */}
-        <Link
-          to={`/game/${row.game.game_id}`}
-          aria-label={`Detail for ${away} at ${home}`}
-          title="Game detail"
-          className="ml-auto flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-        >
-          detail <ChevronRight className="size-3.5" />
-        </Link>
+      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-2 py-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:px-3">
+        {/* SIDE */}
+        <div className="flex min-w-0 items-center gap-2">
+          <img src={teamLogo(c.team)} alt="" className="size-6 shrink-0" />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5">
+              <b>{c.team}</b>
+              <span className="tabular text-sm text-muted-foreground">
+                {fmtSpread(c.spread)}
+              </span>
+              {c.row.game.is_mnf && (
+                <span className="rounded bg-muted px-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                  mon
+                </span>
+              )}
+            </span>
+            <Link
+              to={`/game/${c.row.game.game_id}`}
+              className="flex items-center text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {c.team === home ? `vs ${away}` : `at ${home}`}
+              <ChevronRight className="size-3" />
+            </Link>
+          </span>
+        </div>
+
+        {/* SCORE */}
+        <Rating score={c.score} />
+
+        {/* PK — headcount, with independent opinions in parentheses when they differ */}
+        <span className="tabular w-12 text-center text-sm">
+          <b>{c.picks.length}</b>
+          {c.blocs !== c.picks.length && (
+            <span className="text-muted-foreground">({c.blocs})</span>
+          )}
+        </span>
+
+        {/* BB */}
+        <span className="tabular hidden w-8 text-center text-sm sm:block">
+          {c.bb ? <b className="text-bb">{c.bb}</b> : <span className="text-muted-foreground">·</span>}
+        </span>
+
+        {/* NET */}
+        <span className="tabular hidden w-10 text-center text-sm text-muted-foreground md:block">
+          {c.net > 0 ? `+${c.net}` : c.net}
+        </span>
+
+        {/* SLOT */}
+        <SlotButton slot={slot} locked={locked} onPick={onPick} />
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {[away, home].map((team) => (
-          <SideCell
-            key={team}
-            team={team}
-            spread={spreadFor(row.game, team)}
-            picks={team === row.side ? row.sidePicks : row.otherPicks}
-            score={scoreSide(row, team, attachment, penalties)}
-            blocs={blocs}
-            slot={chosen?.team === team ? chosen.type : null}
-            disabled={locked}
-            home={team === home}
-            onPick={() => onPick(team)}
-          />
+
+      {/* WHO — its own line on a phone, inline from lg up. Chips are the one
+          thing that says a 5-2 is really a 4-2. */}
+      <div className="flex flex-wrap items-center gap-1 px-2 pb-2 sm:px-3">
+        {toChips(c.picks, blocs).map((chip) => (
+          <Chip key={chip.picks.join('+')} picks={chip.picks} bb={chip.bb} />
         ))}
+        {c.picks.length === 0 && (
+          <span className="text-xs text-muted-foreground">nobody suggested this</span>
+        )}
+        {flags > 0 && (
+          <span className="rounded bg-loss/15 px-1.5 py-0.5 text-[11px] font-medium text-loss">
+            {flags} guardrail{flags > 1 ? 's' : ''}
+          </span>
+        )}
       </div>
-      {/* The meeting's reasoning is the thing nothing else records — grading can
-          reconstruct what we picked, never why. Only on games in the entry. */}
-      {chosen && (
-        <input
-          type="text"
-          value={note}
-          placeholder="Why? (optional)"
-          onChange={(e) => onNote(e.target.value)}
-          aria-label={`Note for ${away} at ${home}`}
-          className="mt-2 h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
-        />
+
+      {/* The meeting's reasoning is the thing nothing else records — grading
+          can reconstruct what we picked, never why. */}
+      {slot && (
+        <div className="px-2 pb-2 sm:px-3">
+          <input
+            type="text"
+            value={note}
+            placeholder="Why? (optional)"
+            onChange={(e) => onNote(e.target.value)}
+            aria-label={`Note for ${c.team}`}
+            className="h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+          />
+        </div>
       )}
     </div>
   )
@@ -435,10 +443,119 @@ function PoolPicker({
   )
 }
 
+/**
+ * Pool spreads, edited where the picks are made (#135).
+ *
+ * This was its own tab, which put a Saturday chore in the navigation all week
+ * and meant nobody could correct a line without leaving the board. The pool
+ * spread is what picks grade against, so a wrong one is worth fixing the
+ * moment somebody notices it, not after a round trip through another page.
+ */
+function LinesEditor({
+  games,
+  season,
+  week,
+  onSaved,
+}: {
+  games: GameLine[]
+  season: number
+  week: number
+  onSaved: () => void
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [status, setStatus] = useState<string | null>(null)
+
+  const valueFor = (g: GameLine) =>
+    drafts[g.game_id] ?? g.pool_spread?.toString() ?? ''
+
+  const saveOne = async (g: GameLine) => {
+    const raw = valueFor(g)
+    const spread = Number(raw)
+    if (raw === '' || Number.isNaN(spread)) {
+      setStatus(`Invalid spread for ${g.away_team} @ ${g.home_team}`)
+      return
+    }
+    try {
+      await api.updatePoolSpread(season, week, g.game_id, spread)
+      setStatus(`Saved ${g.away_team} @ ${g.home_team}: ${fmtSpread(spread)}`)
+      setDrafts((d) => {
+        const next = { ...d }
+        delete next[g.game_id]
+        return next
+      })
+      onSaved()
+    } catch (e) {
+      setStatus(String(e))
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <h2 className="text-sm font-bold">Pool lines</h2>
+      <p className="mb-2 text-xs text-muted-foreground">
+        What picks grade against. Blank means the market line stands.
+      </p>
+      {status && <p className="mb-2 text-xs text-muted-foreground">{status}</p>}
+      <div className="divide-y divide-border">
+        {games.map((g) => {
+          const saved = g.pool_spread?.toString() ?? ''
+          const dirty = valueFor(g) !== saved
+          return (
+            <div key={g.game_id} className="flex items-center gap-2 py-1.5 text-sm">
+              <span className="min-w-0 flex-1 truncate">
+                {g.away_team} @ {g.home_team}
+                <span className="tabular ml-2 hidden text-muted-foreground sm:inline">
+                  market {fmtSpread(g.market_spread)}
+                </span>
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                inputMode="decimal"
+                value={valueFor(g)}
+                placeholder={fmtSpread(g.market_spread)}
+                onChange={(e) => setDrafts((d) => ({ ...d, [g.game_id]: e.target.value }))}
+                aria-label={`Pool spread for ${g.away_team} at ${g.home_team}`}
+                className="tabular h-8 w-20 rounded-md border border-input bg-transparent px-2 text-right text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+              />
+              {/* Only a changed row offers a save: sixteen live buttons is
+                  noise, and it makes an unsaved edit obvious. */}
+              <Button
+                size="sm"
+                variant={dirty ? 'default' : 'outline'}
+                disabled={!dirty}
+                onClick={() => saveOne(g)}
+              >
+                Save
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** The phrase, and what counts as typing it (#129). */
+const CONFIRM_PHRASE = 'I am not a homer'
+const matchesPhrase = (typed: string) =>
+  typed.trim().replace(/\s+/g, ' ').toLowerCase() === CONFIRM_PHRASE.toLowerCase()
+
+/** A submission time, or an honest admission that we do not have one. */
+const fmtWhen = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString(undefined, {
+        weekday: 'short',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : 'an unknown time'
+
 export default function Field() {
   // The board builds TEAM's entry, so TEAM's own spent teams are the ones that
   // matter here.
   const { config, error: configError } = useConfig('TEAM')
+  const { picker: signedIn } = useAuth()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
 
@@ -462,6 +579,9 @@ export default function Field() {
   const seasonPicks = fetchedSeason?.key === seasonKey ? fetchedSeason.rows : null
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Bumped after a pool spread is edited, so the board's spreads and every
+  // rating built on them are rebuilt from the saved number (#135).
+  const [linesVersion, setLinesVersion] = useState(0)
   // Both are keyed by season+week so switching weeks drops them without an effect.
   const [edits, setEdits] = useState<{ key: string; overrides: Overrides }>({
     key: '',
@@ -474,6 +594,11 @@ export default function Field() {
     key: '',
     picks: {},
   })
+  // The confirmation gate (#129), and the lines panel (#135). Both keyed to
+  // nothing: they are transient UI, and a week change closing them is right.
+  const [gateOpen, setGateOpen] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [editingLines, setEditingLines] = useState(false)
 
   useEffect(() => {
     if (season === null || week === null) return
@@ -489,7 +614,7 @@ export default function Field() {
     return () => {
       cancelled = true
     }
-  }, [season, week])
+  }, [season, week, linesVersion])
 
   // Blocs need the whole season — one week is far too little to tell a habit
   // from a coincidence. Survivor inventory rides along on the same fetch.
@@ -575,6 +700,12 @@ export default function Field() {
   }, [proposal, edits, weekKey])
 
   const counts = useMemo(() => slotCounts(slate), [slate])
+
+  /** Every side worth arguing about, best first (#127). */
+  const candidates = useMemo(
+    () => buildCandidates(rows, attachment, penalties, blocs, slate),
+    [rows, attachment, penalties, blocs, slate],
+  )
 
   /**
    * Whatever TEAM already submitted, unless the room has changed it since. No
@@ -703,6 +834,8 @@ export default function Field() {
       }
       const res = await api.savePicks(season, week, payload, TEAM_PICKER)
       setSaved({ key: weekKey, msg: `Submitted ${res.saved} picks as TEAM` })
+      setGateOpen(false)
+      setTyped('')
     } catch (e) {
       setSaved({ key: weekKey, msg: `Failed to save: ${e}` })
     } finally {
@@ -710,10 +843,60 @@ export default function Field() {
     }
   }
 
-  // Who still owes us a slate. The call can't settle a game nobody has voted on.
+  // Who still owes us a slate, and who has started one without finishing it.
+  // A half-finished week is visible on purpose: hiding it would let someone
+  // sit out the week invisibly (#128).
   const missing = (config?.pickers ?? []).filter(
     (p) => isVoter(p) && !pickers.includes(p),
   )
+
+  const incomplete = useMemo(() => {
+    const tally = new Map<string, SlotTally>()
+    for (const p of picks) {
+      if (!isVoter(p.picker)) continue
+      const t =
+        tally.get(p.picker) ?? { bb: 0, regular: 0, mnf: 0, underdog: 0, survivor: 0 }
+      if (p.pick_type === 'best_bet') t.bb++
+      else if (p.pick_type === 'regular') t.regular++
+      else if (p.pick_type === 'mnf') t.mnf++
+      else if (p.pick_type === 'underdog') t.underdog++
+      else if (p.pick_type === 'survivor') t.survivor++
+      tally.set(p.picker, t)
+    }
+    return [...tally.entries()]
+      .filter(([, t]) => !isComplete(t))
+      .map(([who, t]) => `${who} (${shortfall(t).join(', ')})`)
+      .sort()
+  }, [picks])
+
+  /**
+   * What the signed-in picker has of their own week, and when TEAM last went
+   * in. Both drive the two entry points at the top of the page (#135, #131).
+   */
+  const mine = useMemo(
+    () => (signedIn ? picks.filter((p) => p.picker === signedIn) : []),
+    [picks, signedIn],
+  )
+  const mineComplete = useMemo(() => {
+    const t: SlotTally = { bb: 0, regular: 0, mnf: 0, underdog: 0, survivor: 0 }
+    for (const p of mine) {
+      if (p.pick_type === 'best_bet') t.bb++
+      else if (p.pick_type === 'regular') t.regular++
+      else if (p.pick_type === 'mnf') t.mnf++
+      else if (p.pick_type === 'underdog') t.underdog++
+      else if (p.pick_type === 'survivor') t.survivor++
+    }
+    return isComplete(t)
+  }, [mine])
+
+  const teamEntry = useMemo(() => {
+    const rows = picks.filter((p) => p.picker === TEAM_PICKER)
+    if (!rows.length) return null
+    return {
+      by: rows.map((p) => p.submitted_by).find(Boolean) ?? null,
+      at: rows.map((p) => p.submitted_at).find(Boolean) ?? null,
+    }
+  }, [picks])
 
   const flaggedSides = useMemo(() => {
     const c: Record<string, number> = {}
@@ -732,7 +915,7 @@ export default function Field() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Team"
+        title="Make Picks"
         season={season}
         seasons={seasons}
         onSeason={setSeason}
@@ -741,9 +924,37 @@ export default function Field() {
         onWeek={setWeek}
       />
 
+      {/* Your own week, before the room's. The picks page left the navigation
+          in #135: it is one job you do once, so it is a button here rather
+          than a tab you walk past all week. */}
+      {signedIn &&
+        (mine.length === 0 ? (
+          <Button asChild size="lg" className="w-full">
+            <Link to="/picks">Make my picks for week {week}</Link>
+          </Button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              Your week {week} slate is in
+              {mineComplete ? '' : ', and still short'}
+              {mine[0]?.submitted_at ? ` — ${fmtWhen(mine[0].submitted_at)}` : ''}.
+            </span>
+            <Button asChild size="sm" variant="outline">
+              <Link to="/picks">Edit my picks</Link>
+            </Button>
+          </div>
+        ))}
+
       {error && <p className="text-destructive">{error}</p>}
       {!error && rows.length === 0 && (
-        <p className="text-muted-foreground">No picks yet for week {week}.</p>
+        <EmptyState
+          title={`Nobody has picked week ${week} yet`}
+          detail={
+            signedIn
+              ? 'The board fills in as picks land. Yours is the one that starts it.'
+              : 'Sign in to put your slate in.'
+          }
+        />
       )}
 
       {!error && rows.length > 0 && (
@@ -769,32 +980,108 @@ export default function Field() {
                 </>
               }
             >
-              <Button size="sm" onClick={saveSlate} disabled={saving || unexplained.length > 0}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditingLines((v) => !v)}
+              >
+                {editingLines ? 'Done with lines' : 'Edit lines'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => setGateOpen(true)}
+                disabled={saving || unexplained.length > 0 || gateOpen}
+              >
                 {saving ? 'Saving…' : 'Submit as TEAM'}
               </Button>
             </ActionBar>
 
+            {/* The gate (#129). TEAM is the entry that came last in 2025 while
+                agreeing with the room on 82 of 83 games, so submitting it costs
+                a sentence typed on purpose. */}
+            {gateOpen && (
+              <div className="rounded-lg border border-bb bg-bb-soft/40 p-3">
+                <h2 className="text-sm font-bold">Submit as TEAM</h2>
+                {teamEntry && (
+                  <p className="mt-1 text-sm text-loss">
+                    {teamEntry.by
+                      ? `TEAM was submitted by ${teamEntry.by} at ${fmtWhen(teamEntry.at)}.`
+                      : `TEAM is already submitted for week ${week}.`}{' '}
+                    Submitting again replaces it.
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  These picks go in as Team Reichert&apos;s entry. In 2025 TEAM took{' '}
+                  {TEAM_2025.rate}% of available pool points, last behind every one of us,
+                  and followed the room&apos;s majority on {TEAM_2025.rubberStamp} games.{' '}
+                  <b>Averaging is what loses.</b>
+                </p>
+                <label
+                  htmlFor="team-confirm"
+                  className="mt-3 block text-xs font-medium text-foreground"
+                >
+                  Type <b>{CONFIRM_PHRASE}</b> to submit.
+                </label>
+                <input
+                  id="team-confirm"
+                  type="text"
+                  value={typed}
+                  autoComplete="off"
+                  onChange={(e) => setTyped(e.target.value)}
+                  placeholder={CONFIRM_PHRASE}
+                  className="mt-1 h-9 w-full max-w-sm rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                />
+                {typed.trim() !== '' && !matchesPhrase(typed) && (
+                  <p className="mt-1 text-xs text-loss">Type the phrase exactly.</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" onClick={saveSlate} disabled={!matchesPhrase(typed) || saving}>
+                    {saving ? 'Saving…' : 'Submit'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setGateOpen(false)
+                      setTyped('')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {unexplained.length > 0 && (
               <p className="rounded-md bg-loss/15 px-3 py-2 text-sm text-loss">
                 {unexplained.join(', ')} {unexplained.length === 1 ? 'trips' : 'trip'} a
-                guardrail. Say why in the note on that game before submitting. The rules
+                guardrail. Say why in the note on that side before submitting. The rules
                 do not get the last word, but an override should be on the record.
               </p>
             )}
 
             {saved?.key === weekKey && <p className="text-sm text-win">{saved.msg}</p>}
 
-            {/* Design consequence 5 from the analysis: the uncomfortable number
-                is the one that changes behaviour, so it sits where picks get made. */}
-            <p className="text-xs text-muted-foreground">
-              In 2025 TEAM took {TEAM_2025.rate}% of available pool points — last, behind every
-              one of us — and followed the majority on {TEAM_2025.rubberStamp} games.{' '}
-              <b>Averaging is what loses.</b> The entry below is a starting point to argue with,
-              not a vote to ratify.
-            </p>
+            {teamEntry && !gateOpen && (
+              <p className="text-xs text-muted-foreground">
+                {teamEntry.by
+                  ? `TEAM submitted by ${teamEntry.by} at ${fmtWhen(teamEntry.at)}.`
+                  : `TEAM submitted for week ${week}.`}
+              </p>
+            )}
+
+            {editingLines && (
+              <LinesEditor
+                games={games}
+                season={season}
+                week={week}
+                onSaved={() => setLinesVersion((v) => v + 1)}
+              />
+            )}
 
             <p className="text-xs text-muted-foreground">
-              Tap a side to add it, tap again to make it the best bet, once more to drop it.{' '}
+              Every side below is one at least one of us took. Tap the control to add it,
+              again to make it the best bet, once more to drop it.{' '}
               <Link to="/help" className="text-primary underline-offset-4 hover:underline">
                 How this works
               </Link>
@@ -805,22 +1092,51 @@ export default function Field() {
                 No picks in yet from {missing.join(', ')}.
               </p>
             )}
+            {incomplete.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Still short: {incomplete.join(', ')}.
+              </p>
+            )}
 
-            <div className="flex flex-col gap-2">
-              {rows.map((r) => (
-                <GameCard
-                  key={r.game.game_id}
-                  row={r}
-                  attachment={attachment}
-                  penalties={penalties}
-                  blocs={blocs}
-                  slate={slate}
-                  full={counts.regular >= MAX_REGULAR && counts.bb >= 1}
-                  onPick={(team) => cycle(r, team)}
-                  note={notes[r.game.game_id] ?? ''}
-                  onNote={(v) => setNoteEdits((n) => ({ ...n, [r.game.game_id]: v }))}
-                />
-              ))}
+            {/* The promotion table (#127). Header row on a laptop; on a phone
+                the columns speak for themselves and the header is dead height. */}
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-2 border-b border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+                <span>Side</span>
+                <span className="w-10 text-center">Score</span>
+                <span className="w-12 text-center">Pk</span>
+                <span className="w-8 text-center">BB</span>
+                <span className="hidden w-10 text-center md:block">Net</span>
+                <span className="w-16 text-center">Slot</span>
+              </div>
+              {candidates.map((c) => {
+                const chosen = slate[c.row.game.game_id]
+                return (
+                  <CandidateRow
+                    key={`${c.row.game.game_id}_${c.team}`}
+                    c={c}
+                    blocs={blocs}
+                    slot={chosen?.team === c.team ? chosen.type : null}
+                    // A full entry locks sides it does not hold, so the room
+                    // swaps deliberately rather than overflowing by accident.
+                    locked={
+                      counts.regular >= MAX_REGULAR &&
+                      counts.bb >= 1 &&
+                      !chosen &&
+                      !c.row.game.is_mnf
+                    }
+                    flags={flagsFor(c.row.game.game_id, c.team).length}
+                    onPick={() => cycle(c.row, c.team)}
+                    note={notes[noteKeyFor(c.row.game.game_id, chosen?.type ?? 'regular')] ?? ''}
+                    onNote={(v) =>
+                      setNoteEdits((n) => ({
+                        ...n,
+                        [noteKeyFor(c.row.game.game_id, chosen?.type ?? 'regular')]: v,
+                      }))
+                    }
+                  />
+                )
+              })}
             </div>
 
             <PoolPicker
