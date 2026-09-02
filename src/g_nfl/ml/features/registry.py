@@ -153,8 +153,35 @@ V3_EARLY = FeatureSet(
     selector=_early_cols,
 )
 
+# The four-week rolling window is noise, measured. Dropping the 132
+# `_last_{n}w` columns from v3_early (422 -> 298 features) improves MAE
+# against the close by 0.038 (t=+2.63, paired on 2687 games) and against
+# the actual result by 0.029 (t=+1.91) -- the only prune all session to
+# move the result metric at all. The gain is specific to this family: a
+# same-size gain-ranked cut across all families was +0.012 (t=+0.8), and
+# removing `_carry` instead *costs* 0.025 (t=-1.65). Weeks 2-4 carry it
+# (+0.080, t=+2.66), which is where a four-week window is mostly padding
+# from a one- or two-game season. See `notes/modelling/feature-space.md`.
+_ROLLING_RE = re.compile(r"_last_\d+w$")
+
+
+def _lean_early_cols(matrix: pl.DataFrame) -> list[str]:
+    """`v3_early` without the rolling-window family."""
+    return [c for c in _early_cols(matrix) if not _ROLLING_RE.search(c)]
+
+
+V4_EARLY_LEAN = FeatureSet(
+    name="v4_early_lean",
+    description=(
+        "v3_early minus the `_last_{n}w` rolling-window columns: "
+        "season-to-date and prior-season carryover only, plus the "
+        "preseason block, QB context and week."
+    ),
+    selector=_lean_early_cols,
+)
+
 FEATURE_SETS: dict[str, FeatureSet] = {
-    fs.name: fs for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN, V3_EARLY]
+    fs.name: fs for fs in [V1_TEAM, V2_ADJ_ONLY, V2_ADJ_LEAN, V3_EARLY, V4_EARLY_LEAN]
 }
 
 

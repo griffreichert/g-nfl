@@ -7,14 +7,20 @@ exactly what `evaluate.walk_forward_predictions` does per fold, so the
 number the site shows and the number the backtest reports come from the
 same code path.
 
-**Why `v3_early`, every week.** The game matrix lags team stats by a
+**Why `v4_early_lean`, every week.** The game matrix lags team stats by a
 week, so a week-1 game has no stats row to join and every in-season
 feature is null. Left alone the model answers with one constant for the
 whole slate and ``edge = pred - spread`` then ranks the board by
 ``|spread|`` -- its top pick is the biggest underdog every time.
 `v3_early` adds the preseason block (prior-season form and market
 rating, coach and QB change, draft capital, snap retention), which is
-the only thing week 1 has to go on.
+the only thing week 1 has to go on. `v4_early_lean` is that set with the
+`_last_{n}w` rolling-window columns dropped: 422 features down to 298,
+worth 0.038 of MAE against the close (t=+2.63) and 0.029 against the
+actual result (t=+1.91), paired on the same 2687 games. Weeks 2-4 carry
+it, where a four-week window is mostly padding from a one-game season.
+The prior-season `_carry` columns do the job the rolling window was
+meant to; removing *those* instead costs 0.025 (t=-1.65).
 
 On a 5-season window the block looked like it cost late-season MAE, and
 the first cut of this job switched back to `v1_team` from week 5. On the
@@ -61,7 +67,7 @@ from g_nfl.ml.models.spread import SpreadModel
 from g_nfl.ml.train import CHAMPION_PARAMS, DEFAULT_CARRYOVER_K, DEFAULT_TARGET
 
 #: The feature set every week is predicted with (see the module note).
-FEATURE_SET = "v3_early"
+FEATURE_SET = "v4_early_lean"
 
 #: Training window. Deep history is what makes the preseason block pay:
 #: the pbp cache starts in 2013 and a season needs a prior season behind

@@ -256,3 +256,33 @@ def test_v3_early_selects_the_block_and_v1_ignores_it(schedule, pbp):
 
     with pytest.raises(ValueError, match="preseason=True"):
         get_feature_set("v3_early").columns(matrix)
+
+
+def test_v4_lean_is_v3_without_the_rolling_window(schedule, pbp):
+    """The rolling family measured as noise (see the registry comment), so
+    ``v4_early_lean`` drops it and keeps everything else v3 selects."""
+    pre = preseason_features(pbp, schedule)
+    matrix = add_preseason(
+        schedule.filter(pl.col("season") == 2024).select(
+            "game_id",
+            "season",
+            "week",
+            "home_team",
+            "away_team",
+            "result",
+            "spread_line",
+            pl.lit(0.1).alias("home_epa_mean_season"),
+            pl.lit(0.2).alias("home_epa_mean_last_4w"),
+            pl.lit(0.3).alias("home_epa_mean_carry"),
+        ),
+        pre,
+    )
+
+    v3 = get_feature_set("v3_early").columns(matrix)
+    v4 = get_feature_set("v4_early_lean").columns(matrix)
+
+    assert "home_epa_mean_last_4w" in v3
+    assert not [c for c in v4 if c.endswith("_last_4w")]
+    assert set(v4) == set(v3) - {"home_epa_mean_last_4w"}
+    for keep in ("home_epa_mean_season", "home_epa_mean_carry", "pre_diff_mkt_rating"):
+        assert keep in v4
