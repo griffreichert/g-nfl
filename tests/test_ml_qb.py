@@ -10,6 +10,7 @@ import polars as pl
 
 from g_nfl.ml.features.qb import (
     add_qb_context,
+    announced_starters,
     qb_game_history,
     starters,
 )
@@ -78,6 +79,28 @@ ROWS = [
 ]
 
 
+def test_announced_starter_beats_the_in_game_one():
+    """The feature path must use the announced starter even when someone
+    else threw more passes -- that disagreement is an injury."""
+    schedule = pl.DataFrame(
+        {
+            "game_id": ["g1"],
+            "game_type": ["REG"],
+            "home_team": ["KC"],
+            "away_team": ["BUF"],
+            "home_qb_id": ["C"],
+            "away_qb_id": [None],
+        }
+    )
+    assert announced_starters(schedule).row(0, named=True)["passer_player_id"] == "C"
+    assert (
+        starters(_pbp(ROWS))
+        .filter(pl.col("game_id") == "g1")
+        .row(0, named=True)["passer_player_id"]
+        == "A"
+    )
+
+
 def test_starter_is_most_dropbacks():
     # A threw 2, C threw 1 in g1 -> A starts
     s = starters(_pbp(ROWS)).filter(pl.col("game_id") == "g1")
@@ -108,7 +131,17 @@ def test_add_qb_context_attaches_and_cold_starts():
             "away_team": ["BUF", "BUF"],
         }
     )
-    out = add_qb_context(matrix, _pbp(ROWS))
+    schedule = pl.DataFrame(
+        {
+            "game_id": ["g1", "g2"],
+            "game_type": ["REG", "REG"],
+            "home_team": ["KC", "KC"],
+            "away_team": ["BUF", "BUF"],
+            "home_qb_id": ["A", "A"],
+            "away_qb_id": [None, None],
+        }
+    )
+    out = add_qb_context(matrix, _pbp(ROWS), schedule)
     for c in (
         "home_qb_epa_ewm",
         "home_qb_cpoe_ewm",
