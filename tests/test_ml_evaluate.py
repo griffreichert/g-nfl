@@ -400,3 +400,171 @@ def test_backtest_cli_end_to_end(
     assert "## Top-n confidence picks per week" in report
     assert "## Sharpness (vs market close)" in report
     assert "| all |" in report
+
+
+def _paired_frame(preds: list[float], weeks: list[int]) -> pl.DataFrame:
+    """Prediction frame with one game per week, deterministic targets."""
+    return pl.DataFrame(
+        {
+            "game_id": [f"g{i}" for i in range(len(weeks))],
+            "week": weeks,
+            "spread_line": [float(w) for w in weeks],
+            "result": [float(w) * 2 for w in weeks],
+            "pred": preds,
+        }
+    )
+
+
+def test_paired_week_bands_known_values():
+    weeks = [1, 1, 2, 3, 4, 5, 8, 9, 12]
+    base = _paired_frame([float(w) + 2 for w in weeks], weeks)
+    # candidate is exactly 1 point closer to the close on every game
+    cand = _paired_frame([float(w) + 1 for w in weeks], weeks)
+
+    table = eval_mod.paired_week_bands(base, cand)
+    close = table.filter(pl.col("target") == "spread_line")
+    rows = {r["band"]: r for r in close.iter_rows(named=True)}
+
+    assert [r["band"] for r in close.iter_rows(named=True)] == [
+        "wk1",
+        "wk2-4",
+        "wk5-8",
+        "wk9+",
+        "all",
+    ]
+    assert rows["wk1"]["n"] == 2
+    assert rows["wk2-4"]["n"] == 3
+    assert rows["wk5-8"]["n"] == 2
+    assert rows["wk9+"]["n"] == 2
+    assert rows["all"]["n"] == len(weeks)
+    assert rows["all"]["base_mae"] == pytest.approx(2.0)
+    assert rows["all"]["cand_mae"] == pytest.approx(1.0)
+    # constant improvement: zero variance in the paired deltas, so no t-stat
+    assert rows["all"]["delta"] == pytest.approx(1.0)
+    assert rows["all"]["t"] is None
+
+
+def test_paired_week_bands_delta_is_positive_when_candidate_is_better():
+    weeks = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    rng = np.random.default_rng(0)
+    noise = rng.normal(0, 1, len(weeks))
+    base = _paired_frame(
+        [float(w) + 3 * n for w, n in zip(weeks, noise, strict=True)], weeks
+    )
+    cand = _paired_frame(
+        [float(w) + n for w, n in zip(weeks, noise, strict=True)], weeks
+    )
+
+    row = (
+        eval_mod.paired_week_bands(base, cand)
+        .filter((pl.col("target") == "spread_line") & (pl.col("band") == "all"))
+        .row(0, named=True)
+    )
+    assert row["delta"] > 0
+    assert row["t"] > 2
+
+    # swapping the arguments flips the sign of both, same magnitude
+    flipped = (
+        eval_mod.paired_week_bands(cand, base)
+        .filter((pl.col("target") == "spread_line") & (pl.col("band") == "all"))
+        .row(0, named=True)
+    )
+    assert flipped["delta"] == pytest.approx(-row["delta"])
+    assert flipped["t"] == pytest.approx(-row["t"])
+
+
+def test_paired_week_bands_matches_manual_t_stat():
+    weeks = [3, 4, 5, 6, 7, 8]
+    rng = np.random.default_rng(7)
+    base = _paired_frame(list(rng.normal(5, 4, len(weeks))), weeks)
+    cand = _paired_frame(list(rng.normal(5, 4, len(weeks))), weeks)
+
+    row = (
+        eval_mod.paired_week_bands(base, cand)
+        .filter((pl.col("target") == "result") & (pl.col("band") == "all"))
+        .row(0, named=True)
+    )
+    actual = base["result"].to_numpy()
+    d = np.abs(base["pred"].to_numpy() - actual) - np.abs(
+        cand["pred"].to_numpy() - actual
+    )
+    se = d.std(ddof=1) / np.sqrt(len(d))
+    assert row["delta"] == pytest.approx(d.mean())
+    assert row["t"] == pytest.approx(d.mean() / se)
+
+
+def test_paired_week_bands_scores_only_shared_games():
+    weeks = [1, 2, 3, 4]
+    base = _paired_frame([float(w) + 2 for w in weeks], weeks)
+    cand = _paired_frame([float(w) + 1 for w in weeks], weeks).head(2)
+
+    row = (
+        eval_mod.paired_week_bands(base, cand)
+        .filter((pl.col("target") == "spread_line") & (pl.col("band") == "all"))
+        .row(0, named=True)
+    )
+    assert row["n"] == 2
+
+
+def test_paired_week_bands_rejects_bad_input():
+    weeks = [1, 2, 3]
+    base = _paired_frame([1.0, 2.0, 3.0], weeks)
+
+    with pytest.raises(ValueError, match="missing columns"):
+        eval_mod.paired_week_bands(base.drop("spread_line"), base)
+    with pytest.raises(ValueError, match="missing columns"):
+        eval_mod.paired_week_bands(base, base.drop("pred"))
+    with pytest.raises(ValueError, match="share no game_ids"):
+        eval_mod.paired_week_bands(
+            base, base.with_columns(game_id=pl.lit("elsewhere") + pl.col("game_id"))
+        )
+
+
+def test_format_comparison_renders_both_targets():
+    weeks = [1, 2, 5, 9]
+    base = _paired_frame([float(w) + 2 for w in weeks], weeks)
+    cand = _paired_frame([float(w) + 1 for w in weeks], weeks)
+
+    md = eval_mod.format_comparison(
+        eval_mod.paired_week_bands(base, cand), "v1_team", "v3_early"
+    )
+    assert "## Paired comparison by week band" in md
+    assert "MAE vs the market close" in md
+    assert "MAE vs the actual result" in md
+    assert "`v3_early` (cand) against `v1_team` (base)" in md
+    assert "| wk1 |" in md
+    assert "n/a" in md  # constant delta, no t-stat
+
+
+def test_backtest_cli_save_preds_and_compare_to(
+    tmp_path, monkeypatch, pbp_sample: pl.DataFrame, schedule_sample: pl.DataFrame
+):
+    monkeypatch.setattr(eval_mod, "load_pbp", lambda seasons, **kw: pbp_sample)
+    monkeypatch.setattr(
+        eval_mod, "load_schedule", lambda seasons, **kw: schedule_sample
+    )
+    cfg = tmp_path / "params.yaml"
+    cfg.write_text("n_estimators: 5\nmax_depth: 2\n")
+    saved = tmp_path / "base_preds.parquet"
+    common = [
+        "--seasons",
+        "2023",
+        "--min-week",
+        "2",
+        "--min-train-games",
+        "1",
+        "--config",
+        str(cfg),
+        "--no-mlflow",
+    ]
+
+    eval_mod.main([*common, "--save-preds", str(saved)])
+    assert saved.exists()
+
+    out = tmp_path / "compared.md"
+    eval_mod.main([*common, "--compare-to", str(saved), "--output", str(out)])
+    report = out.read_text()
+    assert "## Paired comparison by week band" in report
+    # same run against itself: identical predictions, so every delta is zero
+    assert "+0.000" in report
+    assert "`base_preds` (base)" in report
