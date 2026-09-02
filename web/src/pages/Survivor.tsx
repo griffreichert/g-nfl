@@ -141,7 +141,10 @@ export default function Survivor() {
   const pinCount = Object.keys(data.pins).length
 
   return (
-    <div className="space-y-5">
+    // The app centres every page in max-w-6xl, which leaves a 19-column matrix
+    // squeezed against a third of the screen empty. This one page pulls back
+    // out of that on wide displays, where the extra width is all board.
+    <div className="space-y-5 xl:-mx-24 2xl:-mx-56">
       <PageHeader
         title="Survivor"
         season={season}
@@ -182,7 +185,7 @@ export default function Survivor() {
 
       {/* The season as one line: what you spent, and what the plan spends next. */}
       <div className="overflow-x-auto">
-        <div className="flex min-w-max gap-1">
+        <div className="flex min-w-max gap-1 sm:min-w-0">
           {ALL_WEEKS.map((w) => {
             const played = playedWeek.get(w)
             const leg = data.plan.find((l) => l.week === w)
@@ -192,7 +195,7 @@ export default function Survivor() {
               <button
                 key={w}
                 onClick={() => focusWeek(w)}
-                className={`w-[52px] rounded-md border p-1.5 text-center transition-colors ${
+                className={`w-[52px] shrink-0 rounded-md border p-1.5 text-center transition-colors sm:w-auto sm:flex-1 ${
                   isRanked ? 'border-primary bg-accent' : 'border-border bg-card hover:bg-muted'
                 }`}
               >
@@ -219,17 +222,17 @@ export default function Survivor() {
 
       {/* The matrix. A row's bright square three weeks out is the whole point. */}
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="min-w-max border-separate border-spacing-0 text-[10px]">
+        <table className="w-full min-w-max border-separate border-spacing-0 text-[10px] sm:min-w-0 sm:table-fixed">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 bg-card px-2 py-1 text-left font-medium text-muted-foreground">
+              <th className="sticky left-0 z-10 w-16 bg-card px-2 py-1 text-left font-medium text-muted-foreground">
                 team
               </th>
               {ALL_WEEKS.map((w) => (
                 <th
                   key={w}
                   onClick={() => focusWeek(w)}
-                  className={`w-8 cursor-pointer px-0 py-1 text-center font-medium ${
+                  className={`w-8 cursor-pointer px-0 py-1 text-center font-medium sm:w-auto ${
                     w === ranked ? 'text-primary' : 'text-muted-foreground'
                   } ${w < week ? 'opacity-40' : ''}`}
                 >
@@ -260,7 +263,7 @@ export default function Survivor() {
                     const blocked = reserved !== null && reserved !== w
                     if (!cell)
                       return (
-                        <td key={w} className="h-6 w-8 border-b border-border/40 text-center">
+                        <td key={w} className="h-6 w-8 border-b border-border/40 text-center sm:w-auto">
                           <span className="text-muted-foreground/40">
                             {isSpent || w < week ? '' : '·'}
                           </span>
@@ -273,7 +276,7 @@ export default function Survivor() {
                         title={`${team} ${cell.home ? 'vs' : '@'} ${cell.opponent} ${fmtSpread(
                           cell.spread
                         )} · ${pct(cell.win_prob)} · ${cell.source}`}
-                        className={`h-6 w-8 cursor-pointer border-b border-border/40 text-center tabular-nums transition-opacity ${
+                        className={`h-6 w-8 cursor-pointer border-b border-border/40 text-center tabular-nums transition-opacity sm:w-auto ${
                           blocked ? 'opacity-25' : ''
                         } ${pinnedHere ? 'ring-2 ring-inset ring-primary' : ''} ${
                           suggested ? 'ring-1 ring-inset ring-primary/40' : ''
