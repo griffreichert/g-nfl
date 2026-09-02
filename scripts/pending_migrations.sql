@@ -100,3 +100,34 @@ CREATE INDEX IF NOT EXISTS idx_game_context_season_week ON game_context(season, 
 ALTER TABLE game_context ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all operations for game_context" ON game_context;
 CREATE POLICY "Enable all operations for game_context" ON game_context FOR ALL USING (true);
+
+-- Survivor beliefs (#72): what each picker thinks about each team, beyond
+-- what the ratings say. `confidence` is doubt about the rating today (new
+-- coach, new QB, roster turnover); `fragility` is how fast that rating goes
+-- stale (injury risk, a bad team quitting in December). Both 0-4, both
+-- default 0, which reproduces the untouched board exactly.
+--
+-- Stored per picker rather than in the browser because the whole point is to
+-- compare them: two entries diverge on the same board because they doubt
+-- different teams, and that disagreement is the thing worth analysing at the
+-- end of a season.
+CREATE TABLE IF NOT EXISTS survivor_beliefs (
+    id SERIAL PRIMARY KEY,
+    season INTEGER NOT NULL,
+    picker VARCHAR(50) NOT NULL,
+    team VARCHAR(10) NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0,
+    fragility REAL NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (season, picker, team)
+);
+
+CREATE INDEX IF NOT EXISTS idx_survivor_beliefs_season_picker
+    ON survivor_beliefs(season, picker);
+
+-- Without a policy every SELECT returns [] and every count returns 0, with no
+-- error raised. That is how 319 rows of market lines were deleted on
+-- 2026-08-31 (see CLAUDE.md).
+ALTER TABLE survivor_beliefs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all operations for survivor_beliefs" ON survivor_beliefs;
+CREATE POLICY "Enable all operations for survivor_beliefs" ON survivor_beliefs FOR ALL USING (true);

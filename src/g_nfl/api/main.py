@@ -35,6 +35,7 @@ from g_nfl.utils.database import (
     MarketLinesDatabase,
     PicksDatabase,
     PoolSpreadsDatabase,
+    SurvivorBeliefsDatabase,
     TeamWeekStatsDatabase,
 )
 from g_nfl.utils.web_app import get_pool_spreads, normalize_game_id
@@ -55,10 +56,13 @@ from .schemas import (
     PickRecord,
     PoolSpreadUpdate,
     PoolSpreadUpdateResponse,
+    SaveBeliefsRequest,
+    SaveBeliefsResponse,
     SavePicksRequest,
     SavePicksResponse,
     SideFlag,
     StandingsResponse,
+    SurvivorBelief,
     SurvivorCandidate,
     SurvivorCell,
     SurvivorLeg,
@@ -345,6 +349,66 @@ def _parse_pins(raw: str | None) -> dict[int, str]:
     return pins
 
 
+def _parse_doubts(raw: str | None) -> dict[str, tuple[float, float]]:
+    """`"NYJ:1:3,CIN:0:2"` -> `{"NYJ": (1, 3), "CIN": (0, 2)}`.
+
+    Confidence then fragility, both 0-4. Only for a viewer with no saved
+    beliefs — a signed-in picker's are read from the table instead.
+    """
+    doubts: dict[str, tuple[float, float]] = {}
+    for chunk in (raw or "").split(","):
+        if not chunk.strip():
+            continue
+        parts = chunk.split(":")
+        if len(parts) != 3:
+            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:conf:frag")
+        try:
+            doubts[parts[0].strip().upper()] = (float(parts[1]), float(parts[2]))
+        except ValueError as e:
+            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:conf:frag") from e
+    return doubts
+
+
+@app.get("/api/survivor/beliefs", response_model=list[SurvivorBelief])
+def get_beliefs(season: int | None = None, picker: str | None = None):
+    """A picker's confidence/fragility, or the whole room's for comparison.
+
+    Empty while `survivor_beliefs` is unmigrated, which the planner treats
+    as "nobody doubts anybody" rather than as an error.
+    """
+    season = season or current_season()
+    return [
+        SurvivorBelief(**{k: row[k] for k in ("team", "confidence", "fragility")})
+        if picker
+        else SurvivorBelief(
+            **{k: row[k] for k in ("team", "confidence", "fragility")},
+            picker=row["picker"],
+        )
+        for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
+    ]
+
+
+@app.put("/api/survivor/beliefs", response_model=SaveBeliefsResponse)
+def save_beliefs(req: SaveBeliefsRequest, picker: str = _PICKER):
+    """Store what this picker thinks of these teams.
+
+    Written under the token's picker, never the body's: beliefs are the
+    input that makes two entries diverge, so they have to belong to
+    somebody in particular to be worth comparing later.
+    """
+    try:
+        saved = SurvivorBeliefsDatabase().save_beliefs(
+            req.season, picker, [b.model_dump() for b in req.beliefs]
+        )
+    except Exception as e:
+        raise HTTPException(
+            503,
+            "survivor_beliefs is not migrated yet — run the block at the end of "
+            f"scripts/pending_migrations.sql ({e})",
+        ) from e
+    return SaveBeliefsResponse(saved=saved)
+
+
 @app.get("/api/survivor", response_model=SurvivorResponse)
 def get_survivor(
     season: int | None = None,
@@ -352,6 +416,7 @@ def get_survivor(
     picker: str | None = None,
     pins: str | None = None,
     rank: int | None = None,
+    doubts: str | None = None,
 ):
     """The survivor board, the planned path, and this week's candidates.
 
@@ -370,6 +435,15 @@ def get_survivor(
     spent = sorted({h["team"] for h in history})
     held = _parse_pins(pins)
 
+    # A signed-in picker's saved beliefs are the default; the query string
+    # overrides them so a slider moves the board before it is saved.
+    doubted = _parse_doubts(doubts)
+    if not doubted and picker:
+        doubted = {
+            row["team"]: (row["confidence"], row["fragility"])
+            for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
+        }
+
     market = {
         normalize_game_id(line["game_id"]): line["spread"]
         for line in MarketLinesDatabase().get_market_lines(season)
@@ -377,7 +451,9 @@ def get_survivor(
     }
 
     try:
-        board, teams, weeks = survivor_board.build_board(season, week, spent, market)
+        board, teams, weeks = survivor_board.build_board(
+            season, week, spent, market, doubted
+        )
     except FileNotFoundError as e:
         raise HTTPException(
             503, f"No survivor board for {season}: run scripts/build_survivor_board.py"
@@ -409,6 +485,7 @@ def get_survivor(
         survival=pinned_plan["survival"] if pinned_plan else None,
         best_survival=unconstrained["survival"] if unconstrained else None,
         candidates=[SurvivorCandidate(**_candidate(c)) for c in ranked],
+        doubts={t: list(v) for t, v in doubted.items()},
         ratings_through=artifact["ratings_through"],
         generated_at=artifact["generated_at"],
     )

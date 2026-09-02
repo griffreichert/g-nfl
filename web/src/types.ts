@@ -255,6 +255,19 @@ export interface SurvivorCell {
   win_prob: number
   /** 'market' when a book has priced it, 'model' from power ratings */
   source: 'market' | 'model'
+  /** the margin's standard deviation, widened by whatever is doubted here */
+  stdev: number
+}
+
+/** What one picker thinks of one team, past what the ratings say. */
+export interface SurvivorBelief {
+  team: string
+  /** doubt about the rating today — new coach, new QB, roster turnover (0-4) */
+  confidence: number
+  /** how fast that rating goes stale: injuries, a bad team quitting (0-4) */
+  fragility: number
+  /** set only when reading the whole room's beliefs for comparison */
+  picker?: string | null
 }
 
 export interface SurvivorLeg {
@@ -300,6 +313,8 @@ export interface SurvivorResponse {
   /** the same solve without your pins — what insisting costs */
   best_survival: number | null
   candidates: SurvivorCandidate[]
+  /** team -> [confidence, fragility] actually applied to this board */
+  doubts: Record<string, number[]>
   ratings_through: { season: number; week: number }
   generated_at: string
 }

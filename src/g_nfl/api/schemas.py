@@ -289,6 +289,30 @@ class LedgerResponse(BaseModel):
     standings: list[LedgerEntry]
 
 
+class SurvivorBelief(BaseModel):
+    """What one picker thinks of one team, past what the ratings say (#72).
+
+    Both 0-4 and both default 0, so an untouched board is the plain one.
+    """
+
+    team: str
+    #: doubt about the rating today — new coach, new QB, roster turnover
+    confidence: float = 0
+    #: how fast that rating goes stale: injuries, a bad team quitting
+    fragility: float = 0
+    #: set only when reading the whole room's beliefs for comparison
+    picker: str | None = None
+
+
+class SaveBeliefsRequest(BaseModel):
+    season: int
+    beliefs: list[SurvivorBelief]
+
+
+class SaveBeliefsResponse(BaseModel):
+    saved: int
+
+
 class SurvivorCell(BaseModel):
     """One team's game in one week — a square of the season matrix."""
 
@@ -302,6 +326,8 @@ class SurvivorCell(BaseModel):
     win_prob: float
     #: "market" when a book has priced it, "model" from power ratings
     source: str
+    #: the margin's standard deviation, widened by whatever is doubted here
+    stdev: float
 
 
 class SurvivorLeg(BaseModel):
@@ -354,5 +380,7 @@ class SurvivorResponse(BaseModel):
     #: survival of the best plan ignoring pins — the price of your pins
     best_survival: float | None
     candidates: list[SurvivorCandidate]
+    #: team -> [confidence, fragility] actually applied to this board
+    doubts: dict[str, list[float]] = {}
     ratings_through: dict[str, int]
     generated_at: str

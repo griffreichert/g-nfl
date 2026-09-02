@@ -9,6 +9,7 @@ import type {
   Pick,
   PickRecord,
   StandingsResponse,
+  SurvivorBelief,
   SurvivorResponse,
   WeeksResponse,
 } from './types'
@@ -77,15 +78,30 @@ export const api = {
     week: number,
     picker?: string,
     pins?: Record<number, string>,
-    rank?: number
+    rank?: number,
+    doubts?: SurvivorBelief[]
   ) => {
     const q = new URLSearchParams({ season: String(season), week: String(week) })
     if (picker) q.set('picker', picker)
     const pairs = Object.entries(pins ?? {}).map(([w, t]) => `${w}:${t}`)
     if (pairs.length) q.set('pins', pairs.join(','))
     if (rank !== undefined) q.set('rank', String(rank))
+    // Sent only while a slider is unsaved, or for a viewer with no entry to
+    // save against — a signed-in picker's beliefs are read from the table.
+    const doubted = (doubts ?? []).filter((b) => b.confidence || b.fragility)
+    if (doubted.length)
+      q.set('doubts', doubted.map((b) => `${b.team}:${b.confidence}:${b.fragility}`).join(','))
     return get<SurvivorResponse>(`/api/survivor?${q}`)
   },
+  beliefs: (season: number, picker?: string) => {
+    const q = new URLSearchParams({ season: String(season) })
+    if (picker) q.set('picker', picker)
+    return get<SurvivorBelief[]>(`/api/survivor/beliefs?${q}`)
+  },
+  // Written under the token's picker: beliefs are what makes two entries
+  // diverge on the same board, so they have to belong to somebody.
+  saveBeliefs: (season: number, beliefs: SurvivorBelief[]) =>
+    send<{ saved: number }>('PUT', '/api/survivor/beliefs', { season, beliefs }),
   // `picker` is read from the token server-side. The body's copy is ignored
   // except for TEAM, the entry the room submits together off the board.
   savePicks: (season: number, week: number, picks: Pick[], picker?: string) =>

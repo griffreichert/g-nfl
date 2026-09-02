@@ -12,6 +12,7 @@ const cell = (team: string, week: number, win_prob: number): SurvivorCell => ({
   spread: 3,
   win_prob,
   source: 'model',
+  stdev: 13.5,
 })
 
 const leg = (week: number, team: string): SurvivorLeg => ({

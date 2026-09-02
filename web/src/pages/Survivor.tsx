@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pin, RotateCcw, Skull } from 'lucide-react'
 import { api, teamLogo } from '../api'
+import BeliefEditor from '../components/BeliefEditor'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorNote, Loading } from '../components/PageState'
 import { useAuth, useConfig, useSeasonWeek } from '../hooks'
@@ -14,7 +15,7 @@ import {
   togglePin,
   type Pins,
 } from '../lib/survivor'
-import type { SurvivorCell, SurvivorResponse } from '../types'
+import type { SurvivorBelief, SurvivorCell, SurvivorResponse } from '../types'
 
 /**
  * Survivor planning as an assignment over the whole season (#72).
@@ -70,6 +71,61 @@ function usePins(season: number | null) {
   return { pins, toggle, clear: () => write({}) }
 }
 
+/**
+ * Confidence and fragility, per team.
+ *
+ * Saved against the picker when there is one, because the point of these
+ * numbers is that they differ between people and that difference explains
+ * why two entries diverge off the same board. Signed out, they live in the
+ * browser and ride the query string, so the planner still works for
+ * somebody just looking.
+ */
+function useBeliefs(season: number | null, picker: string | null) {
+  const key = season ? `nohomers.survivor.beliefs.${season}` : null
+  const [beliefs, setBeliefs] = useState<Record<string, SurvivorBelief>>({})
+  const [status, setStatus] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!season) return
+    const local = () => {
+      try {
+        setBeliefs(JSON.parse(localStorage.getItem(key ?? '') ?? '{}'))
+      } catch {
+        setBeliefs({})
+      }
+    }
+    if (!picker) return local()
+    api
+      .beliefs(season, picker)
+      .then((rows) => setBeliefs(Object.fromEntries(rows.map((b) => [b.team, b]))))
+      .catch(local)
+  }, [season, picker, key])
+
+  const setBelief = (team: string, field: 'confidence' | 'fragility', value: number) => {
+    const held: SurvivorBelief = beliefs[team] ?? { team, confidence: 0, fragility: 0 }
+    const next = { ...beliefs, [team]: { ...held, [field]: value } }
+    setBeliefs(next)
+    if (key) localStorage.setItem(key, JSON.stringify(next))
+    if (!season || !picker) return
+    setStatus('saving…')
+    api
+      .saveBeliefs(season, Object.values(next))
+      .then(() => setStatus('saved'))
+      // The table may not be migrated yet. Say so once, and keep planning:
+      // the query string carries the same numbers either way.
+      .catch(() => setStatus('not saved — survivor_beliefs is not migrated yet'))
+  }
+
+  // A stable list for the fetch dependency: rebuilding the object every
+  // render would refetch the board forever.
+  const list = useMemo(
+    () => Object.values(beliefs).filter((b) => b.confidence || b.fragility),
+    [beliefs]
+  )
+
+  return { beliefs, setBelief, status, list }
+}
+
 const pct = (p: number | null | undefined, dp = 0) =>
   p === null || p === undefined ? '—' : `${(p * 100).toFixed(dp)}%`
 
@@ -89,19 +145,22 @@ export default function Survivor() {
   const ranked = focus && focus.of === week ? focus.week : week
   const focusWeek = (w: number) => week !== null && setFocus({ of: week, week: w })
 
+  const { beliefs, setBelief, status: beliefStatus, list: doubts } = useBeliefs(season, picker)
+  const [tuning, setTuning] = useState(false)
+
   const [data, setData] = useState<SurvivorResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (season === null || week === null) return
     api
-      .survivor(season, week, picker ?? undefined, pins, ranked ?? undefined)
+      .survivor(season, week, picker ?? undefined, pins, ranked ?? undefined, doubts)
       .then((d) => {
         setData(d)
         setError(null)
       })
       .catch((e) => setError(String(e)))
-  }, [season, week, picker, pins, ranked])
+  }, [season, week, picker, pins, ranked, doubts])
 
   const byTeamWeek = useMemo(() => {
     const m = new Map<string, SurvivorCell>()
@@ -183,49 +242,68 @@ export default function Survivor() {
         )}
       </div>
 
-      {/* The season as one line: what you spent, and what the plan spends next. */}
-      <div className="overflow-x-auto">
-        <div className="flex min-w-max gap-1 sm:min-w-0">
-          {ALL_WEEKS.map((w) => {
-            const played = playedWeek.get(w)
-            const leg = data.plan.find((l) => l.week === w)
-            const team = played ?? leg?.team
-            const isRanked = w === ranked
-            return (
-              <button
-                key={w}
-                onClick={() => focusWeek(w)}
-                className={`w-[52px] shrink-0 rounded-md border p-1.5 text-center transition-colors sm:w-auto sm:flex-1 ${
-                  isRanked ? 'border-primary bg-accent' : 'border-border bg-card hover:bg-muted'
-                }`}
-              >
-                <p className="text-[10px] text-muted-foreground">wk {w}</p>
-                {team ? (
-                  <img
-                    src={teamLogo(team)}
-                    alt={team}
-                    className={`mx-auto size-7 ${played ? 'grayscale' : ''} ${
-                      leg && !leg.pinned && !played ? 'opacity-45' : ''
-                    }`}
-                  />
-                ) : (
-                  <div className="mx-auto size-7" />
-                )}
-                <p className="truncate text-[10px] font-medium tabular-nums">
-                  {played ? 'spent' : leg?.pinned ? 'pinned' : pct(leg?.prob)}
-                </p>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* The matrix. A row's bright square three weeks out is the whole point. */}
+      {/* The plan and the board share one table, so a card sits directly over
+          its own column. A card floating between two weeks is worse than no
+          card at all, because this page is read column-wise. */}
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
         <table className="w-full min-w-max border-separate border-spacing-0 text-[10px] sm:min-w-0 sm:table-fixed">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 w-16 bg-card px-2 py-1 text-left font-medium text-muted-foreground">
+              <th className="sticky left-0 z-10 w-16 bg-card px-2 pt-2 text-left align-bottom font-medium text-muted-foreground">
+                the plan
+              </th>
+              {ALL_WEEKS.map((w) => {
+                const played = playedWeek.get(w)
+                const leg = data.plan.find((l) => l.week === w)
+                const team = played ?? leg?.team
+                const game = team ? byTeamWeek.get(`${team}|${w}`) : undefined
+                return (
+                  <th key={w} className="w-8 px-0.5 pt-2 align-bottom sm:w-auto">
+                    <button
+                      onClick={() => focusWeek(w)}
+                      className={`w-full rounded-md border p-1 text-center font-normal transition-colors ${
+                        w === ranked
+                          ? 'border-primary bg-accent'
+                          : 'border-border hover:bg-muted'
+                      } ${leg?.pinned ? 'ring-2 ring-inset ring-primary' : ''}`}
+                    >
+                      <p className="text-[9px] text-muted-foreground">wk {w}</p>
+                      {team ? (
+                        <img
+                          src={teamLogo(team)}
+                          alt={team}
+                          className={`mx-auto size-6 ${played ? 'grayscale' : ''}`}
+                        />
+                      ) : (
+                        <div className="mx-auto size-6" />
+                      )}
+                      {/* Who they play. A pick is only as good as the opponent,
+                          and scrolling to the drawer for it is a click too many. */}
+                      {game ? (
+                        <span className="mt-0.5 flex items-center justify-center gap-0.5 text-[8px] text-muted-foreground">
+                          {game.home ? 'v' : '@'}
+                          <img
+                            src={teamLogo(game.opponent)}
+                            alt={game.opponent}
+                            className="size-3 opacity-55"
+                          />
+                        </span>
+                      ) : (
+                        <span className="mt-0.5 block h-3" />
+                      )}
+                      <p className="truncate text-[9px] font-medium tabular-nums">
+                        {played ? 'spent' : pct(leg?.prob)}
+                      </p>
+                    </button>
+                  </th>
+                )
+              })}
+            </tr>
+
+            {/* The board itself. A row's bright square three weeks out is the
+                whole point of the page. */}
+            <tr>
+              <th className="sticky left-0 z-10 bg-card px-2 py-1 text-left font-medium text-muted-foreground">
                 team
               </th>
               {ALL_WEEKS.map((w) => (
@@ -307,6 +385,15 @@ export default function Survivor() {
         </span>
         <span>click a square to reserve that team for that week</span>
       </p>
+
+      <BeliefEditor
+        teams={teams.filter((t) => !spent.has(t))}
+        beliefs={beliefs}
+        onChange={setBelief}
+        open={tuning}
+        onToggle={() => setTuning((t) => !t)}
+        status={beliefStatus}
+      />
 
       {/* The week in question, ranked by what each pick costs the season. */}
       <div>
