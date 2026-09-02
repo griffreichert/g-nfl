@@ -287,3 +287,69 @@ class LedgerResponse(BaseModel):
     season: int
     weeks: list[LedgerWeek]
     standings: list[LedgerEntry]
+
+
+class SurvivorCell(BaseModel):
+    """One team's game in one week — a square of the season matrix."""
+
+    team: str
+    week: int
+    game_id: str
+    opponent: str
+    home: bool
+    #: this team's own margin, positive = favoured
+    spread: float
+    win_prob: float
+    #: "market" when a book has priced it, "model" from power ratings
+    source: str
+
+
+class SurvivorLeg(BaseModel):
+    week: int
+    team: str
+    prob: float
+    #: reserved by the user, as opposed to placed by the solver
+    pinned: bool = False
+
+
+class SurvivorBestWeek(BaseModel):
+    """Where a team peaks over the weeks still in play."""
+
+    week: int
+    win_prob: float
+    spread: float | None = None
+
+
+class SurvivorCandidate(BaseModel):
+    """A legal pick for the week being ranked, priced by the whole season."""
+
+    team: str
+    opponent: str | None = None
+    home: bool | None = None
+    spread: float | None = None
+    win_prob: float
+    #: survival of the best plan that spends this team here
+    plan_survival: float
+    #: log-survival given up versus the unconstrained plan; 0 = free
+    forward_cost: float | None = None
+    #: the week this team is strongest, the reason to wait
+    best_week: SurvivorBestWeek | None = None
+
+
+class SurvivorResponse(BaseModel):
+    season: int
+    week: int
+    picker: str | None
+    #: teams already submitted in survivor, gone for good
+    spent: list[str]
+    #: pins that were honoured, week -> team
+    pins: dict[int, str]
+    weeks: list[int]
+    cells: list[SurvivorCell]
+    plan: list[SurvivorLeg]
+    survival: float | None
+    #: survival of the best plan ignoring pins — the price of your pins
+    best_survival: float | None
+    candidates: list[SurvivorCandidate]
+    ratings_through: dict[str, int]
+    generated_at: str

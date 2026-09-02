@@ -150,39 +150,54 @@ def plan(
     board: Board,
     teams: list[str],
     weeks: list[int],
-    force: tuple[str, int] | None = None,
+    pins: dict[int, str] | None = None,
 ) -> dict[str, Any] | None:
     """Best team-to-week assignment over what is left.
 
-    `force` pins one team to one week — that is how the cost of spending
-    a team now is measured: solve again with it forced, and compare.
-    Returns None when there are fewer usable teams than weeks.
+    `pins` fixes teams to weeks — `{12: "BUF"}` reserves Buffalo for week
+    12 and plans everything else around it. Two uses: the planner UI,
+    where the user reserves teams by hand, and measuring what spending a
+    team now costs (pin it to this week, solve, compare).
+
+    Returns None when the pins are illegal or there are fewer usable
+    teams than weeks.
     """
     if len(teams) < len(weeks) or not weeks:
         return None
 
     use_teams, use_weeks = list(teams), list(weeks)
-    pinned = None
-    if force:
-        team, week = force
+    pinned = []
+    for week, team in (pins or {}).items():
         if team not in use_teams or week not in use_weeks:
-            return None
+            return None  # spent team, or a week no longer in play
         if not board.prob.get((team, week)):
             return None  # bye or no game: not a legal pick
-        pinned = (team, week, board.prob[(team, week)])
-        use_teams = [t for t in use_teams if t != team]
-        use_weeks = [w for w in use_weeks if w != week]
+        pinned.append(
+            {
+                "week": week,
+                "team": team,
+                "prob": board.prob[(team, week)],
+                "pinned": True,
+            }
+        )
+        use_teams.remove(team)
+        use_weeks.remove(week)
 
-    picks = []
+    picks = list(pinned)
     if use_weeks:
         if len(use_teams) < len(use_weeks):
             return None
         col_to_row = hungarian(board.matrix(use_teams, use_weeks))
         for j, w in enumerate(use_weeks):
             t = use_teams[col_to_row[j]]
-            picks.append({"week": w, "team": t, "prob": board.prob.get((t, w), 0.0)})
-    if pinned:
-        picks.append({"week": pinned[1], "team": pinned[0], "prob": pinned[2]})
+            picks.append(
+                {
+                    "week": w,
+                    "team": t,
+                    "prob": board.prob.get((t, w), 0.0),
+                    "pinned": False,
+                }
+            )
     picks.sort(key=lambda d: d["week"])
 
     # a plan containing an impossible leg is not a plan
@@ -194,17 +209,31 @@ def plan(
     return {"picks": picks, "survival": survival, "log_survival": math.log(survival)}
 
 
-def rank_week(board: Board, teams: list[str], weeks: list[int]) -> list[dict[str, Any]]:
-    """Every legal pick for the first remaining week, by what it costs.
+def rank_week(
+    board: Board,
+    teams: list[str],
+    weeks: list[int],
+    pins: dict[int, str] | None = None,
+    week: int | None = None,
+) -> list[dict[str, Any]]:
+    """Every legal pick for one week, by what it costs.
 
     `forward_cost` is the drop in whole-season survival probability caused
-    by spending this team now instead of letting the plan place it. Zero
-    means the optimal plan already wanted this team this week.
+    by spending this team in this week instead of letting the plan place
+    it. Zero means the optimal plan already wanted this pairing.
+
+    `week` defaults to the first remaining one. `pins` is held fixed
+    throughout, so the ranking answers "given the rest of my plan, what
+    should I do here" — a pin on the ranked week itself is ignored, since
+    that is the question being asked.
     """
     if not weeks:
         return []
-    this_week = weeks[0]
-    best = plan(board, teams, weeks)
+    this_week = weeks[0] if week is None else week
+    if this_week not in weeks:
+        return []
+    held = {w: t for w, t in (pins or {}).items() if w != this_week}
+    best = plan(board, teams, weeks, held)
     ceiling = best["log_survival"] if best else None
 
     out = []
@@ -212,7 +241,9 @@ def rank_week(board: Board, teams: list[str], weeks: list[int]) -> list[dict[str
         p = board.prob.get((team, this_week))
         if not p:
             continue  # bye, or already played
-        forced = plan(board, teams, weeks, force=(team, this_week))
+        if team in held.values():
+            continue  # reserved for another week; unpin it to consider it here
+        forced = plan(board, teams, weeks, {**held, this_week: team})
         if forced is None:
             continue
         meta = board.game.get((team, this_week), {})

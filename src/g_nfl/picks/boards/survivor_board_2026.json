@@ -1,0 +1,2221 @@
+{
+ "season": 2026,
+ "generated_at": "2026-09-02T13:45:17+00:00",
+ "ratings_through": {
+  "season": 2026,
+  "week": 6
+ },
+ "hfa": 1.6,
+ "ratings": {
+  "ARI": -6.93,
+  "ATL": -3.21,
+  "BAL": 2.84,
+  "BUF": 3.82,
+  "CAR": -1.67,
+  "CHI": 1.41,
+  "CIN": 2.01,
+  "CLE": -5.29,
+  "DAL": 1.23,
+  "DEN": 1.4,
+  "DET": 2.74,
+  "GB": 2.66,
+  "HOU": 0.52,
+  "IND": -1.89,
+  "JAX": 1.58,
+  "KC": 3.02,
+  "LA": 5.15,
+  "LAC": 2.37,
+  "LV": -4.37,
+  "MIA": -5.72,
+  "MIN": 0.25,
+  "NE": 2.66,
+  "NO": -2.59,
+  "NYG": -1.6,
+  "NYJ": -5.1,
+  "PHI": 3.26,
+  "PIT": -0.74,
+  "SEA": 5.19,
+  "SF": 2.75,
+  "TB": -0.76,
+  "TEN": -3.81,
+  "WAS": -1.17
+ },
+ "games": [
+  {
+   "game_id": "2026_01_ARI_LAC",
+   "week": 1,
+   "home": "LAC",
+   "away": "ARI",
+   "model_spread": 10.9,
+   "market_spread": 10.5
+  },
+  {
+   "game_id": "2026_01_ATL_PIT",
+   "week": 1,
+   "home": "PIT",
+   "away": "ATL",
+   "model_spread": 4.08,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_01_BAL_IND",
+   "week": 1,
+   "home": "IND",
+   "away": "BAL",
+   "model_spread": -3.13,
+   "market_spread": -3.5
+  },
+  {
+   "game_id": "2026_01_BUF_HOU",
+   "week": 1,
+   "home": "HOU",
+   "away": "BUF",
+   "model_spread": -1.7,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_01_CHI_CAR",
+   "week": 1,
+   "home": "CAR",
+   "away": "CHI",
+   "model_spread": -1.48,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_01_CLE_JAX",
+   "week": 1,
+   "home": "JAX",
+   "away": "CLE",
+   "model_spread": 8.48,
+   "market_spread": 7.5
+  },
+  {
+   "game_id": "2026_01_DAL_NYG",
+   "week": 1,
+   "home": "NYG",
+   "away": "DAL",
+   "model_spread": -1.23,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_01_DEN_KC",
+   "week": 1,
+   "home": "KC",
+   "away": "DEN",
+   "model_spread": 3.22,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_01_GB_MIN",
+   "week": 1,
+   "home": "MIN",
+   "away": "GB",
+   "model_spread": -0.81,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_01_MIA_LV",
+   "week": 1,
+   "home": "LV",
+   "away": "MIA",
+   "model_spread": 2.95,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_01_NE_SEA",
+   "week": 1,
+   "home": "SEA",
+   "away": "NE",
+   "model_spread": 4.14,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_01_NO_DET",
+   "week": 1,
+   "home": "DET",
+   "away": "NO",
+   "model_spread": 6.94,
+   "market_spread": 7.0
+  },
+  {
+   "game_id": "2026_01_NYJ_TEN",
+   "week": 1,
+   "home": "TEN",
+   "away": "NYJ",
+   "model_spread": 2.89,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_01_SF_LA",
+   "week": 1,
+   "home": "LA",
+   "away": "SF",
+   "model_spread": 2.4,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_01_TB_CIN",
+   "week": 1,
+   "home": "CIN",
+   "away": "TB",
+   "model_spread": 4.38,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_01_WAS_PHI",
+   "week": 1,
+   "home": "PHI",
+   "away": "WAS",
+   "model_spread": 6.02,
+   "market_spread": 4.5
+  },
+  {
+   "game_id": "2026_02_CAR_ATL",
+   "week": 2,
+   "home": "ATL",
+   "away": "CAR",
+   "model_spread": 0.06,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_02_CIN_HOU",
+   "week": 2,
+   "home": "HOU",
+   "away": "CIN",
+   "model_spread": 0.1,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_02_CLE_TB",
+   "week": 2,
+   "home": "TB",
+   "away": "CLE",
+   "model_spread": 6.13,
+   "market_spread": 5.5
+  },
+  {
+   "game_id": "2026_02_DET_BUF",
+   "week": 2,
+   "home": "BUF",
+   "away": "DET",
+   "model_spread": 2.68,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_02_GB_NYJ",
+   "week": 2,
+   "home": "NYJ",
+   "away": "GB",
+   "model_spread": -6.16,
+   "market_spread": -5.5
+  },
+  {
+   "game_id": "2026_02_IND_KC",
+   "week": 2,
+   "home": "KC",
+   "away": "IND",
+   "model_spread": 6.51,
+   "market_spread": 6.5
+  },
+  {
+   "game_id": "2026_02_JAX_DEN",
+   "week": 2,
+   "home": "DEN",
+   "away": "JAX",
+   "model_spread": 1.42,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_02_LV_LAC",
+   "week": 2,
+   "home": "LAC",
+   "away": "LV",
+   "model_spread": 8.34,
+   "market_spread": 8.5
+  },
+  {
+   "game_id": "2026_02_MIA_SF",
+   "week": 2,
+   "home": "SF",
+   "away": "MIA",
+   "model_spread": 10.08,
+   "market_spread": 10.5
+  },
+  {
+   "game_id": "2026_02_MIN_CHI",
+   "week": 2,
+   "home": "CHI",
+   "away": "MIN",
+   "model_spread": 2.76,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_02_NO_BAL",
+   "week": 2,
+   "home": "BAL",
+   "away": "NO",
+   "model_spread": 7.03,
+   "market_spread": 7.5
+  },
+  {
+   "game_id": "2026_02_NYG_LA",
+   "week": 2,
+   "home": "LA",
+   "away": "NYG",
+   "model_spread": 8.35,
+   "market_spread": 8.5
+  },
+  {
+   "game_id": "2026_02_PHI_TEN",
+   "week": 2,
+   "home": "TEN",
+   "away": "PHI",
+   "model_spread": -5.47,
+   "market_spread": -4.5
+  },
+  {
+   "game_id": "2026_02_PIT_NE",
+   "week": 2,
+   "home": "NE",
+   "away": "PIT",
+   "model_spread": 4.99,
+   "market_spread": 4.5
+  },
+  {
+   "game_id": "2026_02_SEA_ARI",
+   "week": 2,
+   "home": "ARI",
+   "away": "SEA",
+   "model_spread": -10.52,
+   "market_spread": -10.0
+  },
+  {
+   "game_id": "2026_02_WAS_DAL",
+   "week": 2,
+   "home": "DAL",
+   "away": "WAS",
+   "model_spread": 3.99,
+   "market_spread": 4.5
+  },
+  {
+   "game_id": "2026_03_ARI_SF",
+   "week": 3,
+   "home": "SF",
+   "away": "ARI",
+   "model_spread": 11.29,
+   "market_spread": 11.5
+  },
+  {
+   "game_id": "2026_03_ATL_GB",
+   "week": 3,
+   "home": "GB",
+   "away": "ATL",
+   "model_spread": 7.48,
+   "market_spread": 7.5
+  },
+  {
+   "game_id": "2026_03_BAL_DAL",
+   "week": 3,
+   "home": "DAL",
+   "away": "BAL",
+   "model_spread": -1.61,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_03_CAR_CLE",
+   "week": 3,
+   "home": "CLE",
+   "away": "CAR",
+   "model_spread": -2.02,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_03_CIN_PIT",
+   "week": 3,
+   "home": "PIT",
+   "away": "CIN",
+   "model_spread": -1.15,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_03_HOU_IND",
+   "week": 3,
+   "home": "IND",
+   "away": "HOU",
+   "model_spread": -0.81,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_03_KC_MIA",
+   "week": 3,
+   "home": "MIA",
+   "away": "KC",
+   "model_spread": -7.15,
+   "market_spread": -7.5
+  },
+  {
+   "game_id": "2026_03_LAC_BUF",
+   "week": 3,
+   "home": "BUF",
+   "away": "LAC",
+   "model_spread": 3.06,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_03_LA_DEN",
+   "week": 3,
+   "home": "DEN",
+   "away": "LA",
+   "model_spread": -2.15,
+   "market_spread": -3.0
+  },
+  {
+   "game_id": "2026_03_LV_NO",
+   "week": 3,
+   "home": "NO",
+   "away": "LV",
+   "model_spread": 3.38,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_03_MIN_TB",
+   "week": 3,
+   "home": "TB",
+   "away": "MIN",
+   "model_spread": 0.59,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_03_NE_JAX",
+   "week": 3,
+   "home": "JAX",
+   "away": "NE",
+   "model_spread": 0.52,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_03_NYJ_DET",
+   "week": 3,
+   "home": "DET",
+   "away": "NYJ",
+   "model_spread": 9.44,
+   "market_spread": 9.5
+  },
+  {
+   "game_id": "2026_03_PHI_CHI",
+   "week": 3,
+   "home": "CHI",
+   "away": "PHI",
+   "model_spread": -0.25,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_03_SEA_WAS",
+   "week": 3,
+   "home": "WAS",
+   "away": "SEA",
+   "model_spread": -4.76,
+   "market_spread": -3.5
+  },
+  {
+   "game_id": "2026_03_TEN_NYG",
+   "week": 3,
+   "home": "NYG",
+   "away": "TEN",
+   "model_spread": 3.8,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_04_ARI_NYG",
+   "week": 4,
+   "home": "NYG",
+   "away": "ARI",
+   "model_spread": 6.93,
+   "market_spread": 7.0
+  },
+  {
+   "game_id": "2026_04_ATL_NO",
+   "week": 4,
+   "home": "NO",
+   "away": "ATL",
+   "model_spread": 2.22,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_04_DAL_HOU",
+   "week": 4,
+   "home": "HOU",
+   "away": "DAL",
+   "model_spread": 0.89,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_04_DEN_SF",
+   "week": 4,
+   "home": "SF",
+   "away": "DEN",
+   "model_spread": 2.95,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_04_DET_CAR",
+   "week": 4,
+   "home": "CAR",
+   "away": "DET",
+   "model_spread": -2.81,
+   "market_spread": -3.0
+  },
+  {
+   "game_id": "2026_04_GB_TB",
+   "week": 4,
+   "home": "TB",
+   "away": "GB",
+   "model_spread": -1.83,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_04_IND_WAS",
+   "week": 4,
+   "home": "WAS",
+   "away": "IND",
+   "model_spread": 0.73,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_04_JAX_CIN",
+   "week": 4,
+   "home": "CIN",
+   "away": "JAX",
+   "model_spread": 2.03,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_04_KC_LV",
+   "week": 4,
+   "home": "LV",
+   "away": "KC",
+   "model_spread": -5.8,
+   "market_spread": -5.5
+  },
+  {
+   "game_id": "2026_04_LAC_SEA",
+   "week": 4,
+   "home": "SEA",
+   "away": "LAC",
+   "model_spread": 4.43,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_04_LA_PHI",
+   "week": 4,
+   "home": "PHI",
+   "away": "LA",
+   "model_spread": -0.29,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_04_MIA_MIN",
+   "week": 4,
+   "home": "MIN",
+   "away": "MIA",
+   "model_spread": 7.58,
+   "market_spread": 7.5
+  },
+  {
+   "game_id": "2026_04_NE_BUF",
+   "week": 4,
+   "home": "BUF",
+   "away": "NE",
+   "model_spread": 2.77,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_04_NYJ_CHI",
+   "week": 4,
+   "home": "CHI",
+   "away": "NYJ",
+   "model_spread": 8.1,
+   "market_spread": 8.5
+  },
+  {
+   "game_id": "2026_04_PIT_CLE",
+   "week": 4,
+   "home": "CLE",
+   "away": "PIT",
+   "model_spread": -2.96,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_04_TEN_BAL",
+   "week": 4,
+   "home": "BAL",
+   "away": "TEN",
+   "model_spread": 8.24,
+   "market_spread": 8.5
+  },
+  {
+   "game_id": "2026_05_BAL_ATL",
+   "week": 5,
+   "home": "ATL",
+   "away": "BAL",
+   "model_spread": -4.45,
+   "market_spread": -4.5
+  },
+  {
+   "game_id": "2026_05_BUF_LA",
+   "week": 5,
+   "home": "LA",
+   "away": "BUF",
+   "model_spread": 2.93,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_05_CHI_GB",
+   "week": 5,
+   "home": "GB",
+   "away": "CHI",
+   "model_spread": 2.86,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_05_CIN_MIA",
+   "week": 5,
+   "home": "MIA",
+   "away": "CIN",
+   "model_spread": -6.14,
+   "market_spread": -6.0
+  },
+  {
+   "game_id": "2026_05_CLE_NYJ",
+   "week": 5,
+   "home": "NYJ",
+   "away": "CLE",
+   "model_spread": 1.8,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_05_DEN_LAC",
+   "week": 5,
+   "home": "LAC",
+   "away": "DEN",
+   "model_spread": 2.56,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_05_DET_ARI",
+   "week": 5,
+   "home": "ARI",
+   "away": "DET",
+   "model_spread": -8.07,
+   "market_spread": -8.5
+  },
+  {
+   "game_id": "2026_05_HOU_TEN",
+   "week": 5,
+   "home": "TEN",
+   "away": "HOU",
+   "model_spread": -2.73,
+   "market_spread": -3.5
+  },
+  {
+   "game_id": "2026_05_IND_PIT",
+   "week": 5,
+   "home": "PIT",
+   "away": "IND",
+   "model_spread": 2.76,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_05_LV_NE",
+   "week": 5,
+   "home": "NE",
+   "away": "LV",
+   "model_spread": 8.63,
+   "market_spread": 8.5
+  },
+  {
+   "game_id": "2026_05_MIN_NO",
+   "week": 5,
+   "home": "NO",
+   "away": "MIN",
+   "model_spread": -1.25,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_05_NYG_WAS",
+   "week": 5,
+   "home": "WAS",
+   "away": "NYG",
+   "model_spread": 2.04,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_05_PHI_JAX",
+   "week": 5,
+   "home": "JAX",
+   "away": "PHI",
+   "model_spread": -0.08,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_05_SF_SEA",
+   "week": 5,
+   "home": "SEA",
+   "away": "SF",
+   "model_spread": 4.04,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_05_TB_DAL",
+   "week": 5,
+   "home": "DAL",
+   "away": "TB",
+   "model_spread": 3.59,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_06_ARI_LA",
+   "week": 6,
+   "home": "LA",
+   "away": "ARI",
+   "model_spread": 13.68,
+   "market_spread": 13.5
+  },
+  {
+   "game_id": "2026_06_BAL_CLE",
+   "week": 6,
+   "home": "CLE",
+   "away": "BAL",
+   "model_spread": -6.53,
+   "market_spread": -6.5
+  },
+  {
+   "game_id": "2026_06_BUF_LV",
+   "week": 6,
+   "home": "LV",
+   "away": "BUF",
+   "model_spread": -6.6,
+   "market_spread": -6.5
+  },
+  {
+   "game_id": "2026_06_CAR_PHI",
+   "week": 6,
+   "home": "PHI",
+   "away": "CAR",
+   "model_spread": 6.53,
+   "market_spread": 6.5
+  },
+  {
+   "game_id": "2026_06_CHI_ATL",
+   "week": 6,
+   "home": "ATL",
+   "away": "CHI",
+   "model_spread": -3.02,
+   "market_spread": -3.0
+  },
+  {
+   "game_id": "2026_06_DAL_GB",
+   "week": 6,
+   "home": "GB",
+   "away": "DAL",
+   "model_spread": 3.04,
+   "market_spread": 3.0
+  },
+  {
+   "game_id": "2026_06_HOU_JAX",
+   "week": 6,
+   "home": "JAX",
+   "away": "HOU",
+   "model_spread": 1.06,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_06_LAC_KC",
+   "week": 6,
+   "home": "KC",
+   "away": "LAC",
+   "model_spread": 2.26,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_06_NO_NYG",
+   "week": 6,
+   "home": "NYG",
+   "away": "NO",
+   "model_spread": 2.59,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_06_NYJ_NE",
+   "week": 6,
+   "home": "NE",
+   "away": "NYJ",
+   "model_spread": 9.35,
+   "market_spread": 9.5
+  },
+  {
+   "game_id": "2026_06_PIT_TB",
+   "week": 6,
+   "home": "TB",
+   "away": "PIT",
+   "model_spread": 1.58,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_06_SEA_DEN",
+   "week": 6,
+   "home": "DEN",
+   "away": "SEA",
+   "model_spread": -2.19,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_06_TEN_IND",
+   "week": 6,
+   "home": "IND",
+   "away": "TEN",
+   "model_spread": 3.51,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_06_WAS_SF",
+   "week": 6,
+   "home": "SF",
+   "away": "WAS",
+   "model_spread": 5.52,
+   "market_spread": 5.5
+  },
+  {
+   "game_id": "2026_07_CIN_BAL",
+   "week": 7,
+   "home": "BAL",
+   "away": "CIN",
+   "model_spread": 2.42,
+   "market_spread": 3.5
+  },
+  {
+   "game_id": "2026_07_CLE_TEN",
+   "week": 7,
+   "home": "TEN",
+   "away": "CLE",
+   "model_spread": 3.09,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_DAL_PHI",
+   "week": 7,
+   "home": "PHI",
+   "away": "DAL",
+   "model_spread": 3.63,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_DEN_ARI",
+   "week": 7,
+   "home": "ARI",
+   "away": "DEN",
+   "model_spread": -6.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_GB_DET",
+   "week": 7,
+   "home": "DET",
+   "away": "GB",
+   "model_spread": 1.68,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_IND_MIN",
+   "week": 7,
+   "home": "MIN",
+   "away": "IND",
+   "model_spread": 3.74,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_07_KC_SEA",
+   "week": 7,
+   "home": "SEA",
+   "away": "KC",
+   "model_spread": 3.77,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_LA_LV",
+   "week": 7,
+   "home": "LV",
+   "away": "LA",
+   "model_spread": -7.92,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_MIA_NYJ",
+   "week": 7,
+   "home": "NYJ",
+   "away": "MIA",
+   "model_spread": 2.23,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_07_NE_CHI",
+   "week": 7,
+   "home": "CHI",
+   "away": "NE",
+   "model_spread": 0.35,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_07_NYG_HOU",
+   "week": 7,
+   "home": "HOU",
+   "away": "NYG",
+   "model_spread": 3.72,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_07_PIT_NO",
+   "week": 7,
+   "home": "NO",
+   "away": "PIT",
+   "model_spread": -1.86,
+   "market_spread": -2.5
+  },
+  {
+   "game_id": "2026_07_SF_ATL",
+   "week": 7,
+   "home": "ATL",
+   "away": "SF",
+   "model_spread": -4.37,
+   "market_spread": -4.5
+  },
+  {
+   "game_id": "2026_07_TB_CAR",
+   "week": 7,
+   "home": "CAR",
+   "away": "TB",
+   "model_spread": 0.69,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_08_ARI_DAL",
+   "week": 8,
+   "home": "DAL",
+   "away": "ARI",
+   "model_spread": 9.76,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_ATL_TB",
+   "week": 8,
+   "home": "TB",
+   "away": "ATL",
+   "model_spread": 4.05,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_BAL_BUF",
+   "week": 8,
+   "home": "BUF",
+   "away": "BAL",
+   "model_spread": 2.59,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_CAR_GB",
+   "week": 8,
+   "home": "GB",
+   "away": "CAR",
+   "model_spread": 5.94,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_CHI_SEA",
+   "week": 8,
+   "home": "SEA",
+   "away": "CHI",
+   "model_spread": 5.39,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_CLE_PIT",
+   "week": 8,
+   "home": "PIT",
+   "away": "CLE",
+   "model_spread": 6.16,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_IND_JAX",
+   "week": 8,
+   "home": "JAX",
+   "away": "IND",
+   "model_spread": 5.07,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_KC_DEN",
+   "week": 8,
+   "home": "DEN",
+   "away": "KC",
+   "model_spread": -0.02,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_LAC_LA",
+   "week": 8,
+   "home": "LA",
+   "away": "LAC",
+   "model_spread": 4.38,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_LV_NYJ",
+   "week": 8,
+   "home": "NYJ",
+   "away": "LV",
+   "model_spread": 0.88,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_MIN_DET",
+   "week": 8,
+   "home": "DET",
+   "away": "MIN",
+   "model_spread": 4.09,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_NE_MIA",
+   "week": 8,
+   "home": "MIA",
+   "away": "NE",
+   "model_spread": -6.78,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_PHI_WAS",
+   "week": 8,
+   "home": "WAS",
+   "away": "PHI",
+   "model_spread": -2.82,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_08_TEN_CIN",
+   "week": 8,
+   "home": "CIN",
+   "away": "TEN",
+   "model_spread": 7.42,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_ARI_SEA",
+   "week": 9,
+   "home": "SEA",
+   "away": "ARI",
+   "model_spread": 13.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_BUF_MIN",
+   "week": 9,
+   "home": "MIN",
+   "away": "BUF",
+   "model_spread": -1.97,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_CIN_ATL",
+   "week": 9,
+   "home": "ATL",
+   "away": "CIN",
+   "model_spread": -5.23,
+   "market_spread": -4.5
+  },
+  {
+   "game_id": "2026_09_CLE_NO",
+   "week": 9,
+   "home": "NO",
+   "away": "CLE",
+   "model_spread": 4.3,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_DAL_IND",
+   "week": 9,
+   "home": "IND",
+   "away": "DAL",
+   "model_spread": -1.52,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_DEN_CAR",
+   "week": 9,
+   "home": "CAR",
+   "away": "DEN",
+   "model_spread": -1.47,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_DET_MIA",
+   "week": 9,
+   "home": "MIA",
+   "away": "DET",
+   "model_spread": -6.87,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_GB_NE",
+   "week": 9,
+   "home": "NE",
+   "away": "GB",
+   "model_spread": 1.59,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_HOU_LAC",
+   "week": 9,
+   "home": "LAC",
+   "away": "HOU",
+   "model_spread": 3.45,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_JAX_BAL",
+   "week": 9,
+   "home": "BAL",
+   "away": "JAX",
+   "model_spread": 2.86,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_LA_WAS",
+   "week": 9,
+   "home": "WAS",
+   "away": "LA",
+   "model_spread": -4.72,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_LV_SF",
+   "week": 9,
+   "home": "SF",
+   "away": "LV",
+   "model_spread": 8.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_NYG_PHI",
+   "week": 9,
+   "home": "PHI",
+   "away": "NYG",
+   "model_spread": 6.46,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_NYJ_KC",
+   "week": 9,
+   "home": "KC",
+   "away": "NYJ",
+   "model_spread": 9.72,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_09_TB_CHI",
+   "week": 9,
+   "home": "CHI",
+   "away": "TB",
+   "model_spread": 3.77,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_BUF_NYJ",
+   "week": 10,
+   "home": "NYJ",
+   "away": "BUF",
+   "model_spread": -7.32,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_CAR_NO",
+   "week": 10,
+   "home": "NO",
+   "away": "CAR",
+   "model_spread": 0.68,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_HOU_CLE",
+   "week": 10,
+   "home": "CLE",
+   "away": "HOU",
+   "model_spread": -4.21,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_JAX_TEN",
+   "week": 10,
+   "home": "TEN",
+   "away": "JAX",
+   "model_spread": -3.79,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_KC_ATL",
+   "week": 10,
+   "home": "ATL",
+   "away": "KC",
+   "model_spread": -4.63,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_LAC_BAL",
+   "week": 10,
+   "home": "BAL",
+   "away": "LAC",
+   "model_spread": 2.07,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_LA_ARI",
+   "week": 10,
+   "home": "ARI",
+   "away": "LA",
+   "model_spread": -10.48,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_MIA_IND",
+   "week": 10,
+   "home": "IND",
+   "away": "MIA",
+   "model_spread": 5.43,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_MIN_GB",
+   "week": 10,
+   "home": "GB",
+   "away": "MIN",
+   "model_spread": 4.01,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_NE_DET",
+   "week": 10,
+   "home": "DET",
+   "away": "NE",
+   "model_spread": 0.08,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_10_PIT_CIN",
+   "week": 10,
+   "home": "CIN",
+   "away": "PIT",
+   "model_spread": 4.35,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_SEA_LV",
+   "week": 10,
+   "home": "LV",
+   "away": "SEA",
+   "model_spread": -7.97,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_SF_DAL",
+   "week": 10,
+   "home": "DAL",
+   "away": "SF",
+   "model_spread": 0.07,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_10_WAS_NYG",
+   "week": 10,
+   "home": "NYG",
+   "away": "WAS",
+   "model_spread": 1.16,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_ARI_KC",
+   "week": 11,
+   "home": "KC",
+   "away": "ARI",
+   "model_spread": 11.55,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_BAL_CAR",
+   "week": 11,
+   "home": "CAR",
+   "away": "BAL",
+   "model_spread": -2.91,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_CIN_WAS",
+   "week": 11,
+   "home": "WAS",
+   "away": "CIN",
+   "model_spread": -1.58,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_IND_HOU",
+   "week": 11,
+   "home": "HOU",
+   "away": "IND",
+   "model_spread": 4.01,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_JAX_NYG",
+   "week": 11,
+   "home": "NYG",
+   "away": "JAX",
+   "model_spread": -1.58,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_LV_DEN",
+   "week": 11,
+   "home": "DEN",
+   "away": "LV",
+   "model_spread": 7.38,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_MIA_BUF",
+   "week": 11,
+   "home": "BUF",
+   "away": "MIA",
+   "model_spread": 11.15,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_MIN_SF",
+   "week": 11,
+   "home": "SF",
+   "away": "MIN",
+   "model_spread": 2.5,
+   "market_spread": 4.5
+  },
+  {
+   "game_id": "2026_11_NO_CHI",
+   "week": 11,
+   "home": "CHI",
+   "away": "NO",
+   "model_spread": 5.6,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_NYJ_LAC",
+   "week": 11,
+   "home": "LAC",
+   "away": "NYJ",
+   "model_spread": 9.06,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_PIT_PHI",
+   "week": 11,
+   "home": "PHI",
+   "away": "PIT",
+   "model_spread": 5.6,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_TB_DET",
+   "week": 11,
+   "home": "DET",
+   "away": "TB",
+   "model_spread": 5.1,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_11_TEN_DAL",
+   "week": 11,
+   "home": "DAL",
+   "away": "TEN",
+   "model_spread": 6.63,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_ATL_MIN",
+   "week": 12,
+   "home": "MIN",
+   "away": "ATL",
+   "model_spread": 5.06,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_BAL_HOU",
+   "week": 12,
+   "home": "HOU",
+   "away": "BAL",
+   "model_spread": -0.72,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_CAR_TB",
+   "week": 12,
+   "home": "TB",
+   "away": "CAR",
+   "model_spread": 2.51,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_CHI_DET",
+   "week": 12,
+   "home": "DET",
+   "away": "CHI",
+   "model_spread": 2.93,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_12_DEN_PIT",
+   "week": 12,
+   "home": "PIT",
+   "away": "DEN",
+   "model_spread": -0.54,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_12_GB_LA",
+   "week": 12,
+   "home": "LA",
+   "away": "GB",
+   "model_spread": 4.09,
+   "market_spread": 5.5
+  },
+  {
+   "game_id": "2026_12_KC_BUF",
+   "week": 12,
+   "home": "BUF",
+   "away": "KC",
+   "model_spread": 2.4,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_12_LV_CLE",
+   "week": 12,
+   "home": "CLE",
+   "away": "LV",
+   "model_spread": 0.68,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_NE_LAC",
+   "week": 12,
+   "home": "LAC",
+   "away": "NE",
+   "model_spread": 1.31,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_NO_CIN",
+   "week": 12,
+   "home": "CIN",
+   "away": "NO",
+   "model_spread": 6.21,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_NYG_IND",
+   "week": 12,
+   "home": "IND",
+   "away": "NYG",
+   "model_spread": 1.31,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_NYJ_MIA",
+   "week": 12,
+   "home": "MIA",
+   "away": "NYJ",
+   "model_spread": 0.97,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_PHI_DAL",
+   "week": 12,
+   "home": "DAL",
+   "away": "PHI",
+   "model_spread": -0.43,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_12_SEA_SF",
+   "week": 12,
+   "home": "SF",
+   "away": "SEA",
+   "model_spread": -0.84,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_TEN_JAX",
+   "week": 12,
+   "home": "JAX",
+   "away": "TEN",
+   "model_spread": 6.99,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_12_WAS_ARI",
+   "week": 12,
+   "home": "ARI",
+   "away": "WAS",
+   "model_spread": -4.17,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_BUF_NE",
+   "week": 13,
+   "home": "NE",
+   "away": "BUF",
+   "model_spread": 0.43,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_CAR_MIN",
+   "week": 13,
+   "home": "MIN",
+   "away": "CAR",
+   "model_spread": 3.53,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_CIN_CLE",
+   "week": 13,
+   "home": "CLE",
+   "away": "CIN",
+   "model_spread": -5.71,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_DAL_SEA",
+   "week": 13,
+   "home": "SEA",
+   "away": "DAL",
+   "model_spread": 5.57,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_DET_ATL",
+   "week": 13,
+   "home": "ATL",
+   "away": "DET",
+   "model_spread": -4.35,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_GB_NO",
+   "week": 13,
+   "home": "NO",
+   "away": "GB",
+   "model_spread": -3.66,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_HOU_PIT",
+   "week": 13,
+   "home": "PIT",
+   "away": "HOU",
+   "model_spread": 0.34,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_JAX_CHI",
+   "week": 13,
+   "home": "CHI",
+   "away": "JAX",
+   "model_spread": 1.43,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_KC_LA",
+   "week": 13,
+   "home": "LA",
+   "away": "KC",
+   "model_spread": 3.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_LAC_TB",
+   "week": 13,
+   "home": "TB",
+   "away": "LAC",
+   "model_spread": -1.53,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_MIA_DEN",
+   "week": 13,
+   "home": "DEN",
+   "away": "MIA",
+   "model_spread": 8.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_PHI_ARI",
+   "week": 13,
+   "home": "ARI",
+   "away": "PHI",
+   "model_spread": -8.59,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_SF_NYG",
+   "week": 13,
+   "home": "NYG",
+   "away": "SF",
+   "model_spread": -2.76,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_13_WAS_TEN",
+   "week": 13,
+   "home": "TEN",
+   "away": "WAS",
+   "model_spread": -1.04,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_ATL_CLE",
+   "week": 14,
+   "home": "CLE",
+   "away": "ATL",
+   "model_spread": -0.48,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_BUF_GB",
+   "week": 14,
+   "home": "GB",
+   "away": "BUF",
+   "model_spread": 0.44,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_CHI_MIA",
+   "week": 14,
+   "home": "MIA",
+   "away": "CHI",
+   "model_spread": -5.53,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_DEN_NYJ",
+   "week": 14,
+   "home": "NYJ",
+   "away": "DEN",
+   "model_spread": -4.9,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_HOU_WAS",
+   "week": 14,
+   "home": "WAS",
+   "away": "HOU",
+   "model_spread": -0.08,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_IND_PHI",
+   "week": 14,
+   "home": "PHI",
+   "away": "IND",
+   "model_spread": 6.75,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_KC_CIN",
+   "week": 14,
+   "home": "CIN",
+   "away": "KC",
+   "model_spread": 0.59,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_LAC_LV",
+   "week": 14,
+   "home": "LV",
+   "away": "LAC",
+   "model_spread": -5.14,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_LA_SF",
+   "week": 14,
+   "home": "SF",
+   "away": "LA",
+   "model_spread": -0.8,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_MIN_NE",
+   "week": 14,
+   "home": "NE",
+   "away": "MIN",
+   "model_spread": 4.01,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_NO_CAR",
+   "week": 14,
+   "home": "CAR",
+   "away": "NO",
+   "model_spread": 2.52,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_NYG_SEA",
+   "week": 14,
+   "home": "SEA",
+   "away": "NYG",
+   "model_spread": 8.4,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_PIT_JAX",
+   "week": 14,
+   "home": "JAX",
+   "away": "PIT",
+   "model_spread": 3.92,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_TB_BAL",
+   "week": 14,
+   "home": "BAL",
+   "away": "TB",
+   "model_spread": 5.2,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_14_TEN_DET",
+   "week": 14,
+   "home": "DET",
+   "away": "TEN",
+   "model_spread": 8.15,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_ATL_WAS",
+   "week": 15,
+   "home": "WAS",
+   "away": "ATL",
+   "model_spread": 3.65,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_BAL_PIT",
+   "week": 15,
+   "home": "PIT",
+   "away": "BAL",
+   "model_spread": -1.97,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_CHI_BUF",
+   "week": 15,
+   "home": "BUF",
+   "away": "CHI",
+   "model_spread": 4.02,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_CIN_CAR",
+   "week": 15,
+   "home": "CAR",
+   "away": "CIN",
+   "model_spread": -2.09,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_CLE_NYG",
+   "week": 15,
+   "home": "NYG",
+   "away": "CLE",
+   "model_spread": 5.29,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_DAL_LA",
+   "week": 15,
+   "home": "LA",
+   "away": "DAL",
+   "model_spread": 5.52,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_DEN_LV",
+   "week": 15,
+   "home": "LV",
+   "away": "DEN",
+   "model_spread": -4.18,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_DET_MIN",
+   "week": 15,
+   "home": "MIN",
+   "away": "DET",
+   "model_spread": -0.89,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_IND_TEN",
+   "week": 15,
+   "home": "TEN",
+   "away": "IND",
+   "model_spread": -0.31,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_JAX_HOU",
+   "week": 15,
+   "home": "HOU",
+   "away": "JAX",
+   "model_spread": 0.54,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_MIA_GB",
+   "week": 15,
+   "home": "GB",
+   "away": "MIA",
+   "model_spread": 9.99,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_NE_KC",
+   "week": 15,
+   "home": "KC",
+   "away": "NE",
+   "model_spread": 1.97,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_NO_TB",
+   "week": 15,
+   "home": "TB",
+   "away": "NO",
+   "model_spread": 3.43,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_NYJ_ARI",
+   "week": 15,
+   "home": "ARI",
+   "away": "NYJ",
+   "model_spread": -0.23,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_SEA_PHI",
+   "week": 15,
+   "home": "PHI",
+   "away": "SEA",
+   "model_spread": -0.33,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_15_SF_LAC",
+   "week": 15,
+   "home": "LAC",
+   "away": "SF",
+   "model_spread": 1.21,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_ARI_NO",
+   "week": 16,
+   "home": "NO",
+   "away": "ARI",
+   "model_spread": 5.94,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_BUF_DEN",
+   "week": 16,
+   "home": "DEN",
+   "away": "BUF",
+   "model_spread": -0.82,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_16_CAR_PIT",
+   "week": 16,
+   "home": "PIT",
+   "away": "CAR",
+   "model_spread": 2.54,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_CIN_IND",
+   "week": 16,
+   "home": "IND",
+   "away": "CIN",
+   "model_spread": -2.31,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_CLE_BAL",
+   "week": 16,
+   "home": "BAL",
+   "away": "CLE",
+   "model_spread": 9.73,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_GB_CHI",
+   "week": 16,
+   "home": "CHI",
+   "away": "GB",
+   "model_spread": 0.34,
+   "market_spread": 1.5
+  },
+  {
+   "game_id": "2026_16_HOU_PHI",
+   "week": 16,
+   "home": "PHI",
+   "away": "HOU",
+   "model_spread": 4.34,
+   "market_spread": 2.5
+  },
+  {
+   "game_id": "2026_16_JAX_DAL",
+   "week": 16,
+   "home": "DAL",
+   "away": "JAX",
+   "model_spread": 1.25,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_LAC_MIA",
+   "week": 16,
+   "home": "MIA",
+   "away": "LAC",
+   "model_spread": -6.49,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_LA_SEA",
+   "week": 16,
+   "home": "SEA",
+   "away": "LA",
+   "model_spread": 1.64,
+   "market_spread": -1.5
+  },
+  {
+   "game_id": "2026_16_NE_NYJ",
+   "week": 16,
+   "home": "NYJ",
+   "away": "NE",
+   "model_spread": -6.15,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_NYG_DET",
+   "week": 16,
+   "home": "DET",
+   "away": "NYG",
+   "model_spread": 5.94,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_SF_KC",
+   "week": 16,
+   "home": "KC",
+   "away": "SF",
+   "model_spread": 1.87,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_TB_ATL",
+   "week": 16,
+   "home": "ATL",
+   "away": "TB",
+   "model_spread": -0.85,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_TEN_LV",
+   "week": 16,
+   "home": "LV",
+   "away": "TEN",
+   "model_spread": 1.03,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_16_WAS_MIN",
+   "week": 16,
+   "home": "MIN",
+   "away": "WAS",
+   "model_spread": 3.02,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_BAL_CIN",
+   "week": 17,
+   "home": "CIN",
+   "away": "BAL",
+   "model_spread": 0.78,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_BUF_MIA",
+   "week": 17,
+   "home": "MIA",
+   "away": "BUF",
+   "model_spread": -7.95,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_DEN_NE",
+   "week": 17,
+   "home": "NE",
+   "away": "DEN",
+   "model_spread": 2.85,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_DET_CHI",
+   "week": 17,
+   "home": "CHI",
+   "away": "DET",
+   "model_spread": 0.27,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_HOU_GB",
+   "week": 17,
+   "home": "GB",
+   "away": "HOU",
+   "model_spread": 3.75,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_IND_CLE",
+   "week": 17,
+   "home": "CLE",
+   "away": "IND",
+   "model_spread": -1.8,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_KC_LAC",
+   "week": 17,
+   "home": "LAC",
+   "away": "KC",
+   "model_spread": 0.94,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_LA_TB",
+   "week": 17,
+   "home": "TB",
+   "away": "LA",
+   "model_spread": -4.31,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_LV_ARI",
+   "week": 17,
+   "home": "ARI",
+   "away": "LV",
+   "model_spread": -0.96,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_MIN_NYJ",
+   "week": 17,
+   "home": "NYJ",
+   "away": "MIN",
+   "model_spread": -3.75,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_NO_ATL",
+   "week": 17,
+   "home": "ATL",
+   "away": "NO",
+   "model_spread": 0.98,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_NYG_DAL",
+   "week": 17,
+   "home": "DAL",
+   "away": "NYG",
+   "model_spread": 4.43,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_PHI_SF",
+   "week": 17,
+   "home": "SF",
+   "away": "PHI",
+   "model_spread": 1.1,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_PIT_TEN",
+   "week": 17,
+   "home": "TEN",
+   "away": "PIT",
+   "model_spread": -1.47,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_SEA_CAR",
+   "week": 17,
+   "home": "CAR",
+   "away": "SEA",
+   "model_spread": -5.27,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_17_WAS_JAX",
+   "week": 17,
+   "home": "JAX",
+   "away": "WAS",
+   "model_spread": 4.35,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_ATL_CAR",
+   "week": 18,
+   "home": "CAR",
+   "away": "ATL",
+   "model_spread": 3.14,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_CHI_MIN",
+   "week": 18,
+   "home": "MIN",
+   "away": "CHI",
+   "model_spread": 0.45,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_CLE_CIN",
+   "week": 18,
+   "home": "CIN",
+   "away": "CLE",
+   "model_spread": 8.91,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_DAL_WAS",
+   "week": 18,
+   "home": "WAS",
+   "away": "DAL",
+   "model_spread": -0.79,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_DET_GB",
+   "week": 18,
+   "home": "GB",
+   "away": "DET",
+   "model_spread": 1.52,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_JAX_IND",
+   "week": 18,
+   "home": "IND",
+   "away": "JAX",
+   "model_spread": -1.87,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_LAC_DEN",
+   "week": 18,
+   "home": "DEN",
+   "away": "LAC",
+   "model_spread": 0.64,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_LV_KC",
+   "week": 18,
+   "home": "KC",
+   "away": "LV",
+   "model_spread": 9.0,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_MIA_NE",
+   "week": 18,
+   "home": "NE",
+   "away": "MIA",
+   "model_spread": 9.98,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_NYJ_BUF",
+   "week": 18,
+   "home": "BUF",
+   "away": "NYJ",
+   "model_spread": 10.52,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_PHI_NYG",
+   "week": 18,
+   "home": "NYG",
+   "away": "PHI",
+   "model_spread": -3.26,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_PIT_BAL",
+   "week": 18,
+   "home": "BAL",
+   "away": "PIT",
+   "model_spread": 5.17,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_SEA_LA",
+   "week": 18,
+   "home": "LA",
+   "away": "SEA",
+   "model_spread": 1.56,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_SF_ARI",
+   "week": 18,
+   "home": "ARI",
+   "away": "SF",
+   "model_spread": -8.09,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_TB_NO",
+   "week": 18,
+   "home": "NO",
+   "away": "TB",
+   "model_spread": -0.23,
+   "market_spread": null
+  },
+  {
+   "game_id": "2026_18_TEN_HOU",
+   "week": 18,
+   "home": "HOU",
+   "away": "TEN",
+   "model_spread": 5.93,
+   "market_spread": null
+  }
+ ]
+}

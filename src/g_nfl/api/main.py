@@ -11,7 +11,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl.picks import ledger
+from g_nfl.picks import ledger, survivor, survivor_board
 from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
 from g_nfl.picks.calendar import current_season, current_week
 from g_nfl.picks.grading import (
@@ -59,6 +59,10 @@ from .schemas import (
     SavePicksResponse,
     SideFlag,
     StandingsResponse,
+    SurvivorCandidate,
+    SurvivorCell,
+    SurvivorLeg,
+    SurvivorResponse,
     WeeksResponse,
 )
 
@@ -310,6 +314,97 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
+
+
+def _parse_pins(raw: str | None) -> dict[int, str]:
+    """`"12:BUF,15:KC"` -> `{12: "BUF", 15: "KC"}`.
+
+    Pins live in the browser, not the database — a plan is a sketch, and
+    only a submitted pick spends a team. So they arrive on the query
+    string every request.
+    """
+    pins: dict[int, str] = {}
+    for chunk in (raw or "").split(","):
+        if not chunk.strip():
+            continue
+        week, _, team = chunk.partition(":")
+        try:
+            pins[int(week)] = team.strip().upper()
+        except ValueError as e:
+            raise HTTPException(400, f"bad pin {chunk!r}, want week:TEAM") from e
+    return pins
+
+
+@app.get("/api/survivor", response_model=SurvivorResponse)
+def get_survivor(
+    season: int | None = None,
+    week: int | None = None,
+    picker: str | None = None,
+    pins: str | None = None,
+    rank: int | None = None,
+):
+    """The survivor board, the planned path, and this week's candidates.
+
+    Picking the biggest favourite every week spends teams that would be
+    bigger favourites later, so the answer is an assignment over the rest
+    of the season, not a weekly choice (notes/survivor-planner.md).
+
+    `pins` reserves teams for weeks (`12:BUF,15:KC`) and the solver plans
+    around them; `best_survival` is the same solve without them, so the
+    cost of insisting is on screen. `rank` ranks a week other than the
+    current one.
+    """
+    season = season or current_season()
+    week = week or current_week(season) or 1
+    spent = survivor_used(season, picker) if picker else []
+    held = _parse_pins(pins)
+
+    market = {
+        normalize_game_id(line["game_id"]): line["spread"]
+        for line in MarketLinesDatabase().get_market_lines(season)
+        if line.get("spread") is not None
+    }
+
+    try:
+        board, teams, weeks = survivor_board.build_board(season, week, spent, market)
+    except FileNotFoundError as e:
+        raise HTTPException(
+            503, f"No survivor board for {season}: run scripts/build_survivor_board.py"
+        ) from e
+
+    # a pin on a spent team or a played week is stale, not an error: the
+    # browser holds these across weeks, so drop them and plan anyway
+    held = {
+        w: t
+        for w, t in held.items()
+        if w in weeks and t in teams and board.prob.get((t, w))
+    }
+
+    unconstrained = survivor.plan(board, teams, weeks)
+    pinned_plan = survivor.plan(board, teams, weeks, held) if held else unconstrained
+    ranked = survivor.rank_week(board, teams, weeks, held, week=rank or week)
+
+    artifact = survivor_board.load_artifact(season)
+    return SurvivorResponse(
+        season=season,
+        week=week,
+        picker=picker,
+        spent=spent,
+        pins=held,
+        weeks=weeks,
+        cells=[SurvivorCell(**c) for c in survivor_board.cells(board)],
+        plan=[SurvivorLeg(**leg) for leg in (pinned_plan or {}).get("picks", [])],
+        survival=pinned_plan["survival"] if pinned_plan else None,
+        best_survival=unconstrained["survival"] if unconstrained else None,
+        candidates=[SurvivorCandidate(**_candidate(c)) for c in ranked],
+        ratings_through=artifact["ratings_through"],
+        generated_at=artifact["generated_at"],
+    )
+
+
+def _candidate(row: dict) -> dict:
+    """rank_week's row, minus the whole plan it also carries."""
+    return {k: v for k, v in row.items() if k != "plan"}
 
 
 @app.get("/api/ledger", response_model=LedgerResponse)
