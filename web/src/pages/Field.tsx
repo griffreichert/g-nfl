@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Check, ChevronRight, Star } from 'lucide-react'
+import { ChevronRight, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
-import SignIn from '@/components/SignIn'
+import { fmtSpread, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
   bestSide,
@@ -33,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/PageHeader'
+import ActionBar, { Slot } from '@/components/ActionBar'
 import { ErrorNote, Loading } from '@/components/PageState'
 
 /** The two side pools. Separate objectives, separate games, own state. */
@@ -435,21 +435,9 @@ function PoolPicker({
   )
 }
 
-/** One slot of the entry: filled, or how many are still open. */
-function Slot({ label, have, need }: { label: string; have: number; need: number }) {
-  const done = have === need
-  return (
-    <span className={done ? 'flex items-center gap-1 text-foreground' : 'flex items-center gap-1 text-muted-foreground'}>
-      {done ? <Check className="size-3.5 text-win" /> : null}
-      {label} {have}/{need}
-    </span>
-  )
-}
-
 export default function Field() {
   // The board builds TEAM's entry, so TEAM's own spent teams are the ones that
   // matter here.
-  const { picker: signedIn, checking, login } = useAuth()
   const { config, error: configError } = useConfig('TEAM')
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
@@ -470,7 +458,7 @@ export default function Field() {
     key: string
     rows: PickRecord[]
   } | null>(null)
-  const seasonKey = `${season}-${weeks.join(',')}`
+  const seasonKey = `${season}`
   const seasonPicks = fetchedSeason?.key === seasonKey ? fetchedSeason.rows : null
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -505,17 +493,21 @@ export default function Field() {
 
   // Blocs need the whole season — one week is far too little to tell a habit
   // from a coincidence. Survivor inventory rides along on the same fetch.
+  //
+  // One request. This used to ask for the season a week at a time, eighteen
+  // requests deep, because /api/picks made `week` required (#124).
   useEffect(() => {
-    if (season === null || weeks.length === 0) return
+    if (season === null) return
     let cancelled = false
-    const key = `${season}-${weeks.join(',')}`
-    Promise.all(weeks.map((w) => api.picks(season, w)))
-      .then((all) => !cancelled && setSeasonPicks({ key, rows: all.flat() }))
+    const key = `${season}`
+    api
+      .picks(season)
+      .then((rows) => !cancelled && setSeasonPicks({ key, rows }))
       .catch(() => !cancelled && setSeasonPicks({ key, rows: [] }))
     return () => {
       cancelled = true
     }
-  }, [season, weeks])
+  }, [season])
 
   const blocs = useMemo(() => findBlocs(seasonPicks ?? []), [seasonPicks])
   // Attachment rides on the season fetch the blocs already need — no extra call.
@@ -526,7 +518,10 @@ export default function Field() {
       built.map((r) => [r.game.game_id, bestSide(r, attachment, penalties).score.rating]),
     )
     return built.sort(byScore(best))
-  }, [games, picks, blocs, attachment])
+    // `penalties` belongs here: guardrails resolve after games and picks, and
+    // without the dependency the whole ranking stayed computed from an empty
+    // penalty set, so the board ranked sides it should have marked down (#124).
+  }, [games, picks, blocs, attachment, penalties])
   const pickers = useMemo(
     () => [...new Set(picks.map((p) => p.picker))].sort(pickerOrder),
     [picks],
@@ -566,7 +561,7 @@ export default function Field() {
       }
     }
     return out
-  }, [rows, picks, attachment])
+  }, [rows, picks, attachment, penalties])
 
   const weekKey = `${season}-${week}`
   const slate = useMemo(() => {
@@ -730,12 +725,8 @@ export default function Field() {
     return c
   }, [rows, flagsFor])
 
-  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
   if (!config) return <Loading />
-  // The board writes TEAM's entry, so it needs a session even though the entry
-  // is not anyone's personal one.
-  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
   if (season === null || week === null) return <Loading />
 
   return (
@@ -764,25 +755,24 @@ export default function Field() {
           </TabsList>
 
           <TabsContent value="board" className="flex flex-col gap-3">
-            {/* What the call is here to produce, and how much of it is left. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card px-3 py-2">
-              <span className="text-sm font-bold">TEAM entry</span>
-              <span className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                <Slot label="Best bet" have={counts.bb} need={1} />
-                <Slot label="Regulars" have={counts.regular} need={MAX_REGULAR} />
-                <Slot label="MNF" have={counts.mnf} need={1} />
-                <Slot label="Dog" have={underdog ? 1 : 0} need={1} />
-                <Slot label="Survivor" have={survivor ? 1 : 0} need={1} />
-              </span>
-              <Button
-                size="sm"
-                className="ml-auto"
-                onClick={saveSlate}
-                disabled={saving || unexplained.length > 0}
-              >
+            {/* What the call is here to produce, and how much of it is left.
+                Same bar, same place as the Picks page (#124). */}
+            <ActionBar
+              slots={
+                <>
+                  <span className="text-sm font-bold">TEAM</span>
+                  <Slot label="best bet" have={counts.bb} need={1} />
+                  <Slot label="regular" have={counts.regular} need={MAX_REGULAR} />
+                  <Slot label="MNF" have={counts.mnf} need={1} />
+                  <Slot label="dog" have={underdog ? 1 : 0} need={1} />
+                  <Slot label="survivor" have={survivor ? 1 : 0} need={1} />
+                </>
+              }
+            >
+              <Button size="sm" onClick={saveSlate} disabled={saving || unexplained.length > 0}>
                 {saving ? 'Saving…' : 'Submit as TEAM'}
               </Button>
-            </div>
+            </ActionBar>
 
             {unexplained.length > 0 && (
               <p className="rounded-md bg-loss/15 px-3 py-2 text-sm text-loss">
