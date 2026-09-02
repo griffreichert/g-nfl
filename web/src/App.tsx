@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Skull, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, LogOut, Ruler, Scale, Skull, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import { useAuth } from './hooks'
 
@@ -69,14 +69,26 @@ export default function App() {
             >
               <CircleQuestionMark className="size-5" />
             </NavLink>
-            {picker && (
-              <button
-                onClick={logout}
-                title={`Signed in as ${picker}`}
-                className="flex h-9 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-              >
-                {picker} · out
-              </button>
+            {/* Who the picks will be saved under. It was grey 12px next to a
+                theme toggle, so the one thing on the page that decides where a
+                submission lands was the easiest thing to miss. */}
+            {picker ? (
+              <span className="flex h-9 items-center gap-2 rounded-full border border-border bg-secondary py-1 pr-2 pl-1">
+                <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                  {picker.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="text-sm font-semibold">{picker}</span>
+                <button
+                  onClick={logout}
+                  aria-label="Sign out"
+                  title="Sign out"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                </button>
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-muted-foreground">signed out</span>
             )}
             <ThemeToggle />
           </div>

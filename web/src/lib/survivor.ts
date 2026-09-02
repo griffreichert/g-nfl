@@ -14,11 +14,11 @@ export const NEUTRAL = 3
 export const STEPS = [1, 2, 3, 4, 5]
 
 export const STEP_LABELS: Record<number, string> = {
-  1: 'could be anyone by December',
+  1: 'volatile',
   2: 'shaky',
   3: 'no opinion',
   4: 'steady',
-  5: 'this all season',
+  5: 'locked in',
 }
 
 export type Pins = Record<number, string>

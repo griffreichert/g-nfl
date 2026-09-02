@@ -73,13 +73,12 @@ function usePins(season: number | null) {
 }
 
 /**
- * Confidence and fragility, per team.
+ * Confidence, per team.
  *
- * Saved against the picker when there is one, because the point of these
- * numbers is that they differ between people and that difference explains
- * why two entries diverge off the same board. Signed out, they live in the
- * browser and ride the query string, so the planner still works for
- * somebody just looking.
+ * Saved against the picker when there is one: these numbers differ between
+ * people, and that difference is what explains two entries diverging off
+ * the same board. Signed out they live in the browser and ride the query
+ * string, so the planner still works for somebody just looking.
  */
 function useBeliefs(season: number | null, picker: string | null) {
   const key = season ? `nohomers.survivor.beliefs.${season}` : null
@@ -238,9 +237,9 @@ export default function Survivor() {
             </p>
           </div>
         )}
-        <p className="ml-auto max-w-sm text-xs text-muted-foreground">
-          Ratings through {data.ratings_through.season} wk {data.ratings_through.week}.
-          A week the book has priced uses the real line; the rest use the ratings.
+        <p className="ml-auto text-xs text-muted-foreground">
+          Priced weeks use the book. The rest use ratings through{' '}
+          {data.ratings_through.season} wk {data.ratings_through.week}.
         </p>
         {pinCount > 0 && (
           <button
@@ -384,16 +383,15 @@ export default function Survivor() {
 
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="size-3 rounded-sm ring-2 ring-inset ring-primary" /> pinned by you
+          <span className="size-3 rounded-sm ring-2 ring-inset ring-primary" /> your pin
         </span>
         <span className="flex items-center gap-1">
-          <span className="size-3 rounded-sm ring-1 ring-inset ring-primary/40" /> the solver's
-          suggestion
+          <span className="size-3 rounded-sm ring-1 ring-inset ring-primary/40" /> suggested
         </span>
         <span className="flex items-center gap-1">
-          <Skull className="size-3" /> struck through = spent, gone for good
+          <Skull className="size-3" /> struck through, spent
         </span>
-        <span>click a square to reserve that team for that week</span>
+        <span>click a square to pin it</span>
       </p>
 
       <BeliefEditor
@@ -408,7 +406,7 @@ export default function Survivor() {
       {/* The week in question, ranked by what each pick costs the season. */}
       <div>
         <h2 className="mb-2 text-sm font-semibold">
-          Week {ranked} — every pick priced against the whole season
+          Week {ranked}, priced against the whole season
         </h2>
         {data.candidates.length === 0 ? (
           <EmptyState
@@ -487,9 +485,8 @@ export default function Survivor() {
           </div>
         )}
         <p className="mt-2 text-xs text-muted-foreground">
-          "Costs" is how much whole-season survival you give up by spending that team
-          here rather than letting the plan place it. A team that peaks later and costs
-          nothing is one the plan has no better use for.
+          Costs is the season survival you give up by spending that team here. Free
+          means the plan had no better week for them.
         </p>
       </div>
     </div>

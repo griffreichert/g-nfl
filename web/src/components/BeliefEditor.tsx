@@ -46,7 +46,6 @@ export default function BeliefEditor({
         {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         <span className="text-sm font-semibold">Confidence</span>
         <span className="text-xs text-muted-foreground">
-          how well each rating holds up ·{' '}
           {touched.length ? `${touched.length} set` : 'all neutral'}
         </span>
         {status && <span className="ml-auto text-xs text-muted-foreground">{status}</span>}
@@ -54,16 +53,10 @@ export default function BeliefEditor({
 
       {open && (
         <div className="border-t border-border px-4 py-3">
-          <p className="mb-1 max-w-3xl text-xs text-muted-foreground">
-            A rating says what a team is today. This says how long you think that
-            lasts. <b>5</b> is a team you would still back in December — settled roster,
-            settled coach. <b>1</b> is one injury, one hot seat, or one bad month from
-            being somebody else. <b>3</b> is no opinion and changes nothing.
-          </p>
-          <p className="mb-3 max-w-3xl text-xs text-muted-foreground">
-            It bites harder the further out the week is, so it moves <i>when</i> you
-            spend a team rather than whether you like them. Low confidence pulls their
-            late-season weeks toward a coin flip; high confidence sharpens them.
+          <p className="mb-3 text-xs text-muted-foreground">
+            How long a rating lasts. <b>5</b> still themselves in December, <b>1</b> one
+            injury from being someone else, <b>3</b> no opinion. Weighs more in later
+            weeks.
           </p>
 
           <div className="grid gap-x-8 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
