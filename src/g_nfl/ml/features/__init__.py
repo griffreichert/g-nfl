@@ -139,7 +139,7 @@ def build_features(
     if schedule_ctx:
         matrix = add_schedule_context(matrix, reg_schedule)
     if qb_ctx:
-        matrix = add_qb_context(matrix, pbp)
+        matrix = add_qb_context(matrix, pbp, reg_schedule)
     if qb_change is not None:
         matrix = add_qb_change(matrix, pbp, qb_change)
     if continuity:

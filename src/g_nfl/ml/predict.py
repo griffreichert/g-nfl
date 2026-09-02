@@ -25,8 +25,14 @@ a small-training-set artifact, so there is one feature set and no
 regime switch. Method and every null result in
 `notes/modelling/early-weeks.md`.
 
-`DEFAULT_PREDICT_SEASONS` is that deep window, and it matters: the same
+`DEEP_SEASONS_START` sets that deep window, and it matters: the same
 feature set on 5 seasons gives a week-1 MAE of 2.50 against 2.39 on 11.
+
+``qb_ctx`` is on. The starting QB's own career EWMA, keyed on the player
+so it follows him between teams, is worth 0.23 of MAE against the close
+(t=9.3) and 0.08 against the actual result (t=3.0), paired over the same
+2687 games. It buys nothing in week 1 itself, where last season's team
+form already encodes that quarterback, and everything from week 2 on.
 
 Run:
 
@@ -104,6 +110,7 @@ def build_matrix(
         min_week=1,
         carryover_k=carryover_k,
         preseason=True,
+        qb_ctx=True,
         draft=load_draft_picks(seasons, cache_dir=cache_dir, refresh=refresh),
         snaps=load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh),
         rosters=load_rosters_weekly(seasons, cache_dir=cache_dir, refresh=refresh),

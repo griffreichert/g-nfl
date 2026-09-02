@@ -21,6 +21,13 @@ Three families:
   settled view of the team, ``HFA`` removed
 - **change** — what happened since: new coach, new QB, draft capital
   spent, and the share of last season's snaps still on the roster
+
+The coach arrives only as a change flag. His career record, carried
+across teams, was built and measured as nothing (MAE 2.2923 with it and
+2.2958 without, n=2687), so it is not here -- see
+`notes/modelling/early-weeks.md`. The QB is likewise a change flag only;
+his portable quality is `features/qb.py`, keyed on ``passer_player_id``
+and switched on with ``qb_ctx``, which is worth a great deal more.
 """
 
 import polars as pl
