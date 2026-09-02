@@ -568,3 +568,30 @@ def test_backtest_cli_save_preds_and_compare_to(
     # same run against itself: identical predictions, so every delta is zero
     assert "+0.000" in report
     assert "`base_preds` (base)" in report
+
+
+def test_backtest_cli_forwards_every_feature_flag(tmp_path, monkeypatch):
+    """Regression: `--preseason` was parsed and then dropped on the floor,
+    so the flag silently did nothing (or died in the feature set)."""
+    seen = {}
+
+    def fake_backtest(seasons, feature_set, params, **kwargs):
+        seen.update(kwargs)
+        return pl.DataFrame({"game_id": ["g0"]}), "# report\n"
+
+    monkeypatch.setattr(eval_mod, "backtest", fake_backtest)
+    eval_mod.main(
+        [
+            "--seasons",
+            "2023",
+            "--preseason",
+            "--qb",
+            "--opp-adjust",
+            "--schedule",
+            "--no-mlflow",
+        ]
+    )
+    assert seen["preseason"] is True
+    assert seen["qb_ctx"] is True
+    assert seen["opp_adjust"] is True
+    assert seen["schedule_ctx"] is True
