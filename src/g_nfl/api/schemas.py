@@ -307,7 +307,8 @@ class SurvivorCell(BaseModel):
 class SurvivorLeg(BaseModel):
     week: int
     team: str
-    prob: float
+    #: win probability of the leg; absent on a pick already played
+    prob: float | None = None
     #: reserved by the user, as opposed to placed by the solver
     pinned: bool = False
 
@@ -342,6 +343,8 @@ class SurvivorResponse(BaseModel):
     picker: str | None
     #: teams already submitted in survivor, gone for good
     spent: list[str]
+    #: the path already played, week by week
+    history: list[SurvivorLeg]
     #: pins that were honoured, week -> team
     pins: dict[int, str]
     weeks: list[int]

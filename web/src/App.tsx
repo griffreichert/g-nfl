@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Skull, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import { useAuth } from './hooks'
 
@@ -10,6 +10,7 @@ const MakePicks = lazy(() => import('./pages/MakePicks'))
 const Field = lazy(() => import('./pages/Field'))
 const GameDetail = lazy(() => import('./pages/GameDetail'))
 const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
+const Survivor = lazy(() => import('./pages/Survivor'))
 const Standings = lazy(() => import('./pages/Standings'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Ledger = lazy(() => import('./pages/Ledger'))
@@ -18,6 +19,7 @@ const Help = lazy(() => import('./pages/Help'))
 const tabs = [
   { to: '/picks', label: 'Picks', icon: ClipboardCheck },
   { to: '/view', label: 'Team', icon: Users },
+  { to: '/survivor', label: 'Survivor', icon: Skull },
   { to: '/standings', label: 'Standings', icon: LineChart },
   { to: '/spreads', label: 'Lines', icon: Ruler },
   { to: '/ledger', label: 'Ledger', icon: Scale },
@@ -89,6 +91,7 @@ export default function App() {
             <Route path="/view" element={<Field />} />
             {/* detail view, reached from a game row — deliberately not a tab */}
             <Route path="/game/:gameId" element={<GameDetail />} />
+            <Route path="/survivor" element={<Survivor />} />
             <Route path="/standings" element={<Standings />} />
             <Route path="/spreads" element={<ManageSpreads />} />
             <Route path="/ledger" element={<Ledger />} />

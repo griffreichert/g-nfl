@@ -106,12 +106,22 @@ def get_config(picker: str | None = None):
 
 def survivor_used(season: int, picker: str) -> list[str]:
     """Teams this picker has already spent in survivor this season."""
+    return sorted({leg["team"] for leg in survivor_history(season, picker)})
+
+
+def survivor_history(season: int, picker: str) -> list[dict]:
+    """The survivor path so far — which team went in which week.
+
+    The planner draws the season behind you as well as the season ahead,
+    so it needs the weeks, not just the set of teams.
+    """
     return sorted(
-        {
-            p["team_picked"]
+        (
+            {"week": p["week"], "team": p["team_picked"]}
             for p in PicksDatabase().get_season_picks(season)
             if p["picker"] == picker and p.get("pick_type") == "survivor"
-        }
+        ),
+        key=lambda leg: leg["week"],
     )
 
 
@@ -356,7 +366,8 @@ def get_survivor(
     """
     season = season or current_season()
     week = week or current_week(season) or 1
-    spent = survivor_used(season, picker) if picker else []
+    history = survivor_history(season, picker) if picker else []
+    spent = sorted({h["team"] for h in history})
     held = _parse_pins(pins)
 
     market = {
@@ -390,6 +401,7 @@ def get_survivor(
         week=week,
         picker=picker,
         spent=spent,
+        history=[SurvivorLeg(**h) for h in history],
         pins=held,
         weeks=weeks,
         cells=[SurvivorCell(**c) for c in survivor_board.cells(board)],

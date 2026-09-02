@@ -9,6 +9,7 @@ import type {
   Pick,
   PickRecord,
   StandingsResponse,
+  SurvivorResponse,
   WeeksResponse,
 } from './types'
 
@@ -69,6 +70,22 @@ export const api = {
   ledger: (season: number) => get<LedgerResponse>(`/api/ledger?season=${season}`),
   standings: (season: number) => get<StandingsResponse>(`/api/standings?season=${season}`),
   analytics: (season: number) => get<AnalyticsResponse>(`/api/analytics?season=${season}`),
+  // Pins ride the query string because a plan is a sketch: only a submitted
+  // pick spends a team, so nothing about a plan is worth a table (#72).
+  survivor: (
+    season: number,
+    week: number,
+    picker?: string,
+    pins?: Record<number, string>,
+    rank?: number
+  ) => {
+    const q = new URLSearchParams({ season: String(season), week: String(week) })
+    if (picker) q.set('picker', picker)
+    const pairs = Object.entries(pins ?? {}).map(([w, t]) => `${w}:${t}`)
+    if (pairs.length) q.set('pins', pairs.join(','))
+    if (rank !== undefined) q.set('rank', String(rank))
+    return get<SurvivorResponse>(`/api/survivor?${q}`)
+  },
   // `picker` is read from the token server-side. The body's copy is ignored
   // except for TEAM, the entry the room submits together off the board.
   savePicks: (season: number, week: number, picks: Pick[], picker?: string) =>
