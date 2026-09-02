@@ -25,6 +25,7 @@ from g_nfl.picks.guardrails import fit as fit_guardrails
 from g_nfl.picks.history import DEFAULT_SEASONS, load_history
 from g_nfl.picks.sides import candidate_side
 from g_nfl.utils.config import (
+    NON_VOTING,
     PICKERS,
     TEAM_PICKER,
     TEST_PICKER,
@@ -73,6 +74,12 @@ from .schemas import (
 # bound once: FastAPI takes dependencies from argument defaults (ruff B008)
 _PICKER = Depends(require_picker)
 
+#: One best bet at 2pts plus five regulars at 1pt, all on distinct games, and
+#: the Monday game on top (notes/SCORING.md). The two names exist because 5 and
+#: 6 are both right and neither name said which frame it counted in (#128).
+MAX_REGULAR = 5
+MAX_ATS_NON_MNF = MAX_REGULAR + 1
+
 app = FastAPI(title="g-nfl API")
 
 app.add_middleware(
@@ -101,7 +108,10 @@ def get_config(picker: str | None = None):
     """
     season = current_season()
     return AppConfig(
-        pickers=PICKERS,
+        # TEAM is an output and TEST is a scratch profile, so neither belongs
+        # in a list of people to sign in as (#129). Both stay in PICKERS, which
+        # is what /api/auth/login checks, so TEST can still get a token.
+        pickers=[p for p in PICKERS if p not in NON_VOTING],
         cur_season=season,
         cur_week=current_week(season),
         survivor_used_teams=survivor_used(season, picker) if picker else [],
@@ -272,6 +282,10 @@ def get_picks(season: int, week: int | None = None, picker: str | None = None):
             picker=p["picker"],
             season=p["season"],
             week=p["week"],
+            # null on every row written before #131 shipped, and the client
+            # says "time unknown" rather than inventing one
+            submitted_at=p.get("submitted_at"),
+            submitted_by=p.get("submitted_by"),
         )
         for p in picks
     ]
@@ -310,15 +324,23 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
     the board, so any signed-in picker may write it, and nobody may write it
     while signed out.
     """
+    # Who is at the keyboard, before the TEAM override rewrites `picker`. This
+    # is what gets stamped on the row, so a TEAM entry records the person who
+    # submitted it (#131). The client never sends either stamp.
+    submitted_by = picker
     if req.picker == TEAM_PICKER:
         picker = TEAM_PICKER
 
     best_bets = sum(1 for p in req.picks if p.pick_type == "best_bet")
     if best_bets > 1:
         raise HTTPException(400, "Only one best bet allowed per week")
-    regular = sum(1 for p in req.picks if p.pick_type in ("regular", "best_bet"))
-    if regular > 6:
-        raise HTTPException(400, "Maximum 6 regular/best bet picks")
+    # The ceiling, not the requirement: a partial slate saves. Completeness is
+    # checked where the entry is assembled, because a draft has to survive a
+    # closed tab (#128). MAX_ATS_NON_MNF is the best bet plus the five
+    # regulars; web/src/lib/consensus.ts names the same two numbers.
+    non_mnf = sum(1 for p in req.picks if p.pick_type in ("regular", "best_bet"))
+    if non_mnf > MAX_ATS_NON_MNF:
+        raise HTTPException(400, f"Maximum {MAX_ATS_NON_MNF} regular/best bet picks")
     for pick_type in ("survivor", "underdog", "mnf"):
         if sum(1 for p in req.picks if p.pick_type == pick_type) > 1:
             raise HTTPException(400, f"Only one {pick_type} pick allowed per week")
@@ -342,7 +364,9 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
 
     db = PicksDatabase()
     try:
-        saved = db.save_picks(req.season, req.week, picks_dict, picker)
+        saved = db.save_picks(
+            req.season, req.week, picks_dict, picker, submitted_by=submitted_by
+        )
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)

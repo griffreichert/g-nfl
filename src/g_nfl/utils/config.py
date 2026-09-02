@@ -43,6 +43,14 @@ TEST_PICKER = "TEST"
 # signed-in picker may write it from the board (#60).
 TEAM_PICKER = "TEAM"
 
+# Neither of these is an opinion. TEAM is an output and TEST is a scratch
+# profile, so neither votes in the consensus and neither belongs in the
+# sign-in list. Both stay in PICKERS, which is the set of names a token may be
+# issued for: TEST still has to be able to log in and exercise the save path.
+# GET /api/config subtracts this set, and web/src/lib/consensus.ts reads the
+# filtered list rather than keeping a second copy (#129).
+NON_VOTING = frozenset({TEAM_PICKER, TEST_PICKER})
+
 # Survivor pool used teams - teams that have already been picked and cannot be used again
 # Update this list each week after making survivor picks
 SURVIVOR_USED_TEAMS = [
