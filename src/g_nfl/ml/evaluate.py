@@ -11,6 +11,13 @@ Run via ``make backtest`` or directly:
 
     uv run python -m g_nfl.ml.evaluate --seasons 2022 2023 --output report.md
 
+Two runs are compared per-game rather than by eyeballing two reports
+(#113): save the first run's predictions, then pair the second against
+them, which appends the week-band table to the second run's report.
+
+    ... --feature-set v4_early_lean --save-preds data/ml_reports/base.parquet
+    ... --feature-set v5_early_adj --compare-to data/ml_reports/base.parquet
+
 Conventions (nflverse schedule):
 - ``result`` = home score - away score (the home margin the model predicts)
 - ``spread_line`` = market's home margin (positive = home favored)
@@ -264,6 +271,141 @@ def slice_metrics(preds: pl.DataFrame) -> dict[str, pl.DataFrame]:
         key: _slice_table(banded, band_col, order)
         for key, band_col, _, order in SLICE_DIMS
     }
+
+
+# --- paired comparison (#113) -------------------------------------------
+#
+# Every lever table in notes/modelling/ is a per-game paired comparison of
+# two walk-forward runs on the *same* games: the two runs share the market
+# line and the actual result, so pairing removes the game-to-game variance
+# that swamps a difference of a few hundredths of a point in unpaired MAE.
+# The t-stat is on the per-game |error| deltas, and |t| > 2 is the bar a
+# lever has to clear to ship.
+#
+# The bands are narrower early than `_week_band_expr`'s 1-4 / 5-12 / 13+,
+# which is a reporting split for a single run. Week 1 has no in-season
+# stats at all and behaves nothing like week 4, so a lever aimed at the
+# early regime needs them apart.
+PAIRED_WEEK_BANDS: tuple[tuple[str, int, int], ...] = (
+    ("wk1", 1, 1),
+    ("wk2-4", 2, 4),
+    ("wk5-8", 5, 8),
+    ("wk9+", 9, 99),
+    ("all", 1, 99),
+)
+
+# `spread_line` = MAE against the market close (line tracking, the sharp
+# metric), `result` = MAE against the actual home margin (real accuracy).
+# Levers move the first far more often than the second; report both so a
+# close-only gain is never mistaken for the other.
+PAIRED_TARGETS: tuple[str, ...] = ("spread_line", "result")
+
+PAIRED_REQUIRED_COLS = ("game_id", "week", "pred", *PAIRED_TARGETS)
+
+
+def _paired_row(base_err: np.ndarray, cand_err: np.ndarray) -> dict[str, Any]:
+    """One band's paired stats. `delta` is positive when the candidate is
+    closer to the target, `t` is the paired t-stat on the per-game
+    |error| deltas (null when the sample is too small or degenerate)."""
+    d = base_err - cand_err
+    n = len(d)
+    se = float(d.std(ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+    return {
+        "n": n,
+        "base_mae": float(base_err.mean()),
+        "cand_mae": float(cand_err.mean()),
+        "delta": float(d.mean()),
+        "t": float(d.mean() / se) if se > 0 else None,
+    }
+
+
+def paired_week_bands(
+    base: pl.DataFrame,
+    cand: pl.DataFrame,
+    *,
+    targets: tuple[str, ...] = PAIRED_TARGETS,
+    bands: tuple[tuple[str, int, int], ...] = PAIRED_WEEK_BANDS,
+) -> pl.DataFrame:
+    """Per-game paired comparison of two `walk_forward_predictions` frames.
+
+    Inner-joins on ``game_id`` so both sides score the identical set of
+    games; a game predicted by only one run is dropped rather than
+    silently compared against nothing. Returns one row per
+    (``target``, ``band``) with ``n``, ``base_mae``, ``cand_mae``,
+    ``delta`` (positive = candidate better) and the paired ``t``.
+
+    `base` supplies ``week`` and the target columns; `cand` needs only
+    ``game_id`` and ``pred``.
+    """
+    for name, df, required in (
+        ("base", base, PAIRED_REQUIRED_COLS),
+        ("cand", cand, ("game_id", "pred")),
+    ):
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise ValueError(f"{name} predictions missing columns: {missing}")
+
+    joined = base.select("game_id", "week", *targets, base_pred="pred").join(
+        cand.select("game_id", cand_pred="pred"), on="game_id", how="inner"
+    )
+    if joined.height == 0:
+        raise ValueError(
+            "base and cand share no game_ids; are these backtests of the same seasons?"
+        )
+
+    rows = []
+    for target in targets:
+        for label, lo, hi in bands:
+            band = joined.filter((pl.col("week") >= lo) & (pl.col("week") <= hi))
+            if band.height == 0:
+                continue
+            actual = band[target].to_numpy()
+            rows.append(
+                {
+                    "target": target,
+                    "band": label,
+                    **_paired_row(
+                        np.abs(band["base_pred"].to_numpy() - actual),
+                        np.abs(band["cand_pred"].to_numpy() - actual),
+                    ),
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+def format_comparison(
+    table: pl.DataFrame,
+    base_label: str = "base",
+    cand_label: str = "cand",
+) -> str:
+    """Markdown for a `paired_week_bands` table, one section per target."""
+    lines = [
+        "## Paired comparison by week band",
+        "",
+        f"`{cand_label}` (cand) against `{base_label}` (base), same games "
+        "both sides. `delta` = base MAE − cand MAE, so **positive means the "
+        "candidate is better**; `t` is the paired t-stat on the per-game "
+        "|error| deltas. |t| > 2 is the bar to ship a lever.",
+    ]
+    titles = {
+        "spread_line": "MAE vs the market close",
+        "result": "MAE vs the actual result",
+    }
+    for target in table["target"].unique(maintain_order=True):
+        lines += [
+            "",
+            f"**{titles.get(target, f'MAE vs {target}')}**",
+            "",
+            "| week | n | base MAE | cand MAE | delta | t |",
+            "|:-----|--:|---------:|---------:|------:|--:|",
+        ]
+        for r in table.filter(pl.col("target") == target).iter_rows(named=True):
+            t = "n/a" if r["t"] is None else f"{r['t']:+.2f}"
+            lines.append(
+                f"| {r['band']} | {r['n']} | {r['base_mae']:.3f} | "
+                f"{r['cand_mae']:.3f} | {r['delta']:+.3f} | {t} |"
+            )
+    return "\n".join(lines) + "\n"
 
 
 def _score_picks(preds: pl.DataFrame) -> pl.DataFrame:
@@ -746,6 +888,27 @@ def main(argv: list[str] | None = None) -> None:
         "--output", type=Path, help="also write the markdown report to this path"
     )
     parser.add_argument(
+        "--save-preds",
+        type=Path,
+        help=(
+            "write the per-game walk-forward predictions to this parquet, "
+            "so a later run can be paired against it with --compare-to"
+        ),
+    )
+    parser.add_argument(
+        "--compare-to",
+        type=Path,
+        help=(
+            "parquet of a previous run's predictions (--save-preds); appends "
+            "the paired week-band table, this run as the candidate"
+        ),
+    )
+    parser.add_argument(
+        "--compare-label",
+        default=None,
+        help="name for the --compare-to run in the table (default: filename stem)",
+    )
+    parser.add_argument(
         "--refresh", action="store_true", help="refetch source data, ignore cache"
     )
     parser.add_argument(
@@ -766,6 +929,7 @@ def main(argv: list[str] | None = None) -> None:
         carryover_k=args.carryover_k,
         carryover_c=args.carryover_c,
         with_injuries=args.injuries,
+        preseason=args.preseason,
         schedule_ctx=args.schedule,
         qb_ctx=args.qb,
         qb_change=args.qb_change,
@@ -779,7 +943,21 @@ def main(argv: list[str] | None = None) -> None:
         refresh=args.refresh,
         target=args.target,
     )
+    comparison = None
+    if args.compare_to:
+        base_preds = pl.read_parquet(args.compare_to)
+        comparison = paired_week_bands(base_preds, preds)
+        report += "\n" + format_comparison(
+            comparison,
+            base_label=args.compare_label or args.compare_to.stem,
+            cand_label=args.feature_set,
+        )
+
     print(report)
+    if args.save_preds:
+        args.save_preds.parent.mkdir(parents=True, exist_ok=True)
+        preds.write_parquet(args.save_preds)
+        print(f"predictions written to {args.save_preds}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(report)
@@ -809,6 +987,7 @@ def main(argv: list[str] | None = None) -> None:
                     "carryover_k": args.carryover_k,
                     "carryover_c": args.carryover_c,
                     "with_injuries": args.injuries,
+                    "preseason": args.preseason,
                     "schedule_ctx": args.schedule,
                     "qb_ctx": args.qb,
                     "qb_change": args.qb_change,
@@ -876,6 +1055,12 @@ def main(argv: list[str] | None = None) -> None:
                             f"{prefix}_tail_gt7_pct": r["tail_gt7_pct"],
                         }
                     )
+            if comparison is not None:
+                for r in comparison.iter_rows(named=True):
+                    prefix = f"cmp_{r['target']}_{r['band']}"
+                    mlflow.log_metric(f"{prefix}_delta", r["delta"])
+                    if r["t"] is not None:
+                        mlflow.log_metric(f"{prefix}_t", r["t"])
             tn = top_n_metrics(preds)
             for n in [1, 3, 5]:
                 row = tn.filter(pl.col("top_n") == n).row(0, named=True)
