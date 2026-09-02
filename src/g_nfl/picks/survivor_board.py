@@ -22,51 +22,81 @@ from g_nfl.utils.config import SPREAD_STDEV
 
 LAST_REG_WEEK = 18
 
-# How a team is doubted, on a 0-4 scale the user sets by hand.
+# Confidence: how well a picker thinks a team's rating will hold up, on a
+# 1-5 scale where 3 is no opinion and 5 is good.
 #
-# Ratings say what a team is; neither of these does. Confidence is how wrong
-# the rating might be *today* — a new coach, a new quarterback, a roster that
-# turned over — and it does not decay. Fragility is how fast the rating goes
-# stale: injuries accumulate, coordinators get fired, a bad team quits in
-# December. So one is a level and the other a slope, in points of spread:
+# Ratings say what a team is. They do not say how long that stays true.
+# A 5 is "this is what they are, all season" — the Rams. A 1 is a team
+# you expect to stop resembling itself: an injury away, a coach on a hot
+# seat, a bad roster that quits in December. 3 changes nothing.
 #
-#     tau(team, h) = CONFIDENCE_STEP * conf + FRAGILITY_STEP * frag * h
+# This started as two knobs, confidence and fragility, and collapsed to
+# one on 2026-09-02. The reason: a flat term moves a team's probability
+# equally in every week, so it changes *whether* you spend them, barely
+# *when* — and when is the only question survivor asks. "The rating is
+# wrong today" is a claim the ratings should answer, not a slider. So the
+# surviving knob is the one that grows with distance.
 #
-# with `h` the weeks between now and the game. Both default to 0, which
-# reproduces the board exactly as it was before anyone touched a slider.
+#     tau(team, h) = (NEUTRAL - confidence) * (FLAT + SLOPE * h)
 #
-# The steps are sized so a maxed slider changes a decision rather than a
-# decimal. Confidence 4 is 5 points of doubt about the rating, which is
-# most of the gap between a good team and an average one. Fragility 4 is
-# 2.4 points a week, so a team you think could be unrecognisable by
-# December is barely favoured in week 17 however good it looks today. A
-# 4 on either is meant to be rare and loud.
-CONFIDENCE_STEP = 1.25
-FRAGILITY_STEP = 0.15
+# with `h` the weeks between now and the game. Positive tau widens the
+# margin distribution and pulls the win probability toward a coin flip;
+# negative sharpens it. The flat part is small on purpose: doubt about
+# December should barely touch this Sunday.
+#
+# Sizing: a 1 costs about five points of certainty by week 17, enough to
+# move a team out of a week rather than nudge a decimal. Widening a
+# distribution is a weak lever in the 60-80% band where survivor lives,
+# so the slope has to be generous to mean anything at all.
+NEUTRAL = 3
+CONFIDENCE_FLAT = 0.5
+CONFIDENCE_SLOPE = 0.35
 
-#: team -> (confidence 0-4, fragility 0-4)
-Doubts = dict[str, tuple[float, float]]
+# Conviction is damped against doubt, deliberately. Being wrong about a
+# team has a real mechanism — they get hurt, they quit, the coach goes —
+# while being right only means the line was already correct, and the line
+# is the best estimate anyone has. So trust sharpens a game far less than
+# suspicion blurs it.
+CONVICTION_DAMPING = 0.35
+
+#: However sure anyone claims to be, the margin is not this predictable.
+MIN_STDEV_FRACTION = 0.7
+
+#: team -> confidence, 1-5
+Doubts = dict[str, float]
 
 
 def team_doubt(doubts: Doubts, team: str, horizon: int) -> float:
-    """Points of extra spread uncertainty about one team in one week."""
-    conf, frag = doubts.get(team, (0.0, 0.0))
-    return CONFIDENCE_STEP * conf + FRAGILITY_STEP * frag * max(horizon, 0)
+    """Points of spread uncertainty this team adds, or removes.
+
+    Negative above neutral: a team the picker trusts to still be itself
+    in December is more predictable than the league baseline, not less.
+    """
+    conf = doubts.get(team, NEUTRAL)
+    tau = (NEUTRAL - conf) * (CONFIDENCE_FLAT + CONFIDENCE_SLOPE * max(horizon, 0))
+    return tau * CONVICTION_DAMPING if tau < 0 else tau
 
 
 def game_stdev(doubts: Doubts, home: str, away: str, horizon: int) -> float:
-    """Standard deviation of the margin, once both teams are doubted.
+    """Standard deviation of the margin, once both teams are judged.
 
     Uncertainty about either side is uncertainty about the margin, and the
-    two are independent, so they add in quadrature on top of the league
-    baseline. The effect is to pull a win probability toward 50% — which
-    is the point: doubt costs you most on the big favourite you were
-    saving, and almost nothing on a coin flip you would never pick.
+    two are independent, so they meet in quadrature on top of the league
+    baseline — signed, so conviction can sharpen a game as well as doubt
+    blurring one. Widening pulls a win probability toward 50%, which is
+    the point: doubt costs most on the big favourite you were saving and
+    nothing on the coin flip you would never take.
+
+    Floored at `MIN_STDEV_FRACTION` of the baseline. Nobody knows a game
+    that well, and without a floor a wall of 5s would manufacture
+    certainties the schedule cannot support.
     """
-    tau_sq = (
-        team_doubt(doubts, home, horizon) ** 2 + team_doubt(doubts, away, horizon) ** 2
-    )
-    return math.sqrt(SPREAD_STDEV**2 + tau_sq)
+    signed = 0.0
+    for team in (home, away):
+        tau = team_doubt(doubts, team, horizon)
+        signed += math.copysign(tau**2, tau)
+    floor = (MIN_STDEV_FRACTION * SPREAD_STDEV) ** 2
+    return math.sqrt(max(SPREAD_STDEV**2 + signed, floor))
 
 
 @lru_cache(maxsize=4)
@@ -123,7 +153,7 @@ def build_board(
                     "home": home,
                     "spread": round(margin, 2),
                     "source": "market" if priced else "model",
-                    # how much of this cell is doubt rather than the line
+                    # how much of this cell is judgement rather than the line
                     "stdev": round(stdev, 2),
                 },
             )

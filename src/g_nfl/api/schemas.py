@@ -292,14 +292,14 @@ class LedgerResponse(BaseModel):
 class SurvivorBelief(BaseModel):
     """What one picker thinks of one team, past what the ratings say (#72).
 
-    Both 0-4 and both default 0, so an untouched board is the plain one.
+    1-5, 3 is no opinion, so an untouched board is the plain one.
     """
 
     team: str
-    #: doubt about the rating today — new coach, new QB, roster turnover
-    confidence: float = 0
-    #: how fast that rating goes stale: injuries, a bad team quitting
-    fragility: float = 0
+    #: how well this team's rating holds up across a season. 5 is "they are
+    #: this all year"; 1 is an injury or a hot seat away from being someone
+    #: else. Bites harder the further out the week is.
+    confidence: float = 3
     #: set only when reading the whole room's beliefs for comparison
     picker: str | None = None
 
@@ -380,7 +380,7 @@ class SurvivorResponse(BaseModel):
     #: survival of the best plan ignoring pins — the price of your pins
     best_survival: float | None
     candidates: list[SurvivorCandidate]
-    #: team -> [confidence, fragility] actually applied to this board
-    doubts: dict[str, list[float]] = {}
+    #: team -> confidence actually applied to this board
+    doubts: dict[str, float] = {}
     ratings_through: dict[str, int]
     generated_at: str

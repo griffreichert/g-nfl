@@ -102,13 +102,13 @@ DROP POLICY IF EXISTS "Enable all operations for game_context" ON game_context;
 CREATE POLICY "Enable all operations for game_context" ON game_context FOR ALL USING (true);
 
 -- Survivor beliefs (#72): what each picker thinks about each team, beyond
--- what the ratings say. `confidence` is doubt about the rating today (new
--- coach, new QB, roster turnover); `fragility` is how fast that rating goes
--- stale (injury risk, a bad team quitting in December). Both 0-4, both
--- default 0, which reproduces the untouched board exactly.
+-- what the ratings say. `confidence` is how well that team's rating holds up
+-- across a season — 5 is "they are this all year", 1 is an injury or a hot
+-- seat away from being somebody else. 1-5, 3 is no opinion and reproduces the
+-- untouched board exactly.
 --
 -- Stored per picker rather than in the browser because the whole point is to
--- compare them: two entries diverge on the same board because they doubt
+-- compare them: two entries diverge on the same board because they trust
 -- different teams, and that disagreement is the thing worth analysing at the
 -- end of a season.
 CREATE TABLE IF NOT EXISTS survivor_beliefs (
@@ -116,8 +116,7 @@ CREATE TABLE IF NOT EXISTS survivor_beliefs (
     season INTEGER NOT NULL,
     picker VARCHAR(50) NOT NULL,
     team VARCHAR(10) NOT NULL,
-    confidence REAL NOT NULL DEFAULT 0,
-    fragility REAL NOT NULL DEFAULT 0,
+    confidence REAL NOT NULL DEFAULT 3,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (season, picker, team)
 );

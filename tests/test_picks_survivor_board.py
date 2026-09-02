@@ -11,9 +11,11 @@ import pytest
 
 from g_nfl.picks.calendar import current_season
 from g_nfl.picks.survivor_board import (
-    CONFIDENCE_STEP,
-    FRAGILITY_STEP,
+    CONFIDENCE_FLAT,
+    CONFIDENCE_SLOPE,
     LAST_REG_WEEK,
+    MIN_STDEV_FRACTION,
+    NEUTRAL,
     build_board,
     cells,
     game_stdev,
@@ -78,40 +80,66 @@ def test_cells_are_one_per_team_per_played_week():
     assert {c["source"] for c in got} <= {"market", "model"}
 
 
-def test_no_doubts_leaves_the_board_exactly_as_it_was():
-    """The default has to be free, or every number on the page moved for
-    a reason nobody chose."""
+def test_neutral_leaves_the_board_exactly_as_it_was():
+    """3 has to be free, or every number on the page moved for a reason
+    nobody chose."""
     plain, _, _ = build_board(SEASON, 1)
-    doubted, _, _ = build_board(SEASON, 1, doubts={})
-    assert plain.prob == doubted.prob
+    neutral, _, _ = build_board(SEASON, 1, doubts={"NYJ": NEUTRAL, "LA": NEUTRAL})
+    assert plain.prob == neutral.prob
     assert all(c["stdev"] == SPREAD_STDEV for c in cells(plain))
 
 
-def test_confidence_is_flat_and_fragility_grows_with_the_horizon():
-    near = team_doubt({"NYJ": (2, 2)}, "NYJ", horizon=0)
-    far = team_doubt({"NYJ": (2, 2)}, "NYJ", horizon=10)
-    assert near == pytest.approx(2 * CONFIDENCE_STEP)
-    assert far == pytest.approx(2 * CONFIDENCE_STEP + 2 * FRAGILITY_STEP * 10)
-    # confidence alone does not care how far out the week is
-    assert team_doubt({"NYJ": (2, 0)}, "NYJ", 0) == team_doubt(
-        {"NYJ": (2, 0)}, "NYJ", 12
-    )
+def test_confidence_bites_harder_the_further_out_the_week_is():
+    near = team_doubt({"NYJ": 1}, "NYJ", horizon=0)
+    far = team_doubt({"NYJ": 1}, "NYJ", horizon=10)
+    assert 0 < near < far
+    assert near == pytest.approx(2 * CONFIDENCE_FLAT)
+    assert far == pytest.approx(2 * (CONFIDENCE_FLAT + CONFIDENCE_SLOPE * 10))
 
 
-def test_both_teams_widen_the_same_game():
-    lone = game_stdev({"NYJ": (4, 0)}, "NYJ", "BUF", 0)
-    both = game_stdev({"NYJ": (4, 0), "BUF": (4, 0)}, "NYJ", "BUF", 0)
+def test_five_is_good_and_one_is_bad():
+    """The scale has to point the friendly way or nobody will set it right."""
+    assert team_doubt({"LA": 5}, "LA", 8) < 0 < team_doubt({"LA": 1}, "LA", 8)
+    assert team_doubt({"LA": NEUTRAL}, "LA", 8) == 0
+    # and conviction sharpens the game rather than only doubt blurring it
+    assert game_stdev({"LA": 5, "ARI": 5}, "LA", "ARI", 8) < SPREAD_STDEV
+
+
+def test_both_teams_move_the_same_game():
+    lone = game_stdev({"NYJ": 1}, "NYJ", "BUF", 4)
+    both = game_stdev({"NYJ": 1, "BUF": 1}, "NYJ", "BUF", 4)
     assert both > lone > SPREAD_STDEV
-    # independent, so they add in quadrature rather than linearly
-    tau = 4 * CONFIDENCE_STEP
+    # independent, so they meet in quadrature rather than adding
+    tau = 2 * (CONFIDENCE_FLAT + CONFIDENCE_SLOPE * 4)
     assert both == pytest.approx(math.sqrt(SPREAD_STDEV**2 + 2 * tau**2))
 
 
-def test_doubt_pulls_a_favourite_toward_a_coin_flip():
+def test_certainty_is_floored():
+    """A wall of 5s must not manufacture a game nobody can be that sure of.
+
+    The floor is a guard rather than a value the scale reaches: trusting
+    every team completely, 17 weeks out, still lands above it. It exists
+    so the sign convention cannot be pushed into nonsense.
+    """
+    trusted = dict.fromkeys(load_artifact(SEASON)["ratings"], 5)
+    stdevs = [
+        game_stdev(trusted, g["home"], g["away"], h)
+        for g in load_artifact(SEASON)["games"]
+        for h in (0, 17)
+    ]
+    assert min(stdevs) >= MIN_STDEV_FRACTION * SPREAD_STDEV
+    assert max(stdevs) <= SPREAD_STDEV  # conviction never widens
+    assert game_stdev(trusted, "LA", "ARI", 100) == pytest.approx(
+        MIN_STDEV_FRACTION * SPREAD_STDEV
+    )
+
+
+def test_low_confidence_pulls_a_late_favourite_toward_a_coin_flip():
     plain, _, _ = build_board(SEASON, 1)
-    team, week = max(plain.prob, key=plain.prob.get)
+    late = {k: v for k, v in plain.prob.items() if k[1] >= 12}
+    team, week = max(late, key=late.get)
     opponent = plain.game[(team, week)]["opponent"]
-    doubted, _, _ = build_board(SEASON, 1, doubts={team: (4, 4), opponent: (4, 4)})
+    doubted, _, _ = build_board(SEASON, 1, doubts={team: 1, opponent: 1})
     assert 0.5 < doubted.prob[(team, week)] < plain.prob[(team, week)]
     # and the underdog rises to meet it: this is spread, not a penalty
     assert doubted.prob[(opponent, week)] > plain.prob[(opponent, week)]

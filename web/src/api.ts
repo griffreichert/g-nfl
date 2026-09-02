@@ -86,11 +86,10 @@ export const api = {
     const pairs = Object.entries(pins ?? {}).map(([w, t]) => `${w}:${t}`)
     if (pairs.length) q.set('pins', pairs.join(','))
     if (rank !== undefined) q.set('rank', String(rank))
-    // Sent only while a slider is unsaved, or for a viewer with no entry to
+    // Sent only while an edit is unsaved, or for a viewer with no entry to
     // save against — a signed-in picker's beliefs are read from the table.
-    const doubted = (doubts ?? []).filter((b) => b.confidence || b.fragility)
-    if (doubted.length)
-      q.set('doubts', doubted.map((b) => `${b.team}:${b.confidence}:${b.fragility}`).join(','))
+    if (doubts?.length)
+      q.set('doubts', doubts.map((b) => `${b.team}:${b.confidence}`).join(','))
     return get<SurvivorResponse>(`/api/survivor?${q}`)
   },
   beliefs: (season: number, picker?: string) => {

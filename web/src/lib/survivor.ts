@@ -9,6 +9,18 @@ import type { SurvivorCell, SurvivorLeg } from '../types'
 export const LAST_WEEK = 18
 export const ALL_WEEKS = Array.from({ length: LAST_WEEK }, (_, i) => i + 1)
 
+/** Confidence runs 1-5 and 3 is no opinion, so a fresh board is untouched. */
+export const NEUTRAL = 3
+export const STEPS = [1, 2, 3, 4, 5]
+
+export const STEP_LABELS: Record<number, string> = {
+  1: 'could be anyone by December',
+  2: 'shaky',
+  3: 'no opinion',
+  4: 'steady',
+  5: 'this all season',
+}
+
 export type Pins = Record<number, string>
 
 /**

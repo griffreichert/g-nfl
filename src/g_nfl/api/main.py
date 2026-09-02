@@ -349,23 +349,21 @@ def _parse_pins(raw: str | None) -> dict[int, str]:
     return pins
 
 
-def _parse_doubts(raw: str | None) -> dict[str, tuple[float, float]]:
-    """`"NYJ:1:3,CIN:0:2"` -> `{"NYJ": (1, 3), "CIN": (0, 2)}`.
+def _parse_doubts(raw: str | None) -> dict[str, float]:
+    """`"NYJ:1,LA:5"` -> `{"NYJ": 1.0, "LA": 5.0}`.
 
-    Confidence then fragility, both 0-4. Only for a viewer with no saved
-    beliefs — a signed-in picker's are read from the table instead.
+    Confidence, 1-5. Carries a picker's edits before they are saved, and
+    is the only route for a viewer with no entry to save against.
     """
-    doubts: dict[str, tuple[float, float]] = {}
+    doubts: dict[str, float] = {}
     for chunk in (raw or "").split(","):
         if not chunk.strip():
             continue
-        parts = chunk.split(":")
-        if len(parts) != 3:
-            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:conf:frag")
+        team, _, value = chunk.partition(":")
         try:
-            doubts[parts[0].strip().upper()] = (float(parts[1]), float(parts[2]))
+            doubts[team.strip().upper()] = float(value)
         except ValueError as e:
-            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:conf:frag") from e
+            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:1-5") from e
     return doubts
 
 
@@ -378,11 +376,10 @@ def get_beliefs(season: int | None = None, picker: str | None = None):
     """
     season = season or current_season()
     return [
-        SurvivorBelief(**{k: row[k] for k in ("team", "confidence", "fragility")})
-        if picker
-        else SurvivorBelief(
-            **{k: row[k] for k in ("team", "confidence", "fragility")},
-            picker=row["picker"],
+        SurvivorBelief(
+            team=row["team"],
+            confidence=row["confidence"],
+            picker=None if picker else row["picker"],
         )
         for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
     ]
@@ -440,7 +437,7 @@ def get_survivor(
     doubted = _parse_doubts(doubts)
     if not doubted and picker:
         doubted = {
-            row["team"]: (row["confidence"], row["fragility"])
+            row["team"]: row["confidence"]
             for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
         }
 
@@ -485,7 +482,7 @@ def get_survivor(
         survival=pinned_plan["survival"] if pinned_plan else None,
         best_survival=unconstrained["survival"] if unconstrained else None,
         candidates=[SurvivorCandidate(**_candidate(c)) for c in ranked],
-        doubts={t: list(v) for t, v in doubted.items()},
+        doubts=doubted,
         ratings_through=artifact["ratings_through"],
         generated_at=artifact["generated_at"],
     )

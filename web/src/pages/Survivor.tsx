@@ -7,6 +7,7 @@ import { EmptyState, ErrorNote, Loading } from '../components/PageState'
 import { useAuth, useConfig, useSeasonWeek } from '../hooks'
 import {
   ALL_WEEKS,
+  NEUTRAL,
   costShare,
   pinCost,
   reservedWeek,
@@ -101,9 +102,11 @@ function useBeliefs(season: number | null, picker: string | null) {
       .catch(local)
   }, [season, picker, key])
 
-  const setBelief = (team: string, field: 'confidence' | 'fragility', value: number) => {
-    const held: SurvivorBelief = beliefs[team] ?? { team, confidence: 0, fragility: 0 }
-    const next = { ...beliefs, [team]: { ...held, [field]: value } }
+  const setBelief = (team: string, value: number) => {
+    const next: Record<string, SurvivorBelief> = {
+      ...beliefs,
+      [team]: { team, confidence: value },
+    }
     setBeliefs(next)
     if (key) localStorage.setItem(key, JSON.stringify(next))
     if (!season || !picker) return
@@ -117,9 +120,10 @@ function useBeliefs(season: number | null, picker: string | null) {
   }
 
   // A stable list for the fetch dependency: rebuilding the object every
-  // render would refetch the board forever.
+  // render would refetch the board forever. Neutral is dropped, so an
+  // untouched board asks for the plain one.
   const list = useMemo(
-    () => Object.values(beliefs).filter((b) => b.confidence || b.fragility),
+    () => Object.values(beliefs).filter((b) => b.confidence !== NEUTRAL),
     [beliefs]
   )
 
@@ -226,6 +230,12 @@ export default function Survivor() {
               {pinCount} pin{pinCount > 1 ? 's' : ''} cost you
             </p>
             <p className="text-2xl font-bold tabular-nums">{pct(cost, 0)}</p>
+            {/* The baseline, spelled out. A headline that drops when you pin
+                something reads like a glitch until you can see what it fell
+                from — it is the price of insisting, and that is the feature. */}
+            <p className="text-[11px] text-muted-foreground">
+              {pct(data.best_survival, 2)} unpinned
+            </p>
           </div>
         )}
         <p className="ml-auto max-w-sm text-xs text-muted-foreground">

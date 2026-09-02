@@ -262,10 +262,12 @@ export interface SurvivorCell {
 /** What one picker thinks of one team, past what the ratings say. */
 export interface SurvivorBelief {
   team: string
-  /** doubt about the rating today — new coach, new QB, roster turnover (0-4) */
+  /**
+   * How well this team's rating holds up across a season, 1-5, 3 = no
+   * opinion. 5 is "they are this all year"; 1 is an injury or a hot seat
+   * away from being someone else. Bites harder the further out the week is.
+   */
   confidence: number
-  /** how fast that rating goes stale: injuries, a bad team quitting (0-4) */
-  fragility: number
   /** set only when reading the whole room's beliefs for comparison */
   picker?: string | null
 }
@@ -313,8 +315,8 @@ export interface SurvivorResponse {
   /** the same solve without your pins — what insisting costs */
   best_survival: number | null
   candidates: SurvivorCandidate[]
-  /** team -> [confidence, fragility] actually applied to this board */
-  doubts: Record<string, number[]>
+  /** team -> confidence actually applied to this board */
+  doubts: Record<string, number>
   ratings_through: { season: number; week: number }
   generated_at: string
 }
