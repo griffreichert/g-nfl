@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
-import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, Ruler, Scale, Users } from 'lucide-react'
+import { ChartColumn, CircleQuestionMark, ClipboardCheck, LineChart, LogOut, Ruler, Scale, Skull, Users } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import { useAuth } from './hooks'
 
@@ -10,6 +10,7 @@ const MakePicks = lazy(() => import('./pages/MakePicks'))
 const Field = lazy(() => import('./pages/Field'))
 const GameDetail = lazy(() => import('./pages/GameDetail'))
 const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
+const Survivor = lazy(() => import('./pages/Survivor'))
 const Standings = lazy(() => import('./pages/Standings'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Ledger = lazy(() => import('./pages/Ledger'))
@@ -18,6 +19,7 @@ const Help = lazy(() => import('./pages/Help'))
 const tabs = [
   { to: '/picks', label: 'Picks', icon: ClipboardCheck },
   { to: '/view', label: 'Team', icon: Users },
+  { to: '/survivor', label: 'Survivor', icon: Skull },
   { to: '/standings', label: 'Standings', icon: LineChart },
   { to: '/spreads', label: 'Lines', icon: Ruler },
   { to: '/ledger', label: 'Ledger', icon: Scale },
@@ -67,14 +69,26 @@ export default function App() {
             >
               <CircleQuestionMark className="size-5" />
             </NavLink>
-            {picker && (
-              <button
-                onClick={logout}
-                title={`Signed in as ${picker}`}
-                className="flex h-9 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-              >
-                {picker} · out
-              </button>
+            {/* Who the picks will be saved under. It was grey 12px next to a
+                theme toggle, so the one thing on the page that decides where a
+                submission lands was the easiest thing to miss. */}
+            {picker ? (
+              <span className="flex h-9 items-center gap-2 rounded-full border border-border bg-secondary py-1 pr-2 pl-1">
+                <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                  {picker.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="text-sm font-semibold">{picker}</span>
+                <button
+                  onClick={logout}
+                  aria-label="Sign out"
+                  title="Sign out"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                </button>
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-muted-foreground">signed out</span>
             )}
             <ThemeToggle />
           </div>
@@ -89,6 +103,7 @@ export default function App() {
             <Route path="/view" element={<Field />} />
             {/* detail view, reached from a game row — deliberately not a tab */}
             <Route path="/game/:gameId" element={<GameDetail />} />
+            <Route path="/survivor" element={<Survivor />} />
             <Route path="/standings" element={<Standings />} />
             <Route path="/spreads" element={<ManageSpreads />} />
             <Route path="/ledger" element={<Ledger />} />

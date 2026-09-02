@@ -11,7 +11,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from g_nfl.picks import ledger
+from g_nfl.picks import ledger, survivor, survivor_board
 from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
 from g_nfl.picks.calendar import current_season, current_week
 from g_nfl.picks.grading import (
@@ -35,6 +35,7 @@ from g_nfl.utils.database import (
     MarketLinesDatabase,
     PicksDatabase,
     PoolSpreadsDatabase,
+    SurvivorBeliefsDatabase,
     TeamWeekStatsDatabase,
 )
 from g_nfl.utils.web_app import get_pool_spreads, normalize_game_id
@@ -55,10 +56,17 @@ from .schemas import (
     PickRecord,
     PoolSpreadUpdate,
     PoolSpreadUpdateResponse,
+    SaveBeliefsRequest,
+    SaveBeliefsResponse,
     SavePicksRequest,
     SavePicksResponse,
     SideFlag,
     StandingsResponse,
+    SurvivorBelief,
+    SurvivorCandidate,
+    SurvivorCell,
+    SurvivorLeg,
+    SurvivorResponse,
     WeeksResponse,
 )
 
@@ -102,12 +110,22 @@ def get_config(picker: str | None = None):
 
 def survivor_used(season: int, picker: str) -> list[str]:
     """Teams this picker has already spent in survivor this season."""
+    return sorted({leg["team"] for leg in survivor_history(season, picker)})
+
+
+def survivor_history(season: int, picker: str) -> list[dict]:
+    """The survivor path so far — which team went in which week.
+
+    The planner draws the season behind you as well as the season ahead,
+    so it needs the weeks, not just the set of teams.
+    """
     return sorted(
-        {
-            p["team_picked"]
+        (
+            {"week": p["week"], "team": p["team_picked"]}
             for p in PicksDatabase().get_season_picks(season)
             if p["picker"] == picker and p.get("pick_type") == "survivor"
-        }
+        ),
+        key=lambda leg: leg["week"],
     )
 
 
@@ -310,6 +328,169 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)
+
+
+def _parse_pins(raw: str | None) -> dict[int, str]:
+    """`"12:BUF,15:KC"` -> `{12: "BUF", 15: "KC"}`.
+
+    Pins live in the browser, not the database — a plan is a sketch, and
+    only a submitted pick spends a team. So they arrive on the query
+    string every request.
+    """
+    pins: dict[int, str] = {}
+    for chunk in (raw or "").split(","):
+        if not chunk.strip():
+            continue
+        week, _, team = chunk.partition(":")
+        try:
+            pins[int(week)] = team.strip().upper()
+        except ValueError as e:
+            raise HTTPException(400, f"bad pin {chunk!r}, want week:TEAM") from e
+    return pins
+
+
+def _parse_doubts(raw: str | None) -> dict[str, float]:
+    """`"NYJ:1,LA:5"` -> `{"NYJ": 1.0, "LA": 5.0}`.
+
+    Confidence, 1-5. Carries a picker's edits before they are saved, and
+    is the only route for a viewer with no entry to save against.
+    """
+    doubts: dict[str, float] = {}
+    for chunk in (raw or "").split(","):
+        if not chunk.strip():
+            continue
+        team, _, value = chunk.partition(":")
+        try:
+            doubts[team.strip().upper()] = float(value)
+        except ValueError as e:
+            raise HTTPException(400, f"bad doubt {chunk!r}, want TEAM:1-5") from e
+    return doubts
+
+
+@app.get("/api/survivor/beliefs", response_model=list[SurvivorBelief])
+def get_beliefs(season: int | None = None, picker: str | None = None):
+    """A picker's confidence/fragility, or the whole room's for comparison.
+
+    Empty while `survivor_beliefs` is unmigrated, which the planner treats
+    as "nobody doubts anybody" rather than as an error.
+    """
+    season = season or current_season()
+    return [
+        SurvivorBelief(
+            team=row["team"],
+            confidence=row["confidence"],
+            picker=None if picker else row["picker"],
+        )
+        for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
+    ]
+
+
+@app.put("/api/survivor/beliefs", response_model=SaveBeliefsResponse)
+def save_beliefs(req: SaveBeliefsRequest, picker: str = _PICKER):
+    """Store what this picker thinks of these teams.
+
+    Written under the token's picker, never the body's: beliefs are the
+    input that makes two entries diverge, so they have to belong to
+    somebody in particular to be worth comparing later.
+    """
+    try:
+        saved = SurvivorBeliefsDatabase().save_beliefs(
+            req.season, picker, [b.model_dump() for b in req.beliefs]
+        )
+    except Exception as e:
+        raise HTTPException(
+            503,
+            "survivor_beliefs is not migrated yet — run the block at the end of "
+            f"scripts/pending_migrations.sql ({e})",
+        ) from e
+    return SaveBeliefsResponse(saved=saved)
+
+
+@app.get("/api/survivor", response_model=SurvivorResponse)
+def get_survivor(
+    season: int | None = None,
+    week: int | None = None,
+    picker: str | None = None,
+    pins: str | None = None,
+    rank: int | None = None,
+    doubts: str | None = None,
+):
+    """The survivor board, the planned path, and this week's candidates.
+
+    Picking the biggest favourite every week spends teams that would be
+    bigger favourites later, so the answer is an assignment over the rest
+    of the season, not a weekly choice (notes/survivor-planner.md).
+
+    `pins` reserves teams for weeks (`12:BUF,15:KC`) and the solver plans
+    around them; `best_survival` is the same solve without them, so the
+    cost of insisting is on screen. `rank` ranks a week other than the
+    current one.
+    """
+    season = season or current_season()
+    week = week or current_week(season) or 1
+    history = survivor_history(season, picker) if picker else []
+    spent = sorted({h["team"] for h in history})
+    held = _parse_pins(pins)
+
+    # A signed-in picker's saved beliefs are the default; the query string
+    # overrides them so a slider moves the board before it is saved.
+    doubted = _parse_doubts(doubts)
+    if not doubted and picker:
+        doubted = {
+            row["team"]: row["confidence"]
+            for row in SurvivorBeliefsDatabase().get_beliefs(season, picker)
+        }
+
+    market = {
+        normalize_game_id(line["game_id"]): line["spread"]
+        for line in MarketLinesDatabase().get_market_lines(season)
+        if line.get("spread") is not None
+    }
+
+    try:
+        board, teams, weeks = survivor_board.build_board(
+            season, week, spent, market, doubted
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(
+            503, f"No survivor board for {season}: run scripts/build_survivor_board.py"
+        ) from e
+
+    # a pin on a spent team or a played week is stale, not an error: the
+    # browser holds these across weeks, so drop them and plan anyway
+    held = {
+        w: t
+        for w, t in held.items()
+        if w in weeks and t in teams and board.prob.get((t, w))
+    }
+
+    unconstrained = survivor.plan(board, teams, weeks)
+    pinned_plan = survivor.plan(board, teams, weeks, held) if held else unconstrained
+    ranked = survivor.rank_week(board, teams, weeks, held, week=rank or week)
+
+    artifact = survivor_board.load_artifact(season)
+    return SurvivorResponse(
+        season=season,
+        week=week,
+        picker=picker,
+        spent=spent,
+        history=[SurvivorLeg(**h) for h in history],
+        pins=held,
+        weeks=weeks,
+        cells=[SurvivorCell(**c) for c in survivor_board.cells(board)],
+        plan=[SurvivorLeg(**leg) for leg in (pinned_plan or {}).get("picks", [])],
+        survival=pinned_plan["survival"] if pinned_plan else None,
+        best_survival=unconstrained["survival"] if unconstrained else None,
+        candidates=[SurvivorCandidate(**_candidate(c)) for c in ranked],
+        doubts=doubted,
+        ratings_through=artifact["ratings_through"],
+        generated_at=artifact["generated_at"],
+    )
+
+
+def _candidate(row: dict) -> dict:
+    """rank_week's row, minus the whole plan it also carries."""
+    return {k: v for k, v in row.items() if k != "plan"}
 
 
 @app.get("/api/ledger", response_model=LedgerResponse)

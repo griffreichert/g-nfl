@@ -758,3 +758,59 @@ class FantasyProjectionsDatabase:
             .execute()
         )
         return result.data
+
+
+class SurvivorBeliefsDatabase:
+    """What a picker thinks about a team, beyond what the ratings say (#72).
+
+    ``confidence`` is how well that team's rating holds up across a season —
+    5 is "they are this all year", 1 is an injury or a hot seat away from
+    being somebody else, 3 is no opinion. Stored per picker rather than left
+    in the browser because comparing them is the point: two entries plan
+    different seasons off the same board because they trust different teams,
+    and that disagreement is worth reading back at the end of a year.
+
+    The table may not exist yet (``scripts/pending_migrations.sql``). Reads
+    return empty rather than raising, so the planner works without it.
+    """
+
+    def __init__(self):
+        self.client: Client = get_supabase()
+
+    def get_beliefs(self, season: int, picker: str | None = None) -> list[dict]:
+        """One picker's beliefs, or the whole room's when picker is None."""
+
+        def build():
+            query = (
+                self.client.table("survivor_beliefs").select("*").eq("season", season)
+            )
+            return query.eq("picker", picker) if picker else query
+
+        try:
+            return fetch_all(build)
+        except Exception:
+            return []  # table not created yet: no beliefs is a valid answer
+
+    def save_beliefs(self, season: int, picker: str, beliefs: list[dict]) -> int:
+        """Upsert one picker's beliefs, keyed by (season, picker, team).
+
+        Upsert rather than replace: a delete-then-insert would lose the whole
+        set on a partial failure, and this project has no backups (CLAUDE.md).
+        A team put back to 3 is written as 3, never removed.
+        """
+        if not beliefs:
+            return 0
+        rows = [
+            {
+                "season": season,
+                "picker": picker,
+                "team": b["team"],
+                "confidence": float(b.get("confidence", 3)),
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+            for b in beliefs
+        ]
+        self.client.table("survivor_beliefs").upsert(
+            rows, on_conflict="season,picker,team"
+        ).execute()
+        return len(rows)

@@ -1,4 +1,4 @@
-.PHONY: case no-homers predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: survivor-board case no-homers predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -21,6 +21,7 @@ help:
 	@echo "  update-lines  Snapshot market lines (ARGS=\"--snapshot deadline\")"
 	@echo "  update-results Update final game results (for standings)"
 	@echo "  update-context Update game context + team EPA (for game detail)"
+	@echo "  survivor-board Rebuild the survivor planner board (ARGS=\"--season 2026\")"
 	@echo "  verify-db     Verify database tables exist"
 	@echo "  load-pool     Load pool standings workbook (ARGS=\"<xlsx> --season 2025\")"
 	@echo "  pool-report   Pool pick-trend report (ARGS=\"<xlsx> --season 2025\")"
@@ -96,6 +97,13 @@ update-results:
 update-context:
 	@echo "🌦️  Updating game context and team EPA..."
 	uv run python scripts/update_game_context.py $(ARGS)
+
+# Regenerates the committed JSON the survivor planner plans against. Run it
+# weekly once the lines land, then commit the artifact — the deployed API
+# reads it from the repo, having no route to nflverse (#72).
+survivor-board:
+	@echo "💀 Rebuilding the survivor board..."
+	uv run python scripts/build_survivor_board.py $(ARGS)
 
 verify-db:
 	@echo "🔍 Verifying database tables..."

@@ -242,3 +242,81 @@ export interface LedgerResponse {
   weeks: LedgerWeek[]
   standings: LedgerEntry[]
 }
+
+/** One team's game in one week — a square of the season matrix. */
+export interface SurvivorCell {
+  team: string
+  week: number
+  game_id: string
+  opponent: string
+  home: boolean
+  /** this team's own margin, positive = favoured */
+  spread: number
+  win_prob: number
+  /** 'market' when a book has priced it, 'model' from power ratings */
+  source: 'market' | 'model'
+  /** the margin's standard deviation, widened by whatever is doubted here */
+  stdev: number
+}
+
+/** What one picker thinks of one team, past what the ratings say. */
+export interface SurvivorBelief {
+  team: string
+  /**
+   * How well this team's rating holds up across a season, 1-5, 3 = no
+   * opinion. 5 is "they are this all year"; 1 is an injury or a hot seat
+   * away from being someone else. Bites harder the further out the week is.
+   */
+  confidence: number
+  /** set only when reading the whole room's beliefs for comparison */
+  picker?: string | null
+}
+
+export interface SurvivorLeg {
+  week: number
+  team: string
+  /** absent on a pick already played */
+  prob: number | null
+  /** reserved by you, as opposed to placed by the solver */
+  pinned: boolean
+}
+
+export interface SurvivorBestWeek {
+  week: number
+  win_prob: number
+  spread: number | null
+}
+
+export interface SurvivorCandidate {
+  team: string
+  opponent: string | null
+  home: boolean | null
+  spread: number | null
+  win_prob: number
+  /** survival of the best plan that spends this team here */
+  plan_survival: number
+  /** log-survival given up versus the unconstrained plan; 0 = free */
+  forward_cost: number | null
+  /** the week this team is strongest, the reason to wait */
+  best_week: SurvivorBestWeek | null
+}
+
+export interface SurvivorResponse {
+  season: number
+  week: number
+  picker: string | null
+  spent: string[]
+  history: SurvivorLeg[]
+  pins: Record<string, string>
+  weeks: number[]
+  cells: SurvivorCell[]
+  plan: SurvivorLeg[]
+  survival: number | null
+  /** the same solve without your pins — what insisting costs */
+  best_survival: number | null
+  candidates: SurvivorCandidate[]
+  /** team -> confidence actually applied to this board */
+  doubts: Record<string, number>
+  ratings_through: { season: number; week: number }
+  generated_at: string
+}

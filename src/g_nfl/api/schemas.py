@@ -287,3 +287,100 @@ class LedgerResponse(BaseModel):
     season: int
     weeks: list[LedgerWeek]
     standings: list[LedgerEntry]
+
+
+class SurvivorBelief(BaseModel):
+    """What one picker thinks of one team, past what the ratings say (#72).
+
+    1-5, 3 is no opinion, so an untouched board is the plain one.
+    """
+
+    team: str
+    #: how well this team's rating holds up across a season. 5 is "they are
+    #: this all year"; 1 is an injury or a hot seat away from being someone
+    #: else. Bites harder the further out the week is.
+    confidence: float = 3
+    #: set only when reading the whole room's beliefs for comparison
+    picker: str | None = None
+
+
+class SaveBeliefsRequest(BaseModel):
+    season: int
+    beliefs: list[SurvivorBelief]
+
+
+class SaveBeliefsResponse(BaseModel):
+    saved: int
+
+
+class SurvivorCell(BaseModel):
+    """One team's game in one week — a square of the season matrix."""
+
+    team: str
+    week: int
+    game_id: str
+    opponent: str
+    home: bool
+    #: this team's own margin, positive = favoured
+    spread: float
+    win_prob: float
+    #: "market" when a book has priced it, "model" from power ratings
+    source: str
+    #: the margin's standard deviation, widened by whatever is doubted here
+    stdev: float
+
+
+class SurvivorLeg(BaseModel):
+    week: int
+    team: str
+    #: win probability of the leg; absent on a pick already played
+    prob: float | None = None
+    #: reserved by the user, as opposed to placed by the solver
+    pinned: bool = False
+
+
+class SurvivorBestWeek(BaseModel):
+    """Where a team peaks over the weeks still in play."""
+
+    week: int
+    win_prob: float
+    spread: float | None = None
+
+
+class SurvivorCandidate(BaseModel):
+    """A legal pick for the week being ranked, priced by the whole season."""
+
+    team: str
+    opponent: str | None = None
+    home: bool | None = None
+    spread: float | None = None
+    win_prob: float
+    #: survival of the best plan that spends this team here
+    plan_survival: float
+    #: log-survival given up versus the unconstrained plan; 0 = free
+    forward_cost: float | None = None
+    #: the week this team is strongest, the reason to wait
+    best_week: SurvivorBestWeek | None = None
+
+
+class SurvivorResponse(BaseModel):
+    season: int
+    week: int
+    picker: str | None
+    #: teams already submitted in survivor, gone for good
+    spent: list[str]
+    #: the path already played, week by week
+    history: list[SurvivorLeg]
+    #: pins that were honoured, week -> team
+    pins: dict[int, str]
+    weeks: list[int]
+    cells: list[SurvivorCell]
+    plan: list[SurvivorLeg]
+    survival: float | None
+    #: survival of the best plan ignoring pins — the price of your pins
+    best_survival: float | None
+    candidates: list[SurvivorCandidate]
+    #: team -> confidence actually applied to this board
+    doubts: dict[str, float] = {}
+    ratings_through: dict[str, int]
+    generated_at: str

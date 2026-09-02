@@ -120,3 +120,37 @@ def test_survival_is_the_product_of_the_legs():
     assert got["survival"] == pytest.approx(math.prod(p["prob"] for p in got["picks"]))
     # best is BBB week 1 (.8) then AAA week 2 (.5) = .40
     assert got["survival"] == pytest.approx(0.40)
+
+
+def test_pins_are_honoured_and_the_rest_planned_around_them():
+    b, teams, weeks = _board(
+        {("AAA", 1): 0.66, ("AAA", 2): 0.95, ("BBB", 1): 0.65, ("BBB", 2): 0.50}
+    )
+    got = plan(b, teams, weeks, {1: "AAA"})
+    assert {p["week"]: p["team"] for p in got["picks"]} == {1: "AAA", 2: "BBB"}
+    assert [p["pinned"] for p in got["picks"]] == [True, False]
+    # insisting costs survival, which is the number the planner exists to show
+    assert got["survival"] < plan(b, teams, weeks)["survival"]
+
+
+def test_a_pin_on_a_bye_is_not_a_plan():
+    b, teams, weeks = _board({("AAA", 1): 0.6, ("BBB", 1): 0.55, ("BBB", 2): 0.55})
+    assert plan(b, teams, weeks, {2: "AAA"}) is None  # AAA has no week 2
+
+
+def test_rank_week_holds_other_pins_fixed():
+    """AAA is reserved for week 2, so week 1 must not offer it, and the
+    week-1 ranking is priced against a season that already spends it."""
+    b, teams, weeks = _board(
+        {("AAA", 1): 0.90, ("AAA", 2): 0.95, ("BBB", 1): 0.65, ("BBB", 2): 0.50}
+    )
+    ranked = rank_week(b, teams, weeks, pins={2: "AAA"})
+    assert [r["team"] for r in ranked] == ["BBB"]
+    assert ranked[0]["plan_survival"] == pytest.approx(0.65 * 0.95)
+
+
+def test_rank_week_can_rank_a_later_week():
+    b, teams, weeks = _board(
+        {("AAA", 1): 0.66, ("AAA", 2): 0.95, ("BBB", 1): 0.65, ("BBB", 2): 0.50}
+    )
+    assert {r["team"] for r in rank_week(b, teams, weeks, week=2)} == {"AAA", "BBB"}

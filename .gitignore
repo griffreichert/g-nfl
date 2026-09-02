@@ -14,6 +14,9 @@ bin/
 *.json
 # test fixtures are code, not data — a fresh clone needs them to run the suite
 !tests/fixtures/*.json
+# the survivor board is generated, but the deployed API reads it from the repo
+# and cannot rebuild it (no nflverse, no polars), so it ships committed (#72)
+!src/g_nfl/picks/boards/*.json
 
 # private notes (symlink)
 notes
