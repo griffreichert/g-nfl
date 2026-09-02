@@ -4,9 +4,13 @@ Each team-game gets its *starting* QB's recency-weighted EPA/CPOE plus
 career volume, computed over the QB's own chronological dropback stream
 and **lagged one game** so the current game is never in his estimate.
 
-The starter's *identity* is taken from the current game (the QB with the
-most dropbacks) — genuinely known pre-kickoff at deploy time, so that
-"leak" is acceptable — but his *metrics* are strictly lagged. The EWMA is
+The starter's *identity* is the schedule's announced starter, known
+before kickoff, and his *metrics* are strictly lagged. Identity used to
+be inferred from the game itself (the QB with the most dropbacks), which
+disagrees with the announced starter on 3.4% of team-games and disagrees
+exactly where the starter left injured, so it leaked the injury into a
+pre-game feature. `starters` still infers it that way for
+`qb_change`, which wants the QB who actually played. The EWMA is
 career-spanning and keyed on ``passer_player_id``, so the signal follows
 the QB across team moves and starts thin (null EWMA, 0 volume) for rookies.
 
@@ -81,8 +85,37 @@ def qb_game_history(pbp: pl.DataFrame, half_life: float = QB_HALF_LIFE) -> pl.Da
     ).select("passer_player_id", "game_id", *QB_COLS)
 
 
+def announced_starters(schedule: pl.DataFrame) -> pl.DataFrame:
+    """Each team's starting QB per game from the schedule's ``qb_id``.
+
+    Leak-free by construction: the designated starter, known before
+    kickoff, which is the only identity a feature may use.
+    """
+    reg = schedule.filter(pl.col("game_type") == "REG")
+    return pl.concat(
+        [
+            reg.select(
+                "game_id",
+                posteam=pl.col("home_team"),
+                passer_player_id=pl.col("home_qb_id"),
+            ),
+            reg.select(
+                "game_id",
+                posteam=pl.col("away_team"),
+                passer_player_id=pl.col("away_qb_id"),
+            ),
+        ]
+    ).drop_nulls("passer_player_id")
+
+
 def starters(pbp: pl.DataFrame) -> pl.DataFrame:
-    """Each team's starting QB per game = the most-dropbacks passer."""
+    """Each team's most-dropbacks passer per game.
+
+    This reads the game it describes, so it is not a pre-game fact. It is
+    the right frame for `qb_change`, which asks who actually took the
+    snaps; it is the wrong one for a feature, which gets
+    `announced_starters`.
+    """
     return (
         _dropbacks(pbp)
         .group_by("game_id", "posteam", "passer_player_id")
@@ -94,17 +127,23 @@ def starters(pbp: pl.DataFrame) -> pl.DataFrame:
 
 
 def add_qb_context(
-    matrix: pl.DataFrame, pbp: pl.DataFrame, half_life: float = QB_HALF_LIFE
+    matrix: pl.DataFrame,
+    pbp: pl.DataFrame,
+    schedule: pl.DataFrame,
+    half_life: float = QB_HALF_LIFE,
 ) -> pl.DataFrame:
-    """Attach each team's starting-QB lagged features as home_/away_ cols.
+    """Attach each team's announced starting QB's lagged features as
+    home_/away_ cols.
 
     ``pbp`` must include prior-season lookback to warm the EWMA. Cold
     start (rookie's first game, no history) leaves the EWMA null and sets
-    volume to 0; xgboost handles the nulls.
+    volume to 0; xgboost handles the nulls. ``schedule`` supplies the
+    announced starter, which is what a prediction made before kickoff
+    actually knows.
     """
     hist = qb_game_history(pbp, half_life)
     team_game = (
-        starters(pbp)
+        announced_starters(schedule)
         .join(hist, on=["passer_player_id", "game_id"], how="left")
         .select("game_id", "posteam", *QB_COLS)
     )
