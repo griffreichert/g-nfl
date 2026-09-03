@@ -26,6 +26,25 @@ interface GamePick {
 const noteKey = (gameId: string, type: Pick['pick_type']) =>
   type === 'regular' || type === 'best_bet' ? gameId : `${type}_${gameId}`
 
+/**
+ * A one-sentence explanation, out of the way until asked for.
+ *
+ * Native `title` for now, so it costs nothing. It does not open on a phone,
+ * which is why the copy pass replaces this with a Radix popover that answers
+ * to a tap as well as a hover.
+ */
+function Info({ text }: { text: string }) {
+  return (
+    <span
+      title={text}
+      aria-label={text}
+      className="inline-flex size-3.5 cursor-help items-center justify-center rounded-full border border-current text-[9px] font-bold normal-case"
+    >
+      i
+    </span>
+  )
+}
+
 const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
 
@@ -168,6 +187,27 @@ export default function MakePicks() {
   }, [draftKey, weekKey, baseline, dirty, currentJson])
 
   const effectiveSpread = (g: GameLine) => g.pool_spread ?? g.market_spread
+
+  /**
+   * Where the pool prices a game differently from the market, and which side
+   * that helps.
+   *
+   * Both lines are stored home-perspective, positive meaning the home team is
+   * favoured. A pool number above the market's has the home side laying more
+   * than the market says it should, so the away side is the one getting the
+   * better of it, and vice versa.
+   *
+   * This is the largest single leak in six seasons of our own picks: the side
+   * the pool prices worse than the market has gone 45.2% over 1098 picks
+   * (z=-3.20). It is the one thing on this row worth looking for, so it is the
+   * one thing on this row that carries colour.
+   */
+  const edge = (g: GameLine) => {
+    if (g.pool_spread === null || g.market_spread === null) return null
+    const diff = g.pool_spread - g.market_spread
+    if (diff === 0) return null
+    return { team: diff > 0 ? g.away_team : g.home_team, points: Math.abs(diff) }
+  }
 
   // Click cycle: unselected -> regular -> best_bet (only one allowed) -> unselected
   const clickTeam = useCallback(
@@ -383,6 +423,13 @@ export default function MakePicks() {
   const complete = isComplete(tally)
   const maxReached = Object.keys(picks).length >= MAX_ATS_NON_MNF
 
+  /** The line from one side's point of view, which is the side you tap. */
+  const sideSpread = (g: GameLine, team: string) => {
+    const home = effectiveSpread(g)
+    if (home === null || home === undefined) return null
+    return team === g.home_team ? home : -home
+  }
+
   const teamButton = (g: GameLine, team: string, side: 'away' | 'home') => {
     const isMnfGame = g.is_mnf
     const pick = picks[g.game_id]
@@ -406,14 +453,41 @@ export default function MakePicks() {
         // Capped and pushed toward the middle, so the two buttons stay the same
         // width on every row and meet the line column instead of drifting with
         // the width of the browser.
-        className={`w-full max-w-56 font-medium ${
+        // The spread sits inside the button, on the side it belongs to. It
+        // used to be one of three numbers in a slash-separated cell in the
+        // middle of the row, which meant reading `TBD / +3.5 / 44.5` and
+        // working out which of the three applied to the team you were about to
+        // tap. You pick a side, so the number rides that side.
+        className={`w-full max-w-64 justify-between gap-3 font-medium ${
           side === 'away' ? 'justify-self-end' : 'justify-self-start'
         } ${tone}`}
       >
-        {isMnfGame && selected && <Moon className="size-3.5" />}
-        {isBest && <Star className="size-3.5 fill-current" />}
-        {team}
+        <span className="flex items-center gap-1.5">
+          {isMnfGame && selected && <Moon className="size-3.5" />}
+          {isBest && <Star className="size-3.5 fill-current" />}
+          {team}
+        </span>
+        <span className={`tabular text-sm ${selected ? '' : 'text-muted-foreground'}`}>
+          {fmtSpread(sideSpread(g, team))}
+        </span>
       </Button>
+    )
+  }
+
+  /**
+   * The gap, shown on the side that gains from it. Position carries the
+   * direction, so the row needs no arrow and no second sentence.
+   */
+  const edgeChip = (g: GameLine, team: string) => {
+    const e = edge(g)
+    if (!e || e.team !== team) return null
+    return (
+      <span
+        title={`Pool ${fmtSpread(g.pool_spread)} against market ${fmtSpread(g.market_spread)}`}
+        className="tabular inline-flex h-5 shrink-0 items-center rounded bg-win/15 px-1 text-[11px] font-bold text-win"
+      >
+        +{e.points}
+      </span>
     )
   }
 
@@ -538,29 +612,54 @@ export default function MakePicks() {
             )
           )}
 
+          {/* Said once, not printed as "TBD" on sixteen rows. Until Friday the
+              pool line does not exist, so there is no gap to show and the
+              number on each side is the market's. */}
+          {games.length > 0 && games.every((g) => g.pool_spread === null) && (
+            <p className="text-sm text-muted-foreground">
+              Pool lines are not in yet. Showing the market.
+            </p>
+          )}
+
           <div className="divide-y divide-border rounded-lg border border-border bg-card">
+            {/* Same six columns as a game row, so the labels sit over what
+                they name. */}
+            <div className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:gap-2 sm:px-3">
+              <span />
+              <span className="flex items-center justify-end gap-1">
+                Away
+                <Info text="The number on each side is the line that side is getting. A green number means the pool prices that side better than the market: our biggest measured edge, and the side without it has gone 45.2% over six seasons." />
+              </span>
+              <span className="w-10 text-center sm:w-12">Total</span>
+              <span>Home</span>
+              <span />
+              <span />
+            </div>
             {games.map((g) => (
               <div
                 key={g.game_id}
-                // The line column is a fixed width per breakpoint, not `auto`.
-                // Sized on its widest content ("+10.5 / 46.5"), so a long line
-                // no longer shoves the buttons sideways on that one row.
-                className="grid grid-cols-[1.5rem_1fr_3.5rem_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:grid-cols-[1.5rem_1fr_6.5rem_1fr_1.5rem_1rem] sm:gap-2 sm:px-3 md:grid-cols-[1.5rem_1fr_11rem_1fr_1.5rem_1rem]"
+                // Six columns, and the two that hold a button are the only
+                // ones that grow. The middle used to be a slash-separated cell
+                // three numbers wide, sized for its longest content, which is
+                // what pushed the two buttons out to the edges and left a
+                // third of the row empty.
+                className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
               >
                 <img src={teamLogo(g.away_team)} className="size-6" alt="" />
-                {teamButton(g, g.away_team, 'away')}
-                <span className="tabular whitespace-nowrap px-1 text-center text-xs sm:text-sm">
-                  <span className="font-semibold">{fmtSpread(g.pool_spread)}</span>
-                  <span className="hidden text-muted-foreground sm:inline">
-                    {' '}
-                    / {fmtSpread(g.market_spread)}
-                  </span>
-                  <span className="hidden text-muted-foreground md:inline">
-                    {' '}
-                    / {g.market_total ?? '—'}
-                  </span>
+                <span className="flex min-w-0 items-center justify-end gap-1.5">
+                  {teamButton(g, g.away_team, 'away')}
+                  {edgeChip(g, g.away_team)}
                 </span>
-                {teamButton(g, g.home_team, 'home')}
+                {/* The total plays no part in pool scoring, so it is the
+                    quietest thing on the row rather than a third of its
+                    width. */}
+                <span className="tabular w-10 text-center text-xs text-muted-foreground sm:w-12 sm:text-sm">
+                  {g.market_total ?? '—'}
+                </span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {edgeChip(g, g.home_team)}
+                  {teamButton(g, g.home_team, 'home')}
+                </span>
                 <img src={teamLogo(g.home_team)} className="size-6" alt="" />
                 {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
                 <Link
