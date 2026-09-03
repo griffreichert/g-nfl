@@ -547,9 +547,7 @@ export default function MakePicks() {
         week={week}
         weeks={weeks}
         onWeek={setWeek}
-      >
-        <span className="text-sm font-medium text-muted-foreground">{picker}</span>
-      </PageHeader>
+      />
 
       {status && (
         <p

@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import {
   Select,
   SelectContent,
@@ -16,8 +15,6 @@ type Props = {
   week?: number | null
   weeks?: number[]
   onWeek?: (week: number) => void
-  /** Extra controls, right of the week picker — the picker select on Picks. */
-  children?: ReactNode
 }
 
 /**
@@ -34,7 +31,6 @@ export default function PageHeader({
   week,
   weeks,
   onWeek,
-  children,
 }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -67,8 +63,6 @@ export default function PageHeader({
           </SelectContent>
         </Select>
       )}
-
-      {children}
     </div>
   )
 }
