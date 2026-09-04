@@ -13,7 +13,7 @@ export default function SignInPage() {
   const { picker, checking, login } = useAuth()
   const { config, error } = useConfig()
   const navigate = useNavigate()
-  const from = (useLocation().state as { from?: string } | null)?.from ?? '/'
+  const from = (useLocation().state as { from?: string } | null)?.from ?? '/picks'
 
   if (checking || (!config && !error)) return <Loading />
   if (picker) return <Navigate to={from} replace />

@@ -34,7 +34,7 @@ export default function Help() {
           page during the week. Then we get together and agree the one set of picks Reichert
           submits to the pool — that entry is called <b className="text-foreground">TEAM</b>, and
           the{' '}
-          <Link to="/" className="text-primary underline-offset-4 hover:underline">
+          <Link to="/picks" className="text-primary underline-offset-4 hover:underline">
             Make Picks
           </Link>{' '}
           page is where the meeting builds it.

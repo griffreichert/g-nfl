@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api, teamLogo } from '../api'
-import { useConfig, useSeasonWeek } from '../hooks'
+import { useConfig, useSeasonRoute } from '../hooks'
 import type { AnalyticsResponse, Cut, CutRow, TeamAppetite } from '../types'
 import {
   cutHasSignal,
@@ -268,11 +268,8 @@ function Teams({ teams, base }: { teams: TeamAppetite[]; base: number }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          A raw pick count says nothing — a team in tight games gets looked at more. Appetite is the
-          share of a team's available games in which someone in the room took them, so 1.0 means we
-          backed them every time we could. Per-team samples are 10-20 games, far too thin to shrink
-          into anything, so no rate here is a finding on its own. Highlighted rows are the habit:
-          taken in at least half their games and hitting under the field's own {fmtPct(base)}.
+          Highlighted rows: taken in at least half their games and hitting under the field's own{' '}
+          {fmtPct(base)}.
         </p>
 
         {habits.length > 0 && (
@@ -336,7 +333,7 @@ function Teams({ teams, base }: { teams: TeamAppetite[]; base: number }) {
 
 export default function Analytics() {
   const { config, error: configError } = useConfig()
-  const { season, setSeason, seasons } = useSeasonWeek(config)
+  const { season, setSeason, seasons } = useSeasonRoute(config, (s) => `/analytics/${s}`)
   const [data, setData] = useState<AnalyticsResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 

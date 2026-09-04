@@ -31,10 +31,14 @@ The `notes/` folder is the source of truth for in-flight, multi-session work. Us
   date: YYYY-MM-DD
   ---
   ```
-- Track tasks at a **high level**: goal, current state, key decisions made (and why), and remaining steps. Do not log every edit — capture enough that a fresh session can pick up where this one left off.
-- Update the note **before ending a session** or whenever a major milestone or decision lands (mark completed steps, record what's next)
+- Hold state under three headings — **Goal**, **Decisions**, **Remaining** — and nothing else. Each session edits those sections in place; it does not append a new one.
+- **Decisions** is the durable part, at design altitude: the shape chosen, the constraint that forced it, the option dropped. Every bullet carries its *why* in the same bullet. Reversing a decision rewrites its bullet to hold both sides, so the abandoned option keeps the reason it was abandoned. Do not log every edit — steps, file lists and verification runs belong in the commit and the PR, not the note.
+- **Never add a dated `###`/`##` section for a session's work.** That turns the note into a transcript. Fold what's still true into Goal/Decisions/Remaining instead; if the note has drifted into dated tails already, that's what `~/code/dot-g/claude/prompts/notes-cleanup.md` is for.
+- Update the note **before ending a session** or whenever a major milestone or decision lands (mark completed steps, record what's next).
 
 **When a task is fully complete**: mark the note as done at the top (or summarize the outcome) so future sessions know it's closed.
+
+**`notes/_archive/`** holds a working note's dated tail once it's cleaned up — the byte-for-byte session history a Decisions bullet was distilled from, never trimmed or rewritten going in. `notes/_index.md` is the map: `[[wikilink]]`s to live plans/issues under `## Start here` and archived tails under `## Archive`, one line each, no state duplicated from the source note. Add or refresh a note's entry there whenever it's created or its status changes (active → done, or newly archived).
 
 ### One-off analysis scripts — no `scratch/` folder
 
@@ -193,6 +197,12 @@ hard boundary where a consumer genuinely requires it (and prefer porting that co
 **Data loading: `nflreadpy`, not `nfl_data_py`.** `nfl_data_py` is deprecated by nflverse
 and is being removed (see #23). Use `nflreadpy` loaders (`load_schedules`, `load_pbp`,
 `load_teams`, `load_player_stats`, `load_rosters`, …) — they return polars natively.
+
+**Web UI: Title Case for chrome, not for prose.** Buttons, page/card headings,
+nav labels and slot labels are Title Case ("Save Picks", "Team Picks", "Best
+Bet") — not "Save picks", not "save picks". Body copy, status/error messages
+and explanatory sentences stay normal sentence case; Title Case is for short
+standalone labels, not paragraphs.
 
 ## Writing to Supabase — read this before any bulk write
 

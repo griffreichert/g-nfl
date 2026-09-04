@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Star } from 'lucide-react'
+import { ChevronRight, Dog, Moon, Skull, Star } from 'lucide-react'
+import { Popover as PopoverPrimitive } from 'radix-ui'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import {
+  fmtSpread,
+  POOL_BUTTON,
+  POOL_TEXT,
+  useAuth,
+  useConfig,
+  useGuardrails,
+  useSeasonWeekRoute,
+  type PoolColor,
+} from '../hooks'
 import type { GameLine, Pick, PickRecord } from '../types'
 import {
   bestSide,
@@ -17,6 +27,7 @@ import {
   isVoter,
   isComplete,
   MAX_REGULAR,
+  pts,
   shortfall,
   slotCounts,
   spreadFor,
@@ -35,7 +46,15 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import PageHeader from '@/components/PageHeader'
-import ActionBar, { Slot } from '@/components/ActionBar'
+import { Info } from '@/components/Info'
+import ActionBar, {
+  ActionBarSpacer,
+  ClearButton,
+  CopyButton,
+  EditLinesButton,
+  Slot,
+} from '@/components/ActionBar'
+import { LinesEditor } from '@/components/LinesEditor'
 import { EmptyState, ErrorNote, Loading } from '@/components/PageState'
 
 /** The two side pools. Separate objectives, separate games, own state. */
@@ -49,33 +68,89 @@ const pickerOrder = (a: string, b: string) =>
  * One chip per independent opinion. Pickers who vote together get one chip
  * between them, so a duplicate vote can't read as two people agreeing.
  */
-function Chip({ picks, bb }: { picks: string[]; bb: boolean }) {
+/** A bare name, styled like `Chip`'s unselected state. */
+function NamePill({ name }: { name: string }) {
   return (
-    <span
-      className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium ${
-        bb ? 'border-bb bg-bb-soft text-bb' : 'border-border text-muted-foreground'
-      }`}
-      title={picks.length > 1 ? `${picks.join(' and ')} vote together` : undefined}
-    >
-      {picks.join('+')}
-      {bb && <Star className="size-3 fill-current" />}
+    <span className="inline-flex h-6 items-center rounded-full border border-border px-2 text-xs font-medium text-muted-foreground">
+      {name}
     </span>
+  )
+}
+
+function Chip({
+  picks,
+  bb,
+  notes,
+}: {
+  picks: string[]
+  bb: boolean
+  notes: { picker: string; note: string }[]
+}) {
+  const [hover, setHover] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const open = notes.length > 0 && (hover || pinned)
+  return (
+    <PopoverPrimitive.Root
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setHover(false)
+          setPinned(false)
+        }
+      }}
+    >
+      <PopoverPrimitive.Trigger asChild>
+        <span
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onClick={() => notes.length > 0 && setPinned((p) => !p)}
+          className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs font-medium ${
+            notes.length > 0 ? 'cursor-help' : ''
+          } ${bb ? 'border-bb bg-bb-soft text-bb' : 'border-border text-muted-foreground'}`}
+          title={picks.length > 1 ? `${picks.join(' and ')} vote together` : undefined}
+        >
+          {picks.join('+')}
+          {bb && <Star className="size-3 fill-current" />}
+          {notes.length > 0 && <span className="text-[10px] leading-none">💬</span>}
+        </span>
+      </PopoverPrimitive.Trigger>
+      {notes.length > 0 && (
+        <PopoverPrimitive.Portal>
+          <PopoverPrimitive.Content
+            side="top"
+            sideOffset={6}
+            className="z-50 flex max-w-64 flex-col gap-1 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+          >
+            {notes.map((n) => (
+              <span key={n.picker}>
+                <b>{n.picker}:</b> {n.note}
+              </span>
+            ))}
+          </PopoverPrimitive.Content>
+        </PopoverPrimitive.Portal>
+      )}
+    </PopoverPrimitive.Root>
   )
 }
 
 /** Group a side's pickers into blocs, preserving order of first appearance. */
 function toChips(picks: SidePick[], blocs: string[][]) {
-  const out: { picks: string[]; bb: boolean }[] = []
+  const out: { picks: string[]; bb: boolean; notes: { picker: string; note: string }[] }[] = []
   const seen = new Map<number, number>()
   for (const p of picks) {
     const idx = blocs.findIndex((b) => b.includes(p.picker))
     const at = idx === -1 ? undefined : seen.get(idx)
     if (at === undefined) {
       seen.set(idx, out.length)
-      out.push({ picks: [p.picker], bb: p.bb })
+      out.push({
+        picks: [p.picker],
+        bb: p.bb,
+        notes: p.note ? [{ picker: p.picker, note: p.note }] : [],
+      })
     } else {
       out[at].picks.push(p.picker)
       out[at].bb = out[at].bb || p.bb
+      if (p.note) out[at].notes.push({ picker: p.picker, note: p.note })
     }
   }
   return out
@@ -85,24 +160,92 @@ function toChips(picks: SidePick[], blocs: string[][]) {
  * 0-10, where 5 is the -110 break-even. Deliberately not a percentage: the
  * numbers behind it are one season of hit rates and a printed rate reads like a
  * win probability, which it is not.
+ *
+ * The breakdown used to ride a native `title`, which needs a mouse that sits
+ * still — no tap, and no touch device at all, which is half the pool. Same
+ * hover/tap Popover as `Info`, just with per-row content instead of one
+ * fixed string.
  */
 function Rating({ score }: { score: Score }) {
   const good = score.rating >= 5
+  const [hover, setHover] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const open = hover || pinned
+
   return (
-    <span
-      className={`tabular rounded px-1.5 py-0.5 text-sm font-bold ${
-        good ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
-      }`}
-      title={score.parts
-        .map(
-          (p) =>
-            `${p.label}: ${partRating(p.value, score.slope) > 0 ? '+' : ''}${partRating(p.value, score.slope).toFixed(1)}${
-              p.measured ? '' : ' (judgement)'
-            }`,
-        )
-        .join('\n')}
+    <PopoverPrimitive.Root
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setHover(false)
+          setPinned(false)
+        }
+      }}
     >
-      {score.rating.toFixed(1)}
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          onClick={() => setPinned((p) => !p)}
+          className={`tabular cursor-help rounded px-1.5 py-0.5 text-sm font-bold ${
+            good ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
+          }`}
+        >
+          {score.rating.toFixed(1)}
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side="top"
+          sideOffset={6}
+          className="z-50 flex max-w-64 flex-col gap-0.5 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+        >
+          {score.parts.map((p) => (
+            <span key={p.label}>
+              {p.label}: {partRating(p.value, score.slope) > 0 ? '+' : ''}
+              {partRating(p.value, score.slope).toFixed(1)}
+              {p.measured ? '' : ' (judgement)'}
+            </span>
+          ))}
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  )
+}
+
+type TableSortKey = 'score' | 'pts' | 'bb' | 'net'
+
+/** A sortable column header: label, optional `Info`, click toggles asc/desc. */
+function SortableHead({
+  label,
+  sortKey,
+  sort,
+  onSort,
+  width,
+  className = '',
+  children,
+}: {
+  label: string
+  sortKey: TableSortKey
+  sort: { key: TableSortKey; desc: boolean } | null
+  onSort: (key: TableSortKey) => void
+  width: string
+  className?: string
+  children?: ReactNode
+}) {
+  const active = sort?.key === sortKey
+  return (
+    <span className={`flex ${width} items-center justify-center gap-1 ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`cursor-pointer hover:text-foreground ${active ? 'text-foreground' : ''}`}
+      >
+        {label}
+        {active && <span className="ml-0.5">{sort.desc ? '▾' : '▴'}</span>}
+      </button>
+      {children}
     </span>
   )
 }
@@ -113,31 +256,44 @@ const SLOT_LABEL: Record<SlotType, string> = {
   mnf: 'MNF',
 }
 
-/** The promote control. Off, regular, best bet, off — one tap each way. */
+/**
+ * The promote control. Off, regular, best bet, off — one tap each way, except
+ * the Monday game, which only ever toggles off/MNF: it can never become a
+ * best bet, so it gets its own color and a moon icon in both states rather
+ * than sharing the pick-blue "regular" look and reading like it could.
+ */
 function SlotButton({
   slot,
+  isMnf,
   locked,
   onPick,
 }: {
   slot: SlotType | null
+  isMnf: boolean
   locked: boolean
   onPick: () => void
 }) {
+  const color: PoolColor = slot === 'best_bet' ? 'bb' : isMnf ? 'mnf' : 'pick'
   return (
     <button
       type="button"
       onClick={onPick}
       disabled={locked}
-      aria-label={slot ? `${SLOT_LABEL[slot]} — tap to change` : 'Promote this side'}
-      className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-md border px-2 text-xs font-bold transition-colors disabled:opacity-35 ${
-        slot === 'best_bet'
-          ? 'border-bb bg-bb text-primary-foreground'
+      aria-label={
+        isMnf
+          ? slot
+            ? 'The Monday game — tap to drop'
+            : 'Take the Monday game'
           : slot
-            ? 'border-pick bg-pick text-primary-foreground'
-            : 'border-border/60 text-muted-foreground hover:border-border hover:text-foreground'
+            ? `${SLOT_LABEL[slot]} — tap to change`
+            : 'Promote this side'
+      }
+      className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-xs font-bold transition-colors disabled:opacity-35 ${
+        slot ? POOL_BUTTON[color].on : POOL_BUTTON[color].off
       }`}
     >
       {slot === 'best_bet' && <Star className="size-3.5 fill-current" />}
+      {isMnf && <Moon className="size-3.5" />}
       {slot ? SLOT_LABEL[slot] : '+'}
     </button>
   )
@@ -178,7 +334,7 @@ function CandidateRow({
         slot ? 'bg-pick-soft/40' : ''
       } ${locked ? 'opacity-50' : ''}`}
     >
-      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-2 py-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] sm:px-3">
+      <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 px-2 py-2 sm:grid-cols-[minmax(0,20rem)_1fr_3.5rem_2rem_3.5rem_4rem_7rem] sm:px-3">
         {/* SIDE */}
         <div className="flex min-w-0 items-center gap-2">
           <img src={teamLogo(c.team)} alt="" className="size-6 shrink-0" />
@@ -204,15 +360,27 @@ function CandidateRow({
           </span>
         </div>
 
-        {/* SCORE */}
-        <Rating score={c.score} />
-
-        {/* PK — headcount, with independent opinions in parentheses when they differ */}
-        <span className="tabular w-12 text-center text-sm">
-          <b>{c.picks.length}</b>
-          {c.blocs !== c.picks.length && (
-            <span className="text-muted-foreground">({c.blocs})</span>
+        {/* WHO — fills the gap the name column leaves on a laptop instead of
+            wasting it; chips are the one thing that says a 5-2 is really a
+            4-2. Full-width below the row instead, on a phone, where this
+            track doesn't exist. */}
+        <div className="hidden flex-wrap items-center gap-1 sm:flex">
+          {toChips(c.picks, blocs).map((chip) => (
+            <Chip key={chip.picks.join('+')} picks={chip.picks} bb={chip.bb} notes={chip.notes} />
+          ))}
+          {c.picks.length === 0 && (
+            <span className="text-xs text-muted-foreground">nobody suggested this</span>
           )}
+          {flags > 0 && (
+            <span className="rounded bg-loss/15 px-1.5 py-0.5 text-[11px] font-medium text-loss">
+              {flags} guardrail{flags > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        {/* PTS — pool points this side carries, best bet worth two */}
+        <span className="tabular w-14 text-center text-sm">
+          <b>{pts(c.picks)}</b>
         </span>
 
         {/* BB */}
@@ -221,19 +389,28 @@ function CandidateRow({
         </span>
 
         {/* NET */}
-        <span className="tabular hidden w-10 text-center text-sm text-muted-foreground md:block">
-          {c.net > 0 ? `+${c.net}` : c.net}
+        <span className="tabular hidden w-14 text-center text-sm text-muted-foreground md:block">
+          {c.net}
         </span>
 
-        {/* SLOT */}
-        <SlotButton slot={slot} locked={locked} onPick={onPick} />
+        {/* SCORE */}
+        <span className="flex w-16 justify-center">
+          <Rating score={c.score} />
+        </span>
+
+        {/* PROMOTE */}
+        <SlotButton
+          slot={slot}
+          isMnf={c.row.game.is_mnf}
+          locked={locked}
+          onPick={onPick}
+        />
       </div>
 
-      {/* WHO — its own line on a phone, inline from lg up. Chips are the one
-          thing that says a 5-2 is really a 4-2. */}
-      <div className="flex flex-wrap items-center gap-1 px-2 pb-2 sm:px-3">
+      {/* WHO, phone only — the grid gains a column for this from sm up. */}
+      <div className="flex flex-wrap items-center gap-1 px-2 pb-2 sm:hidden">
         {toChips(c.picks, blocs).map((chip) => (
-          <Chip key={chip.picks.join('+')} picks={chip.picks} bb={chip.bb} />
+          <Chip key={chip.picks.join('+')} picks={chip.picks} bb={chip.bb} notes={chip.notes} />
         ))}
         {c.picks.length === 0 && (
           <span className="text-xs text-muted-foreground">nobody suggested this</span>
@@ -399,46 +576,115 @@ function Survivor({
  * ATS board — neither pool is scored, so showing a rating here would imply a
  * model that does not exist.
  */
+/**
+ * Same row shape as `CandidateRow`/`SlotButton` — same grid columns as the
+ * promotion table above (Pts/BB/Net/Score sit empty, unused here), so Side,
+ * Pickers and Promote land in the exact same columns, and the same
+ * `h-8 min-w-8` control in the Promote track, iconed for the pool instead of
+ * a generic `+` (#126 follow-up: Griffin found the pill position and button
+ * size inconsistent with the table above).
+ */
 function PoolPicker({
   title,
-  hint,
+  icon: Icon,
+  color,
   options,
   chosen,
   onPick,
 }: {
   title: string
-  hint: string
-  options: { game: GameLine; team: string; spread: number | null; disabled?: boolean }[]
+  icon: typeof Dog
+  color: 'underdog' | 'survivor'
+  options: {
+    game: GameLine
+    team: string
+    spread: number | null
+    disabled?: boolean
+    pickers?: string[]
+  }[]
   chosen: Special
   onPick: (value: Special) => void
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <h2 className="text-sm font-bold">{title}</h2>
-      <p className="mb-2 text-xs text-muted-foreground">{hint}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((o) => {
-          const on = chosen?.team === o.team && chosen?.game_id === o.game.game_id
-          return (
-            <button
-              key={`${o.game.game_id}_${o.team}`}
-              type="button"
-              disabled={o.disabled}
-              onClick={() => onPick(on ? null : { game_id: o.game.game_id, team: o.team })}
-              title={o.disabled ? 'Already spent this season' : undefined}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-2 text-sm transition-colors disabled:opacity-35 ${
-                on
-                  ? 'border-pick bg-pick-soft font-semibold'
-                  : 'border-border/60 hover:border-border'
-              }`}
-            >
-              <img src={teamLogo(o.team)} alt="" className="size-5" />
-              {o.team}
-              <span className="tabular text-xs text-muted-foreground">{fmtSpread(o.spread)}</span>
-            </button>
-          )
-        })}
-      </div>
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <h2 className="flex items-center gap-1.5 p-3 pb-2 text-sm font-bold">
+        <Icon className="size-4" /> {title}
+      </h2>
+      {options.length === 0 ? (
+        <p className="px-3 pb-3 text-sm text-muted-foreground">Nobody's suggested one yet.</p>
+      ) : (
+        <div className="divide-y divide-border">
+          {options.map((o) => {
+            const on = chosen?.team === o.team && chosen?.game_id === o.game.game_id
+            const { away_team: away, home_team: home } = o.game
+            return (
+              <div
+                key={`${o.game.game_id}_${o.team}`}
+                className={on ? (color === 'underdog' ? 'bg-underdog-soft/40' : 'bg-survivor-soft/40') : ''}
+              >
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2 px-2 py-2 sm:grid-cols-[minmax(0,20rem)_1fr_3.5rem_2rem_3.5rem_4rem_7rem] sm:px-3">
+                  {/* SIDE */}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <img src={teamLogo(o.team)} alt="" className="size-6 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5">
+                        <b>{o.team}</b>
+                        <span className="tabular text-sm text-muted-foreground">
+                          {fmtSpread(o.spread)}
+                        </span>
+                      </span>
+                      <Link
+                        to={`/game/${o.game.game_id}`}
+                        className="flex items-center text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        {o.team === home ? `vs ${away}` : `at ${home}`}
+                        <ChevronRight className="size-3" />
+                      </Link>
+                    </span>
+                  </div>
+
+                  {/* PICKERS — same track the table above calls Pickers */}
+                  <div className="hidden flex-wrap items-center gap-1 sm:flex">
+                    {o.pickers?.map((p) => <NamePill key={p} name={p} />)}
+                  </div>
+
+                  {/* PTS / BB / NET / SCORE — unused here, kept as empty
+                      tracks so Pickers and Promote line up under the table
+                      above regardless of screen width. */}
+                  <span className="hidden sm:block" />
+                  <span className="hidden sm:block" />
+                  <span className="hidden sm:block" />
+                  <span className="hidden sm:block" />
+
+                  {/* PROMOTE — same size as SlotButton, iconed for the pool */}
+                  <button
+                    type="button"
+                    disabled={o.disabled}
+                    onClick={() => onPick(on ? null : { game_id: o.game.game_id, team: o.team })}
+                    title={o.disabled ? 'Already spent this season' : undefined}
+                    aria-label={on ? `${o.team} — tap to drop` : `Take ${o.team}`}
+                    className={`inline-flex h-8 min-w-8 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-xs font-bold transition-colors disabled:opacity-35 ${
+                      on ? POOL_BUTTON[color].on : POOL_BUTTON[color].off
+                    }`}
+                  >
+                    <Icon className="size-3.5" />
+                    {on ? 'Taken' : '+'}
+                  </button>
+                </div>
+
+                {/* Pickers, phone only — the grid gains the column from sm up. */}
+                {o.pickers && o.pickers.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 px-2 pb-2 sm:hidden">
+                    {o.pickers.map((p) => (
+                      <NamePill key={p} name={p} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -451,91 +697,6 @@ function PoolPicker({
  * spread is what picks grade against, so a wrong one is worth fixing the
  * moment somebody notices it, not after a round trip through another page.
  */
-function LinesEditor({
-  games,
-  season,
-  week,
-  onSaved,
-}: {
-  games: GameLine[]
-  season: number
-  week: number
-  onSaved: () => void
-}) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [status, setStatus] = useState<string | null>(null)
-
-  const valueFor = (g: GameLine) =>
-    drafts[g.game_id] ?? g.pool_spread?.toString() ?? ''
-
-  const saveOne = async (g: GameLine) => {
-    const raw = valueFor(g)
-    const spread = Number(raw)
-    if (raw === '' || Number.isNaN(spread)) {
-      setStatus(`Invalid spread for ${g.away_team} @ ${g.home_team}`)
-      return
-    }
-    try {
-      await api.updatePoolSpread(season, week, g.game_id, spread)
-      setStatus(`Saved ${g.away_team} @ ${g.home_team}: ${fmtSpread(spread)}`)
-      setDrafts((d) => {
-        const next = { ...d }
-        delete next[g.game_id]
-        return next
-      })
-      onSaved()
-    } catch (e) {
-      setStatus(String(e))
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <h2 className="text-sm font-bold">Pool lines</h2>
-      <p className="mb-2 text-xs text-muted-foreground">
-        What picks grade against. Blank means the market line stands.
-      </p>
-      {status && <p className="mb-2 text-xs text-muted-foreground">{status}</p>}
-      <div className="divide-y divide-border">
-        {games.map((g) => {
-          const saved = g.pool_spread?.toString() ?? ''
-          const dirty = valueFor(g) !== saved
-          return (
-            <div key={g.game_id} className="flex items-center gap-2 py-1.5 text-sm">
-              <span className="min-w-0 flex-1 truncate">
-                {g.away_team} @ {g.home_team}
-                <span className="tabular ml-2 hidden text-muted-foreground sm:inline">
-                  market {fmtSpread(g.market_spread)}
-                </span>
-              </span>
-              <input
-                type="number"
-                step="0.5"
-                inputMode="decimal"
-                value={valueFor(g)}
-                placeholder={fmtSpread(g.market_spread)}
-                onChange={(e) => setDrafts((d) => ({ ...d, [g.game_id]: e.target.value }))}
-                aria-label={`Pool spread for ${g.away_team} at ${g.home_team}`}
-                className="tabular h-8 w-20 rounded-md border border-input bg-transparent px-2 text-right text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
-              />
-              {/* Only a changed row offers a save: sixteen live buttons is
-                  noise, and it makes an unsaved edit obvious. */}
-              <Button
-                size="sm"
-                variant={dirty ? 'default' : 'outline'}
-                disabled={!dirty}
-                onClick={() => saveOne(g)}
-              >
-                Save
-              </Button>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 /** The phrase, and what counts as typing it (#129). */
 const CONFIRM_PHRASE = 'I am not a homer'
 const matchesPhrase = (typed: string) =>
@@ -556,7 +717,10 @@ export default function Field() {
   // matter here.
   const { config, error: configError } = useConfig('TEAM')
   const { picker: signedIn } = useAuth()
-  const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeekRoute(
+    config,
+    (s, w) => `/picks/${s}/week/${w}`,
+  )
   const { guardrails, flagsFor, ruleById } = useGuardrails(season, week)
 
   // The one measured term in every side's rating. Served fitted, so the board
@@ -653,13 +817,14 @@ export default function Field() {
   )
 
   /**
-   * Open the call with a slate already on the table. Arguing about a proposal is
-   * faster than starting from sixteen blank games, and the proposal is the
-   * ranking we already trust: the Monday game first because that slot is forced,
-   * then the best remaining side as the best bet, then five regulars.
-   *
-   * Anything TEAM already submitted for the week wins over the proposal — that
-   * is a decision the room made, and this page does not get to overwrite it.
+   * Whatever TEAM already submitted for the week — nothing else. This used to
+   * default to an auto-built slate (Monday game, then best remaining side as
+   * best bet, then five regulars) so the call opened with a proposal instead
+   * of sixteen blank games. Griffin: that read as already-decided before
+   * anyone had picked anything, and made "Submit As TEAM" look like it was
+   * finalizing a choice that had, in effect, already been made. The bottom
+   * bar and every slot button now start empty; a click is the only thing
+   * that fills them.
    */
   const proposal = useMemo(() => {
     const submitted: Slate = {}
@@ -669,24 +834,8 @@ export default function Field() {
       )
       if (t) submitted[r.game.game_id] = { team: t.team_picked, type: t.pick_type as SlotType }
     }
-    if (Object.keys(submitted).length > 0) return submitted
-
-    const out: Slate = {}
-    let regulars = 0
-    let bb = false
-    for (const r of rows) {
-      const best = bestSide(r, attachment, penalties)
-      if (r.game.is_mnf) out[r.game.game_id] = { team: best.team, type: 'mnf' }
-      else if (!bb) {
-        out[r.game.game_id] = { team: best.team, type: 'best_bet' }
-        bb = true
-      } else if (regulars < MAX_REGULAR) {
-        out[r.game.game_id] = { team: best.team, type: 'regular' }
-        regulars++
-      }
-    }
-    return out
-  }, [rows, picks, attachment, penalties])
+    return submitted
+  }, [rows, picks])
 
   const weekKey = `${season}-${week}`
   const slate = useMemo(() => {
@@ -707,6 +856,31 @@ export default function Field() {
     [rows, attachment, penalties, blocs, slate],
   )
 
+  // The Monday game isn't a candidate the room is ranking against the rest —
+  // it's forced onto one game, so it gets its own section below the table
+  // (like Underdog/Survivor) instead of a row the table's own sort can move
+  // around.
+  const mnfCandidates = useMemo(() => candidates.filter((c) => c.row.game.is_mnf), [candidates])
+  const tableCandidates = useMemo(() => candidates.filter((c) => !c.row.game.is_mnf), [candidates])
+
+  /** null keeps `buildCandidates`' own order (best score, then net, then contention). */
+  const [tableSort, setTableSort] = useState<{ key: TableSortKey; desc: boolean } | null>(null)
+  const sortedCandidates = useMemo(() => {
+    if (!tableSort) return tableCandidates
+    const sign = tableSort.desc ? -1 : 1
+    const value = (c: Candidate) =>
+      tableSort.key === 'score'
+        ? c.score.rating
+        : tableSort.key === 'pts'
+          ? pts(c.picks)
+          : tableSort.key === 'bb'
+            ? c.bb
+            : c.net
+    return [...tableCandidates].sort((a, b) => sign * (value(a) - value(b)))
+  }, [tableCandidates, tableSort])
+  const toggleTableSort = (key: TableSortKey) =>
+    setTableSort((s) => (s?.key === key ? { key, desc: !s.desc } : { key, desc: true }))
+
   /**
    * Whatever TEAM already submitted, unless the room has changed it since. No
    * proposal here: the dog is outright-win EV against spread size and survivor
@@ -720,6 +894,114 @@ export default function Field() {
   const underdog = extra('underdog')
   const survivor = extra('survivor')
 
+  const gameForId = (id: string) => rows.find((r) => r.game.game_id === id)?.game
+  const gameForTeam = (team: string) =>
+    rows.find((r) => r.game.away_team === team || r.game.home_team === team)?.game
+
+  // Same chat-ready format as `MakePicks.tsx`'s summary, built off TEAM's
+  // slate instead of an individual's picks (#126 follow-up: the Copy button
+  // used to exist only on Submit My Picks).
+  const summary = useMemo(() => {
+    const lines: string[] = []
+    const describe = (team: string, g: GameLine) => {
+      const s = g.market_spread
+      const home = team === g.home_team
+      const spread = s === null ? '' : ` (${fmtSpread(home ? -s : s)})`
+      return `${team}${spread} ${home ? 'vs' : 'at'} ${home ? g.away_team : g.home_team}`
+    }
+    const gameOf = (id: string) => games.find((g) => g.game_id === id)
+    for (const [id, v] of Object.entries(slate).filter(([, v]) => v.type === 'best_bet')) {
+      const g = gameOf(id)
+      if (g) lines.push(`⭐️ ${describe(v.team, g)}`)
+    }
+    for (const [id, v] of Object.entries(slate).filter(([, v]) => v.type === 'regular')) {
+      const g = gameOf(id)
+      if (g) lines.push(describe(v.team, g))
+    }
+    for (const [id, v] of Object.entries(slate).filter(([, v]) => v.type === 'mnf')) {
+      const g = gameOf(id)
+      if (g) lines.push(`🌙 ${describe(v.team, g)}`)
+    }
+    for (const [emoji, choice] of [
+      ['💀', survivor],
+      ['🐶', underdog],
+    ] as const) {
+      if (!choice) continue
+      const g = gameOf(choice.game_id)
+      if (g) lines.push(`${emoji} ${describe(choice.team, g)}`)
+    }
+    return lines.length ? `TEAM's Week ${week} Picks\n\n${lines.join('\n')}` : ''
+  }, [slate, survivor, underdog, games, week])
+
+  // Drops back to `proposal` — whatever TEAM already submitted, or blank if
+  // nothing has been yet. Nothing here writes to the server, so this is a
+  // local, reversible reset, not an undo of a real submission.
+  const clearSlate = () => {
+    setEdits({ key: weekKey, overrides: {} })
+    setExtras({ key: weekKey, picks: {} })
+    setNoteEdits({})
+  }
+  const isEmpty = Object.keys(slate).length === 0 && !survivor && !underdog
+
+  const [copyStatus, setCopyStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(summary)
+      setCopyStatus({ kind: 'ok', msg: 'Summary copied — paste it in the chat' })
+    } catch {
+      setCopyStatus({ kind: 'err', msg: 'Could not reach the clipboard. Select the text above.' })
+    }
+  }
+
+  // What the dots on the ribbon only count — the ribbon's expanded view. A
+  // star marks the best bet rather than a repeated "Best Bet" label. One
+  // ribbon row on a laptop, wide enough that the line rides right next to the
+  // team instead of getting lost at the far edge; a stacked list on a phone,
+  // where a row that wide would just wrap anyway.
+  const pickItems = [
+    ...Object.entries(slate)
+      .filter(([, v]) => v.type === 'best_bet')
+      .map(([id, v]) => ({ id, team: v.team, Icon: Star, color: 'bb' as const })),
+    ...Object.entries(slate)
+      .filter(([, v]) => v.type === 'regular')
+      .map(([id, v]) => ({ id, team: v.team, Icon: null, color: 'pick' as const })),
+    ...Object.entries(slate)
+      .filter(([, v]) => v.type === 'mnf')
+      .map(([id, v]) => ({ id, team: v.team, Icon: Moon, color: 'mnf' as const })),
+    ...(underdog
+      ? [{ id: underdog.game_id, team: underdog.team, Icon: Dog, color: 'underdog' as const }]
+      : []),
+    ...(survivor
+      ? [{ id: survivor.game_id, team: survivor.team, Icon: Skull, color: 'survivor' as const }]
+      : []),
+  ]
+  const pickDetail = (
+    <div className="flex flex-col gap-1.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1 sm:gap-y-1.5">
+      {pickItems.map((p, i) => {
+        const g = gameForId(p.id) ?? gameForTeam(p.team)
+        const spread = g ? spreadFor(g, p.team) : null
+        return (
+          <span key={i} className="flex items-center gap-1">
+            {p.Icon ? (
+              <p.Icon
+                className={`size-3.5 shrink-0 ${POOL_TEXT[p.color]} ${p.Icon === Star ? 'fill-current' : ''}`}
+              />
+            ) : (
+              <span className="size-3.5 shrink-0" />
+            )}
+            <img src={teamLogo(p.team)} className="size-4 shrink-0" alt="" />
+            <span className="font-medium">{p.team}</span>
+            <span className="tabular text-xs text-muted-foreground">
+              {fmtSpread(spread)}
+              {i < pickItems.length - 1 && <span className="hidden sm:inline">,</span>}
+            </span>
+          </span>
+        )
+      })}
+      {pickItems.length === 0 && <p className="text-muted-foreground">No picks yet.</p>}
+    </div>
+  )
+
   const pickExtra = (pool: Pool, value: Special) => {
     setExtras((cur) => ({
       key: weekKey,
@@ -727,16 +1009,32 @@ export default function Field() {
     }))
   }
 
-  /** Every dog on the board, biggest first — the payout is the spread itself. */
-  const dogs = useMemo(
-    () =>
-      games
-        .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
-        .map((x) => ({ ...x, spread: spreadFor(x.game, x.team) }))
-        .filter((x) => x.spread !== null && x.spread > 0)
-        .sort((a, b) => (b.spread ?? 0) - (a.spread ?? 0)),
-    [games],
-  )
+  /**
+   * Every dog on the board, biggest first — the payout is the spread itself.
+   * `pickers` marks who's actually suggested it, sorted to the front, so a
+   * submitted pick like Griffin's is never buried in the full sixteen-team
+   * list (#126 follow-up: an earlier round tried filtering this list down to
+   * suggested-only, which went to zero every time nobody had suggested
+   * anything yet — a sort can't do that, a filter can).
+   *
+   * Griffin, final call: back to filtering to suggested-only — same rule
+   * the main table already lives by (a side nobody suggested isn't a
+   * candidate, #127), no fallback to the full schedule. Empty is a real,
+   * expected state here, same as an empty promotion table. The spread-sign
+   * check (must actually be an underdog) is dropped entirely rather than
+   * exempting picked teams from it — sign said the wrong thing for a pick
+   * made minutes ago, so it isn't trustworthy enough to gate on here even
+   * for unpicked teams; open question, not resolved yet (see notes).
+   */
+  const dogs = useMemo(() => {
+    const pickersFor = (team: string) =>
+      picks.filter((p) => p.pick_type === 'underdog' && p.team_picked === team).map((p) => p.picker)
+    return games
+      .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
+      .map((x) => ({ ...x, spread: spreadFor(x.game, x.team), pickers: pickersFor(x.team) }))
+      .filter((x) => x.pickers.length > 0)
+      .sort((a, b) => (b.spread ?? 0) - (a.spread ?? 0))
+  }, [games, picks])
 
   /**
    * Survivor is about our own inventory, not the field's: a team TEAM has
@@ -752,15 +1050,16 @@ export default function Field() {
     return used
   }, [seasonPicks, config, week])
 
-  const favourites = useMemo(
-    () =>
-      games
-        .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
-        .map((x) => ({ ...x, spread: spreadFor(x.game, x.team) }))
-        .filter((x) => x.spread !== null && x.spread < 0)
-        .sort((a, b) => (a.spread ?? 0) - (b.spread ?? 0)),
-    [games],
-  )
+  /** Same suggested-only rule as `dogs`, for survivor. */
+  const favourites = useMemo(() => {
+    const pickersFor = (team: string) =>
+      picks.filter((p) => p.pick_type === 'survivor' && p.team_picked === team).map((p) => p.picker)
+    return games
+      .flatMap((g) => [g.away_team, g.home_team].map((t) => ({ game: g, team: t })))
+      .map((x) => ({ ...x, spread: spreadFor(x.game, x.team), pickers: pickersFor(x.team) }))
+      .filter((x) => x.pickers.length > 0)
+      .sort((a, b) => (a.spread ?? 0) - (b.spread ?? 0))
+  }, [games, picks])
 
   const cycle = (row: ConsensusRow, team: string) => {
     const patch = cycleSlot(slate, row.game.game_id, team, row.game.is_mnf)
@@ -847,7 +1146,10 @@ export default function Field() {
   // A half-finished week is visible on purpose: hiding it would let someone
   // sit out the week invisibly (#128).
   const missing = (config?.pickers ?? []).filter(
-    (p) => isVoter(p) && !pickers.includes(p),
+    // "No Homers" is TEAM's own entry under another name — it has nothing to
+    // submit here, so it never belongs on a list of humans still owing us a
+    // slate.
+    (p) => isVoter(p) && p !== 'No Homers' && !pickers.includes(p),
   )
 
   const incomplete = useMemo(() => {
@@ -877,7 +1179,7 @@ export default function Field() {
     () => (signedIn ? picks.filter((p) => p.picker === signedIn) : []),
     [picks, signedIn],
   )
-  const mineComplete = useMemo(() => {
+  const mineTally = useMemo(() => {
     const t: SlotTally = { bb: 0, regular: 0, mnf: 0, underdog: 0, survivor: 0 }
     for (const p of mine) {
       if (p.pick_type === 'best_bet') t.bb++
@@ -886,8 +1188,10 @@ export default function Field() {
       else if (p.pick_type === 'underdog') t.underdog++
       else if (p.pick_type === 'survivor') t.survivor++
     }
-    return isComplete(t)
+    return t
   }, [mine])
+  const mineShortfall = shortfall(mineTally)
+  const mineComplete = mine.length > 0 && isComplete(mineTally)
 
   const teamEntry = useMemo(() => {
     const rows = picks.filter((p) => p.picker === TEAM_PICKER)
@@ -924,75 +1228,86 @@ export default function Field() {
         onWeek={setWeek}
       />
 
-      {/* Your own week, before the room's. The picks page left the navigation
-          in #135: it is one job you do once, so it is a button here rather
-          than a tab you walk past all week. */}
-      {signedIn &&
-        (mine.length === 0 ? (
-          <Button asChild size="lg" className="w-full">
-            <Link to="/picks">Make my picks for week {week}</Link>
-          </Button>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>
-              Your week {week} slate is in
-              {mineComplete ? '' : ', and still short'}
-              {mine[0]?.submitted_at ? ` — ${fmtWhen(mine[0].submitted_at)}` : ''}.
-            </span>
-            <Button asChild size="sm" variant="outline">
-              <Link to="/picks">Edit my picks</Link>
+      {/* Your own week, before the room's. Separate card so it stays visible
+          even when the board below has nothing yet (#135). */}
+      {signedIn && (
+        <section className="rounded-lg border border-border bg-card p-3">
+          <h2 className="text-sm font-bold">My Picks</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            {mine.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {mineComplete
+                  ? `Submitted ${mine[0]?.submitted_at ? fmtWhen(mine[0].submitted_at) : 'at an unknown time'}.`
+                  : `${mineShortfall.join(', ')} still open.`}
+              </p>
+            )}
+            {/* Natural width, not full width — a button sized to its label
+                reads as a control, not a banner. */}
+            <Button asChild size="sm">
+              {/* Carries the week the board is on — the Picks page has no
+                  selector of its own, so this link is the only way to reach
+                  one (#126 follow-up). */}
+              <Link to={`/picks/${season}/week/${week}/submit`}>
+                {mine.length === 0
+                  ? 'Make My Picks'
+                  : mineComplete
+                    ? 'Edit My Picks'
+                    : 'Finish My Picks'}
+              </Link>
             </Button>
           </div>
-        ))}
-
-      {error && <p className="text-destructive">{error}</p>}
-      {!error && rows.length === 0 && (
-        <EmptyState
-          title={`Nobody has picked week ${week} yet`}
-          detail={
-            signedIn
-              ? 'The board fills in as picks land. Yours is the one that starts it.'
-              : 'Sign in to put your slate in.'
-          }
-        />
+        </section>
       )}
 
-      {!error && rows.length > 0 && (
-        <Tabs defaultValue="board">
-          <TabsList className="mb-3">
-            <TabsTrigger value="board">Board</TabsTrigger>
-            <TabsTrigger value="grid">Grid</TabsTrigger>
-            <TabsTrigger value="survivor">Survivor</TabsTrigger>
-          </TabsList>
+      <section className="rounded-lg border border-border bg-card p-3">
+        <h2 className="mb-3 text-sm font-bold">Team Picks</h2>
 
-          <TabsContent value="board" className="flex flex-col gap-3">
+        {error && <p className="text-destructive">{error}</p>}
+        {!error && rows.length === 0 && (
+          <EmptyState
+            title={`Nobody has picked week ${week} yet`}
+            detail={
+              signedIn
+                ? 'The board fills in as picks land. Yours is the one that starts it.'
+                : 'Sign in to put your slate in.'
+            }
+          />
+        )}
+
+        {!error && rows.length > 0 && (
+          <Tabs defaultValue="board">
+            <TabsList className="mb-3">
+              <TabsTrigger value="board">Board</TabsTrigger>
+              <TabsTrigger value="grid">Grid</TabsTrigger>
+              <TabsTrigger value="survivor">Survivor</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="board" className="flex flex-col gap-3">
             {/* What the call is here to produce, and how much of it is left.
                 Same bar, same place as the Picks page (#124). */}
             <ActionBar
               slots={
                 <>
                   <span className="text-sm font-bold">TEAM</span>
-                  <Slot label="best bet" have={counts.bb} need={1} />
-                  <Slot label="regular" have={counts.regular} need={MAX_REGULAR} />
-                  <Slot label="MNF" have={counts.mnf} need={1} />
-                  <Slot label="dog" have={underdog ? 1 : 0} need={1} />
-                  <Slot label="survivor" have={survivor ? 1 : 0} need={1} />
+                  <Slot label="Best Bet" color="bb" have={counts.bb} need={1} />
+                  <Slot label="Regular" color="pick" have={counts.regular} need={MAX_REGULAR} />
+                  <Slot label="MNF" color="mnf" have={counts.mnf} need={1} />
+                  <Slot label="Dog" color="underdog" have={underdog ? 1 : 0} need={1} />
+                  <Slot label="Survivor" color="survivor" have={survivor ? 1 : 0} need={1} />
                 </>
               }
+              detail={pickDetail}
+              status={copyStatus}
             >
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setEditingLines((v) => !v)}
-              >
-                {editingLines ? 'Done with lines' : 'Edit lines'}
-              </Button>
+              <CopyButton onClick={copySummary} disabled={!summary} />
+              <EditLinesButton editing={editingLines} onClick={() => setEditingLines((v) => !v)} />
+              <ClearButton onClick={clearSlate} disabled={isEmpty} />
               <Button
                 size="sm"
                 onClick={() => setGateOpen(true)}
                 disabled={saving || unexplained.length > 0 || gateOpen}
               >
-                {saving ? 'Saving…' : 'Submit as TEAM'}
+                {saving ? 'Saving…' : 'Submit As TEAM'}
               </Button>
             </ActionBar>
 
@@ -1055,8 +1370,7 @@ export default function Field() {
             {unexplained.length > 0 && (
               <p className="rounded-md bg-loss/15 px-3 py-2 text-sm text-loss">
                 {unexplained.join(', ')} {unexplained.length === 1 ? 'trips' : 'trip'} a
-                guardrail. Say why in the note on that side before submitting. The rules
-                do not get the last word, but an override should be on the record.
+                guardrail. Say why in the note on that side before submitting.
               </p>
             )}
 
@@ -1075,41 +1389,56 @@ export default function Field() {
                 games={games}
                 season={season}
                 week={week}
-                onSaved={() => setLinesVersion((v) => v + 1)}
+                onSaved={() => {
+                  setLinesVersion((v) => v + 1)
+                  setEditingLines(false)
+                }}
               />
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Every side below is one at least one of us took. Tap the control to add it,
-              again to make it the best bet, once more to drop it.{' '}
-              <Link to="/help" className="text-primary underline-offset-4 hover:underline">
-                How this works
-              </Link>
-            </p>
-
             {missing.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                No picks in yet from {missing.join(', ')}.
-              </p>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                No picks in yet from
+                {missing.map((p) => (
+                  <NamePill key={p} name={p} />
+                ))}
+              </div>
             )}
             {incomplete.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Still short: {incomplete.join(', ')}.
-              </p>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                Still short:
+                {incomplete.map((p) => (
+                  <NamePill key={p} name={p} />
+                ))}
+              </div>
             )}
 
             {/* The promotion table (#127). Header row on a laptop; on a phone
                 the columns speak for themselves and the header is dead height. */}
             <div className="overflow-hidden rounded-lg border border-border bg-card">
-              <div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto] items-center gap-2 border-b border-border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+              <div className="hidden grid-cols-[minmax(0,20rem)_1fr_3.5rem_2rem_3.5rem_4rem_7rem] items-center gap-2 border-b border-border px-3 py-1.5 text-sm font-semibold text-muted-foreground sm:grid">
                 <span>Side</span>
-                <span className="w-10 text-center">Score</span>
-                <span className="w-12 text-center">Pk</span>
-                <span className="w-8 text-center">BB</span>
-                <span className="hidden w-10 text-center md:block">Net</span>
-                <span className="w-16 text-center">Slot</span>
+                <span>Pickers</span>
+                <SortableHead label="Pts" sortKey="pts" sort={tableSort} onSort={toggleTableSort} width="w-14">
+                  <Info text="Pool points this side carries: a best bet is worth two, everything else one." />
+                </SortableHead>
+                <SortableHead label="BB" sortKey="bb" sort={tableSort} onSort={toggleTableSort} width="w-8" />
+                <SortableHead
+                  label="Net"
+                  sortKey="net"
+                  sort={tableSort}
+                  onSort={toggleTableSort}
+                  width="w-14"
+                  className="hidden md:flex"
+                >
+                  <Info text="Points this side has over the other, weighted the way the pool scores." />
+                </SortableHead>
+                <SortableHead label="Score" sortKey="score" sort={tableSort} onSort={toggleTableSort} width="w-16">
+                  <Info text="0-10, best first. 5.0 is break-even at -110; tap a score for the breakdown." />
+                </SortableHead>
+                <span className="w-28 text-center">Promote</span>
               </div>
-              {candidates.map((c) => {
+              {sortedCandidates.map((c) => {
                 const chosen = slate[c.row.game.game_id]
                 return (
                   <CandidateRow
@@ -1139,9 +1468,44 @@ export default function Field() {
               })}
             </div>
 
+            {/* Its own section, not a row in the table above — forced onto
+                one game, so ranking it against the rest (or letting the
+                table's sort move it around) doesn't mean anything. */}
+            {mnfCandidates.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-border bg-card">
+                <h2 className="flex items-center gap-1.5 px-3 pt-2 text-sm font-bold">
+                  <Moon className="size-4" /> Monday Night
+                </h2>
+                <div className="divide-y divide-border">
+                  {mnfCandidates.map((c) => {
+                    const chosen = slate[c.row.game.game_id]
+                    return (
+                      <CandidateRow
+                        key={`${c.row.game.game_id}_${c.team}`}
+                        c={c}
+                        blocs={blocs}
+                        slot={chosen?.team === c.team ? chosen.type : null}
+                        locked={false}
+                        flags={flagsFor(c.row.game.game_id, c.team).length}
+                        onPick={() => cycle(c.row, c.team)}
+                        note={notes[noteKeyFor(c.row.game.game_id, chosen?.type ?? 'regular')] ?? ''}
+                        onNote={(v) =>
+                          setNoteEdits((n) => ({
+                            ...n,
+                            [noteKeyFor(c.row.game.game_id, chosen?.type ?? 'regular')]: v,
+                          }))
+                        }
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <PoolPicker
               title="Underdog"
-              hint="One dog. If it wins outright we score its spread, so the biggest number that can actually win is the play. Nothing if it loses."
+              icon={Dog}
+              color="underdog"
               options={dogs}
               chosen={underdog}
               onPick={(v) => pickExtra('underdog', v)}
@@ -1149,24 +1513,18 @@ export default function Field() {
 
             <PoolPicker
               title="Survivor"
-              hint={`One team to win outright. Teams we have already spent are greyed out${
-                spent.size ? `: ${[...spent].sort().join(', ')}` : ''
-              }.`}
+              icon={Skull}
+              color="survivor"
               options={favourites.map((f) => ({ ...f, disabled: spent.has(f.team) }))}
               chosen={survivor}
               onPick={(v) => pickExtra('survivor', v)}
             />
 
             <div className="rounded-lg border border-border bg-card p-3">
-              <h2 className="text-sm font-bold">Where we lose</h2>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Fitted from{' '}
-                {guardrails?.fitted_on.length
-                  ? `${guardrails.fitted_on.length} seasons of our own picks`
-                  : 'the pick record'}
-                , refit on every deploy. A rule only appears here once it is below the
-                field's own rate and below it in most seasons.
-              </p>
+              <h2 className="mb-2 flex items-center gap-1.5 text-sm font-bold">
+                Where we lose
+                <Info text="Rules fitted from our own pick record, refit on every deploy — only shown once a rule clears the field's own rate in most seasons." />
+              </h2>
               <ul className="flex flex-col gap-2">
                 {(guardrails?.rules ?? []).map((r) => (
                   <li key={r.id} className="text-xs">
@@ -1193,16 +1551,7 @@ export default function Field() {
               )}
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Every side is rated 0-10, best first. <b>5.0 is break-even</b> at -110, so a side
-              under 5 costs us money over time. One measured term builds it: line size crossed
-              with home or road. The rating used to carry three more — the best-bet slot, venue on
-              its own, whether the room was split — and all three vanished when the numbers were
-              recomputed per game instead of per pick. We put three votes on the average game, so
-              counting picks counted the same game three times. Homer and stuck-on-them are
-              judgement, capped so they can only break a tie; hover a rating for the breakdown.
-              Full working in <code>notes/pick-analytics.md</code>.
-            </p>
+            <ActionBarSpacer />
           </TabsContent>
 
           <TabsContent value="grid">
@@ -1213,7 +1562,8 @@ export default function Field() {
             <Survivor seasonPicks={seasonPicks} week={week} weekPicks={picks} />
           </TabsContent>
         </Tabs>
-      )}
+        )}
+      </section>
     </div>
   )
 }

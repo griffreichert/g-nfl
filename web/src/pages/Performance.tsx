@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '../api'
-import { useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import { useConfig, useGuardrails, useSeasonRoute } from '../hooks'
 import type { LedgerResponse, PickerStanding, RecordStats, StandingsResponse } from '../types'
 import { BREAK_EVEN, TEAM_2025, TEAM_PICKER } from '@/lib/consensus'
 import PageHeader from '@/components/PageHeader'
@@ -77,8 +77,7 @@ function Standings({ rows }: { rows: { s: PickerStanding; w: Weighted }[] }) {
     <section>
       <h2 className="text-sm font-bold">Standings</h2>
       <p className="mb-2 text-xs text-muted-foreground">
-        Weighted for the pool: best bet 2, regular 1, MNF 1, a push a half. If you are
-        below {fmtPct(BREAK_EVEN / 100)} you are paying for the privilege.
+        Weighted for the pool: best bet 2, regular 1, MNF 1, a push a half.
       </p>
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
         <Table>
@@ -167,9 +166,8 @@ function TeamChart({ data }: { data: LedgerResponse }) {
     <section>
       <h2 className="text-sm font-bold">TEAM against what it could have submitted</h2>
       <p className="mb-2 text-xs text-muted-foreground">
-        If TEAM keeps losing to Majority, that is the finding, and the process should
-        change mid-season. <b>Best member</b> follows whoever led going into that week,
-        never the one who turned out to be right.
+        <b>Best member</b> follows whoever led going into that week, never the one who
+        turned out to be right.
       </p>
       <div className="h-72 w-full rounded-lg border border-border bg-card p-3">
         <ResponsiveContainer>
@@ -278,7 +276,6 @@ function Findings({ season }: { season: number }) {
           The weekly call came <b>last</b> in {2025}. TEAM took {TEAM_2025.rate}% of
           available pool points while following the room&apos;s majority on{' '}
           {TEAM_2025.rubberStamp} games, and {TEAM_2025.best} took {TEAM_2025.bestRate}%.
-          Averaging is what loses.
         </li>
         <li>
           The games worth the call&apos;s time are the ones the room has <b>not</b>{' '}
@@ -303,7 +300,7 @@ function Findings({ season }: { season: number }) {
 
 export default function Performance() {
   const { config, error: configError } = useConfig()
-  const { season, setSeason, seasons } = useSeasonWeek(config)
+  const { season, setSeason, seasons } = useSeasonRoute(config, (s) => `/performance/${s}`)
   const [standings, setStandings] = useState<StandingsResponse | null>(null)
   const [ledger, setLedger] = useState<LedgerResponse | null>(null)
   const [error, setError] = useState<string | null>(null)

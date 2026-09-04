@@ -6,9 +6,14 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Cville 16 palette (#62). Blue means "picked", purple means "best bet", and
-  green/red/grey are reserved for win/loss/push so an accent can never be misread
-  as a graded result. Team colour only ever appears inside a logo tile.
+  Cville 16 palette (#62). Each pool slot gets its own hue so a pick reads as
+  what it is at a glance, on the ribbon dots, the promote buttons, and both
+  picks pages alike: Regular blue (--pick), Best Bet orange (--bb), MNF purple
+  (--mnf), Underdog teal (--underdog), Survivor rose (--survivor). Underdog and
+  Survivor are deliberately muted/desaturated versions of green and red rather
+  than the pure hues, since --win/--loss/--push are reserved for graded results
+  and a pool-slot accent must never be mistaken for one. Team colour only ever
+  appears inside a logo tile.
 */
 :root {
   --radius: 0.625rem;
@@ -35,8 +40,14 @@
   /* pool semantics */
   --pick: #1a5fd0;
   --pick-soft: #dce8fb;
-  --bb: #8a3fb0;
-  --bb-soft: #f2e6f9;
+  --bb: #b45309;
+  --bb-soft: #fbe9cf;
+  --mnf: #7c4fc9;
+  --mnf-soft: #ece4fb;
+  --underdog: #2f9e8f;
+  --underdog-soft: #dcf0ec;
+  --survivor: #b5657a;
+  --survivor-soft: #f5e3e7;
   --win: #1e7a4c;
   --loss: #b3341f;
   --push: #8a8177;
@@ -71,8 +82,14 @@
 
   --pick: #6aa8f5;
   --pick-soft: #16263f;
-  --bb: #cb9be8;
-  --bb-soft: #2e2340;
+  --bb: #f0a83a;
+  --bb-soft: #3a2a12;
+  --mnf: #b79ae8;
+  --mnf-soft: #2a1f42;
+  --underdog: #4fc4b0;
+  --underdog-soft: #163330;
+  --survivor: #d98ea0;
+  --survivor-soft: #3a2229;
   --win: #3fbf7f;
   --loss: #f0705a;
   --push: #7e858e;
@@ -109,6 +126,12 @@
   --color-pick-soft: var(--pick-soft);
   --color-bb: var(--bb);
   --color-bb-soft: var(--bb-soft);
+  --color-mnf: var(--mnf);
+  --color-mnf-soft: var(--mnf-soft);
+  --color-underdog: var(--underdog);
+  --color-underdog-soft: var(--underdog-soft);
+  --color-survivor: var(--survivor);
+  --color-survivor-soft: var(--survivor-soft);
   --color-win: var(--win);
   --color-loss: var(--loss);
   --color-push: var(--push);

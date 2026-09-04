@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   ChartColumn,
   CircleQuestionMark,
@@ -37,12 +37,26 @@ const SignInPage = lazy(() => import('./pages/SignInPage'))
  * Make Picks is the home page and the only gated tab: it is where the week
  * starts, and it was sitting second behind a page you visit once.
  */
-const tabs = [
-  { to: '/', label: 'Make Picks', icon: ClipboardCheck, end: true },
-  { to: '/survivor', label: 'Survivor', icon: Skull, end: false },
-  { to: '/performance', label: 'Performance', icon: LineChart, end: false },
-  { to: '/analytics', label: 'Analytics', icon: ChartColumn, end: false },
+const TAB_ICONS = [
+  { key: 'picks', label: 'Make Picks', icon: ClipboardCheck },
+  { key: 'survivor', label: 'Survivor', icon: Skull },
+  { key: 'performance', label: 'Performance', icon: LineChart },
+  { key: 'analytics', label: 'Analytics', icon: ChartColumn },
 ] as const
+
+/**
+ * The season/week a URL names, read out of the path rather than component
+ * state because the nav bar sits above every route and can't call
+ * `useParams` on one. Carrying it into the next tab's link is what makes
+ * "I'm looking at 2025 on Picks" survive a click to Analytics.
+ */
+function currentSeasonWeek(pathname: string) {
+  const weekly = pathname.match(/^\/(?:picks|survivor)\/(\d+)(?:\/week\/(\d+))?/)
+  if (weekly) return { season: Number(weekly[1]), week: weekly[2] ? Number(weekly[2]) : undefined }
+  const seasonOnly = pathname.match(/^\/(?:performance|analytics)\/(\d+)/)
+  if (seasonOnly) return { season: Number(seasonOnly[1]), week: undefined }
+  return { season: undefined, week: undefined }
+}
 
 const navClass = (isActive: boolean) =>
   `flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors ${
@@ -53,6 +67,24 @@ const navClass = (isActive: boolean) =>
 
 export default function App() {
   const { picker, logout } = useAuth()
+  const { season, week } = currentSeasonWeek(useLocation().pathname)
+  const tabs = [
+    {
+      to: season && week ? `/picks/${season}/week/${week}` : season ? `/picks/${season}` : '/picks',
+      ...TAB_ICONS[0],
+    },
+    {
+      to:
+        season && week
+          ? `/survivor/${season}/week/${week}`
+          : season
+            ? `/survivor/${season}`
+            : '/survivor',
+      ...TAB_ICONS[1],
+    },
+    { to: season ? `/performance/${season}` : '/performance', ...TAB_ICONS[2] },
+    { to: season ? `/analytics/${season}` : '/analytics', ...TAB_ICONS[3] },
+  ]
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -68,7 +100,7 @@ export default function App() {
               <NavLink
                 key={t.to}
                 to={t.to}
-                end={t.end}
+                end
                 className={({ isActive }) => navClass(isActive)}
               >
                 {t.label}
@@ -126,10 +158,29 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-24 sm:px-5 sm:pb-8">
         <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
           <Routes>
-            {/* Home is the board. Gated, so a signed-out visitor lands on
-                /signin with where they were going kept in state. */}
+            {/* Home is the board. Bare, season-only, and full forms all
+                render it: useSeasonWeekRoute resolves whichever is missing
+                and settles the address bar on the explicit one (#126
+                follow-up). Gated, so a signed-out visitor lands on /signin
+                with where they were going kept in state. */}
             <Route
-              path="/"
+              path="/picks"
+              element={
+                <RequireAuth>
+                  <Field />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/picks/:season"
+              element={
+                <RequireAuth>
+                  <Field />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/picks/:season/week/:week"
               element={
                 <RequireAuth>
                   <Field />
@@ -140,7 +191,15 @@ export default function App() {
             {/* Off the navigation, reached from the button on the board.
                 Making your own picks is a job you do once a week (#135). */}
             <Route
-              path="/picks"
+              path="/picks/submit"
+              element={
+                <RequireAuth>
+                  <MakePicks />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/picks/:season/week/:week/submit"
               element={
                 <RequireAuth>
                   <MakePicks />
@@ -150,15 +209,13 @@ export default function App() {
             {/* detail view, reached from a game row — deliberately not a tab */}
             <Route path="/game/:gameId" element={<GameDetail />} />
             <Route path="/survivor" element={<Survivor />} />
+            <Route path="/survivor/:season" element={<Survivor />} />
+            <Route path="/survivor/:season/week/:week" element={<Survivor />} />
             <Route path="/performance" element={<Performance />} />
+            <Route path="/performance/:season" element={<Performance />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/analytics/:season" element={<Analytics />} />
             <Route path="/help" element={<Help />} />
-
-            {/* Links already sent to the group chat keep working. */}
-            <Route path="/view" element={<Navigate to="/" replace />} />
-            <Route path="/spreads" element={<Navigate to="/" replace />} />
-            <Route path="/standings" element={<Navigate to="/performance" replace />} />
-            <Route path="/ledger" element={<Navigate to="/performance" replace />} />
           </Routes>
         </Suspense>
       </main>
@@ -171,7 +228,7 @@ export default function App() {
             <NavLink
               key={t.to}
               to={t.to}
-              end={t.end}
+              end
               className={({ isActive }) =>
                 `flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${
                   isActive ? 'text-primary' : 'text-muted-foreground'

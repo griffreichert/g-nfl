@@ -30,6 +30,7 @@ export const isAtsPick = (t: PickType) => t in WEIGHT
 export interface SidePick {
   picker: string
   bb: boolean
+  note: string | null
 }
 
 export interface ConsensusRow {
@@ -62,9 +63,11 @@ export interface ConsensusRow {
  * `spread_line` (positive = home favored). Verified against 2025: corr with
  * `spread_line` = +0.99.
  */
+/** The pool spread, or the market's until the pool posts one. */
 export function spreadFor(game: GameLine, team: string) {
-  if (game.pool_spread === null) return null
-  return team === game.home_team ? game.pool_spread : -game.pool_spread
+  const s = game.pool_spread ?? game.market_spread
+  if (s === null) return null
+  return team === game.home_team ? -s : s
 }
 
 /**
@@ -158,7 +161,7 @@ export function buildConsensus(
     const on = (t: string): SidePick[] =>
       field
         .filter((p) => p.team_picked === t)
-        .map((p) => ({ picker: p.picker, bb: p.pick_type === 'best_bet' }))
+        .map((p) => ({ picker: p.picker, bb: p.pick_type === 'best_bet', note: p.note ?? null }))
         .sort((a, b) => a.picker.localeCompare(b.picker))
 
     const away = points(game.away_team)
@@ -532,7 +535,7 @@ export interface Candidate {
 }
 
 /** Pool points a side carries: a best bet is two, everything else is one. */
-const pts = (picks: SidePick[]) => picks.reduce((n, p) => n + (p.bb ? 2 : 1), 0)
+export const pts = (picks: SidePick[]) => picks.reduce((n, p) => n + (p.bb ? 2 : 1), 0)
 
 export function buildCandidates(
   rows: ConsensusRow[],

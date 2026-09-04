@@ -41,13 +41,17 @@ const pick = (picker: string, gid: string, team: string, type: PickType = 'regul
   submitted_by: null,
 })
 
-test('spreadFor reads pool_spread as home-perspective', () => {
-  // CAR at GB with GB favoured by 13.5 is stored +13.5 (verified against
-  // nflverse spread_line, corr +0.99). Getting this backwards inverts every
-  // number on the board.
+test('spreadFor reads pool_spread as home-perspective, negated for the home side', () => {
+  // CAR at GB with GB favoured by 13.5 is stored +13.5 (nflverse spread_line
+  // convention: positive = home favoured, verified corr +0.99 — see
+  // g_nfl.picks.grading and g_nfl.picks.analytics.from_picked). A team's own
+  // number is what a sportsbook would print for that team: the favourite
+  // negative, the underdog positive. So GB's own line is -13.5, CAR's is
+  // +13.5 — the mirror of the raw stored value. Getting this backwards
+  // inverts every number on the board.
   const g = game('CAR', 'GB', 13.5)
-  assert.equal(spreadFor(g, 'GB'), 13.5)
-  assert.equal(spreadFor(g, 'CAR'), -13.5)
+  assert.equal(spreadFor(g, 'GB'), -13.5)
+  assert.equal(spreadFor(g, 'CAR'), 13.5)
   assert.equal(spreadFor(game('CAR', 'GB', null), 'GB'), null)
 })
 
