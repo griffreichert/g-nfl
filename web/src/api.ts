@@ -48,24 +48,55 @@ async function send<T>(method: string, path: string, body: unknown): Promise<T> 
   return res.json()
 }
 
+/**
+ * The answers that do not change while you use the site (#124).
+ *
+ * Every fetch lived in a `useEffect`, and a route change unmounts the page
+ * holding the result, so config, the week list and the guardrail fit were
+ * re-fetched on every navigation and nothing painted until they landed. The
+ * promise is cached rather than the value, so two pages mounting at once share
+ * one request. A failed request is dropped so the next mount retries it.
+ */
+const cache = new Map<string, Promise<unknown>>()
+
+function stable<T>(path: string): Promise<T> {
+  const hit = cache.get(path)
+  if (hit) return hit as Promise<T>
+  const p = get<T>(path).catch((e) => {
+    cache.delete(path)
+    throw e
+  })
+  cache.set(path, p)
+  return p
+}
+
+/**
+ * Drop the cache after a write. Saving a survivor pick changes the used-teams
+ * list inside /api/config, so a stale copy would offer a team back that was
+ * spent a second ago.
+ */
+export const invalidate = () => cache.clear()
+
 export const api = {
   login: (picker: string, passphrase: string) =>
     send<LoginResponse>('POST', '/api/auth/login', { picker, passphrase }),
-  me: () => get<LoginResponse>('/api/auth/me'),
+  me: () => stable<LoginResponse>('/api/auth/me'),
   config: (picker?: string) =>
-    get<AppConfig>(
+    stable<AppConfig>(
       `/api/config${picker ? `?picker=${encodeURIComponent(picker)}` : ''}`
     ),
-  weeks: (season: number) => get<WeeksResponse>(`/api/weeks?season=${season}`),
+  weeks: (season: number) => stable<WeeksResponse>(`/api/weeks?season=${season}`),
   lines: (season: number, week: number) =>
     get<GameLine[]>(`/api/lines?season=${season}&week=${week}`),
   guardrails: (season: number, week?: number) =>
-    get<GuardrailsResponse>(
+    stable<GuardrailsResponse>(
       `/api/guardrails?season=${season}${week !== undefined ? `&week=${week}` : ''}`
     ),
-  picks: (season: number, week: number, picker?: string) =>
+  // Leave `week` off for the whole season, which is what the board wants: it
+  // used to ask for eighteen weeks in eighteen requests to find voting blocs.
+  picks: (season: number, week?: number, picker?: string) =>
     get<PickRecord[]>(
-      `/api/picks?season=${season}&week=${week}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`
+      `/api/picks?season=${season}${week !== undefined ? `&week=${week}` : ''}${picker ? `&picker=${encodeURIComponent(picker)}` : ''}`
     ),
   game: (gameId: string) => get<GameDetail>(`/api/games/${encodeURIComponent(gameId)}`),
   ledger: (season: number) => get<LedgerResponse>(`/api/ledger?season=${season}`),
@@ -103,8 +134,16 @@ export const api = {
     send<{ saved: number }>('PUT', '/api/survivor/beliefs', { season, beliefs }),
   // `picker` is read from the token server-side. The body's copy is ignored
   // except for TEAM, the entry the room submits together off the board.
-  savePicks: (season: number, week: number, picks: Pick[], picker?: string) =>
-    send<{ saved: number }>('POST', '/api/picks', { season, week, picker, picks }),
+  savePicks: async (season: number, week: number, picks: Pick[], picker?: string) => {
+    const r = await send<{ saved: number }>('POST', '/api/picks', {
+      season,
+      week,
+      picker,
+      picks,
+    })
+    invalidate()
+    return r
+  },
   updatePoolSpread: (season: number, week: number, game_id: string, spread: number) =>
     send<{ success: boolean }>('PUT', '/api/pool-spreads', { season, week, game_id, spread }),
 }

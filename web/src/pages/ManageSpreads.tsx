@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useAuth, useConfig, useSeasonWeek } from '../hooks'
-import SignIn from '@/components/SignIn'
+import { fmtSpread, useConfig, useSeasonWeek } from '../hooks'
 import type { GameLine } from '../types'
 import { Button } from '@/components/ui/button'
 import PageHeader from '@/components/PageHeader'
 import { ErrorNote, Loading } from '@/components/PageState'
 
 export default function ManageSpreads() {
-  const { picker: signedIn, checking, login } = useAuth()
   const { config, error: configError } = useConfig()
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
   const [games, setGames] = useState<GameLine[]>([])
@@ -42,11 +40,7 @@ export default function ManageSpreads() {
   }
 
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
-  if (checking) return <Loading />
   if (!config) return <Loading />
-  // Every ATS pick in the pool grades against these numbers, so entering them
-  // needs a session.
-  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
   if (season === null || week === null) return <Loading />
 
   return (

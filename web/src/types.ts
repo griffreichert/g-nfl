@@ -1,17 +1,19 @@
 export type PickType = 'regular' | 'best_bet' | 'survivor' | 'underdog' | 'mnf'
 
-export interface AppConfig {
-  pickers: string[]
-  cur_season: number
-  cur_week: number
-  survivor_used_teams: string[]
-}
-
 export interface WeeksResponse {
   weeks: number[]
   max_week: number | null
   /** The week the pool is on. What a page opens to, in preference to max_week. */
   current_week: number | null
+}
+
+export interface AppConfig {
+  pickers: string[]
+  cur_season: number
+  cur_week: number
+  survivor_used_teams: string[]
+  /** The current season's weeks, so a page needs no second round trip (#124). */
+  weeks: WeeksResponse | null
 }
 
 export interface GameLine {

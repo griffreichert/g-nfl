@@ -105,6 +105,9 @@ def get_config(picker: str | None = None):
         cur_season=season,
         cur_week=current_week(season),
         survivor_used_teams=survivor_used(season, picker) if picker else [],
+        # Saves the client a hop: it needed the week list before it could ask
+        # for anything, so config/weeks/lines ran strictly in series (#124).
+        weeks=get_weeks(season),
     )
 
 
@@ -239,9 +242,24 @@ def get_guardrails(season: int | None = None, week: int | None = None):
 
 
 @app.get("/api/picks", response_model=list[PickRecord])
-def get_picks(season: int, week: int, picker: str | None = None):
+def get_picks(season: int, week: int | None = None, picker: str | None = None):
+    """A week of picks, or the whole season when `week` is left off.
+
+    The board needs the season to find voting blocs, and used to ask for it one
+    week at a time: eighteen requests on every open of the busiest page. The
+    season path goes through `get_season_picks`, which pages past PostgREST's
+    1000-row cap — the picks table holds well over that for a season (#124).
+    """
     db = PicksDatabase()
-    picks = db.get_picks(season, week, picker)
+    picks = (
+        db.get_picks(season, week, picker)
+        if week is not None
+        else [
+            p
+            for p in db.get_season_picks(season)
+            if not picker or p["picker"] == picker
+        ]
+    )
     return [
         PickRecord(
             game_id=p["game_id"],

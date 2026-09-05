@@ -7,13 +7,6 @@ from pydantic import BaseModel
 PickType = Literal["regular", "best_bet", "survivor", "underdog", "mnf"]
 
 
-class AppConfig(BaseModel):
-    pickers: list[str]
-    cur_season: int
-    cur_week: int
-    survivor_used_teams: list[str]
-
-
 class WeeksResponse(BaseModel):
     weeks: list[int]
     max_week: int | None
@@ -21,6 +14,18 @@ class WeeksResponse(BaseModel):
     #: What a page should open on. `max_week` is the furthest week we hold lines
     #: for, which runs ahead as soon as anyone snapshots a future week.
     current_week: int | None
+
+
+class AppConfig(BaseModel):
+    pickers: list[str]
+    cur_season: int
+    cur_week: int
+    survivor_used_teams: list[str]
+    #: The current season's weeks, carried here so a page can pick its opening
+    #: week without a second round trip. Config, then weeks, then lines was a
+    #: three-hop waterfall before any content rendered (#124). Switching season
+    #: still goes to /api/weeks.
+    weeks: WeeksResponse | None = None
 
 
 class GameLine(BaseModel):

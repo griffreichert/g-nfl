@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
+import { ChevronRight, Clipboard, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
-import SignIn from '@/components/SignIn'
 import type { GameLine, Pick } from '../types'
 import PageHeader from '@/components/PageHeader'
+import ActionBar, { Slot } from '@/components/ActionBar'
 import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
 
@@ -24,8 +24,39 @@ const noteKey = (gameId: string, type: Pick['pick_type']) =>
 const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
 
+/** Everything a half-finished week consists of. */
+type Draft = {
+  picks: Record<string, GamePick>
+  survivor: string | null
+  underdog: string | null
+  mnf: string | null
+  notes: Record<string, string>
+}
+
+const EMPTY: Draft = { picks: {}, survivor: null, underdog: null, mnf: null, notes: {} }
+
+/**
+ * A week in progress, kept in the browser until it is saved (#124).
+ *
+ * Picks, notes and the two pool slots lived in React state and nowhere else,
+ * so changing the week selector or following a game link discarded the lot
+ * with no warning. Keyed by picker as well as week: a shared laptop must not
+ * hand one person's half-finished week to the next.
+ */
+const draftKeyFor = (picker: string, season: number, week: number) =>
+  `nohomers.draft.${picker}.${season}.${week}`
+
+const readDraft = (key: string): Draft | null => {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? { ...EMPTY, ...JSON.parse(raw) } : null
+  } catch {
+    return null
+  }
+}
+
 export default function MakePicks() {
-  const { picker: signedIn, checking, login } = useAuth()
+  const { picker: signedIn } = useAuth()
   const picker = signedIn ?? ''
   const { config, error: configError } = useConfig(signedIn ?? undefined)
   const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
@@ -56,10 +87,22 @@ export default function MakePicks() {
       .catch((e) => setStatus({ kind: 'err', msg: String(e) }))
   }, [season, week])
 
-  // Load existing picks when picker / week changes
+  // What the server holds for this week, as a string, so "you have unsaved
+  // changes" is a comparison rather than a flag somebody has to remember to set.
+  const [baseline, setBaseline] = useState<{ key: string; json: string } | null>(null)
+  const draftKey =
+    picker && season !== null && week !== null ? draftKeyFor(picker, season, week) : null
+  const current: Draft = { picks, survivor, underdog, mnf, notes }
+  const currentJson = JSON.stringify(current)
+  const dirty = baseline?.key === weekKey && currentJson !== baseline.json
+
+  // Load existing picks when picker / week changes, and prefer an unsaved
+  // draft over them when one is sitting in this browser.
   useEffect(() => {
     if (season === null || week === null || !picker) return
+    let live = true
     api.picks(season, week, picker).then((existing) => {
+      if (!live) return
       const regular: Record<string, GamePick> = {}
       const savedNotes: Record<string, string> = {}
       let surv: string | null = null
@@ -73,14 +116,40 @@ export default function MakePicks() {
         else if (p.pick_type === 'underdog') dog = p.team_picked
         else if (p.pick_type === 'mnf') monday = p.team_picked
       }
-      setPicks(regular)
-      setNotes(savedNotes)
-      setSurvivor(surv)
-      setUnderdog(dog)
-      setMnf(monday)
-      setStatus(null)
+      const saved: Draft = {
+        picks: regular,
+        survivor: surv,
+        underdog: dog,
+        mnf: monday,
+        notes: savedNotes,
+      }
+      setBaseline({ key: `${season}-${week}`, json: JSON.stringify(saved) })
+
+      const restored = readDraft(draftKeyFor(picker, season, week))
+      const show = restored ?? saved
+      setPicks(show.picks)
+      setNotes(show.notes)
+      setSurvivor(show.survivor)
+      setUnderdog(show.underdog)
+      setMnf(show.mnf)
+      setStatus(
+        restored
+          ? { kind: 'ok', msg: 'Picked up where you left off. Nothing is saved yet.' }
+          : null
+      )
     })
+    return () => {
+      live = false
+    }
   }, [season, week, picker])
+
+  // Write the draft only once it differs from what the server holds, so a
+  // clean week leaves nothing behind to restore.
+  useEffect(() => {
+    if (!draftKey || baseline?.key !== weekKey) return
+    if (dirty) localStorage.setItem(draftKey, currentJson)
+    else localStorage.removeItem(draftKey)
+  }, [draftKey, weekKey, baseline, dirty, currentJson])
 
   const effectiveSpread = (g: GameLine) => g.pool_spread ?? g.market_spread
 
@@ -207,10 +276,25 @@ export default function MakePicks() {
     }
     try {
       const res = await api.savePicks(season, week, payload)
-      await navigator.clipboard.writeText(summary).catch(() => {})
-      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks — summary copied to clipboard` })
+      // Saved is the new baseline, so the page stops calling itself unsaved
+      // and the draft it was holding is no longer worth keeping.
+      setBaseline({ key: weekKey, json: currentJson })
+      if (draftKey) localStorage.removeItem(draftKey)
+      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks` })
     } catch (e) {
       setStatus({ kind: 'err', msg: `Failed to save: ${e}` })
+    }
+  }
+
+  // Its own button. Saving used to take the clipboard as a side effect and
+  // tell you afterwards, and it swallowed the failure, so a browser that
+  // blocked the write still got a message saying the summary had been copied.
+  const copySummary = async () => {
+    try {
+      await navigator.clipboard.writeText(summary)
+      setStatus({ kind: 'ok', msg: 'Summary copied — paste it in the chat' })
+    } catch {
+      setStatus({ kind: 'err', msg: 'Could not reach the clipboard. Select the text above.' })
     }
   }
 
@@ -223,10 +307,8 @@ export default function MakePicks() {
     setStatus(null)
   }
 
-  if (checking) return <Loading />
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
   if (!config) return <Loading />
-  if (!signedIn) return <SignIn pickers={config.pickers} onSignIn={login} />
   if (season === null || week === null) return <Loading />
 
   const mnfPickedHere = (g: GameLine) =>
@@ -347,12 +429,6 @@ export default function MakePicks() {
     )
   }
 
-  const slot = (label: string, done: boolean) => (
-    <span className={done ? 'text-pick' : 'text-muted-foreground'}>
-      {done ? '●' : '○'} {label}
-    </span>
-  )
-
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
@@ -381,15 +457,21 @@ export default function MakePicks() {
         <Loading />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-            <span className="tabular font-semibold">
-              {regularCount}/{MAX_REGULAR_PICKS}
-            </span>
-            <span className="text-muted-foreground">regular</span>
-            {slot('survivor', !!survivor)}
-            {slot('underdog', !!underdog)}
-            {slot('MNF', !!mnf)}
-          </div>
+          <ActionBar
+            slots={
+              <>
+                <Slot label="regular" have={regularCount} need={MAX_REGULAR_PICKS} />
+                <Slot label="survivor" have={survivor ? 1 : 0} need={1} />
+                <Slot label="underdog" have={underdog ? 1 : 0} need={1} />
+                <Slot label="MNF" have={mnf ? 1 : 0} need={1} />
+              </>
+            }
+          >
+            {dirty && <span className="text-xs text-muted-foreground">unsaved</span>}
+            <Button size="sm" onClick={save} disabled={!dirty && !!baseline}>
+              Save picks
+            </Button>
+          </ActionBar>
 
           <div className="divide-y divide-border rounded-lg border border-border bg-card">
             {games.map((g) => (
@@ -446,9 +528,9 @@ export default function MakePicks() {
               {config.survivor_used_teams.length > 0 &&
                 ` Already used: ${[...config.survivor_used_teams].sort().join(', ')}.`}
             </p>
-            {favorites
-              .filter((f) => !survivor || f.team === survivor)
-              .map((f) => poolRow(f, survivor, setSurvivor, Skull, 'survivor'))}
+            {/* The whole list stays. It used to collapse to the chosen row, so
+                changing your mind meant deselecting to see what else was there. */}
+            {favorites.map((f) => poolRow(f, survivor, setSurvivor, Skull, 'survivor'))}
           </div>
 
           <div className="rounded-lg border border-border bg-card p-3">
@@ -456,9 +538,7 @@ export default function MakePicks() {
               <Dog className="size-4" /> Underdog
             </h2>
             <p className="mb-2 text-xs text-muted-foreground">One underdog for the week.</p>
-            {underdogs
-              .filter((d) => !underdog || d.team === underdog)
-              .map((d) => poolRow(d, underdog, setUnderdog, Dog, 'underdog'))}
+            {underdogs.map((d) => poolRow(d, underdog, setUnderdog, Dog, 'underdog'))}
           </div>
 
           {summary && (
@@ -468,8 +548,8 @@ export default function MakePicks() {
                 {summary}
               </pre>
               <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={save}>
-                  Save picks
+                <Button size="sm" variant="outline" onClick={copySummary}>
+                  <Clipboard className="size-3.5" /> Copy for the chat
                 </Button>
                 <Button size="sm" variant="outline" onClick={clearAll}>
                   <Trash2 className="size-3.5" /> Clear
