@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   ChartColumn,
   CircleQuestionMark,
@@ -158,6 +158,10 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-24 sm:px-5 sm:pb-8">
         <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
           <Routes>
+            {/* The app's front door. Without it `/` renders the header and an
+                empty main, which is what a visitor typing the bare domain
+                gets. RequireAuth on /picks takes it from there. */}
+            <Route path="/" element={<Navigate to="/picks" replace />} />
             {/* Home is the board. Bare, season-only, and full forms all
                 render it: useSeasonWeekRoute resolves whichever is missing
                 and settles the address bar on the explicit one (#126
