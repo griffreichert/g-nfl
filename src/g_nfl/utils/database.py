@@ -359,6 +359,21 @@ class GameResultsDatabase:
         self.client.table("game_results").upsert(rows, on_conflict="game_id").execute()
         return len(rows)
 
+    def graded_per_week(self, season: int) -> dict[int, int]:
+        """How many games each week of `season` has a result for."""
+        rows = fetch_all(
+            lambda: (
+                self.client.table("game_results")
+                .select("week,result")
+                .eq("season", season)
+            )
+        )
+        counts: dict[int, int] = {}
+        for row in rows:
+            if row["result"] is not None:
+                counts[row["week"]] = counts.get(row["week"], 0) + 1
+        return counts
+
     def get_results(self, season: int) -> list[dict]:
         """All result rows for a season."""
         result = (
@@ -544,6 +559,18 @@ class MarketLinesDatabase:
             )
         )
         return sorted({row["week"] for row in rows if row["week"]})
+
+    def latest_season(self) -> int | None:
+        """The most recent season with market lines, or None if the table is empty."""
+        rows = (
+            self.client.table("market_lines")
+            .select("season")
+            .order("season", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return rows[0]["season"] if rows else None
 
     def seasons(self) -> list[int]:
         """Every season with market lines, ascending."""

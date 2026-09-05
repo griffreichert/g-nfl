@@ -11,14 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from g_nfl.api.main import app
-
-
-class _Lines:
-    def __init__(self, weeks):
-        self._weeks = weeks
-
-    def get_available_weeks(self, season):
-        return self._weeks
+from g_nfl.picks.calendar import SeasonWeeks
 
 
 @pytest.fixture
@@ -27,10 +20,8 @@ def client():
 
 
 def _weeks(client, available, current=3):
-    with (
-        patch("g_nfl.api.main.MarketLinesDatabase", lambda: _Lines(available)),
-        patch("g_nfl.api.main.current_week", lambda season: current),
-    ):
+    snapshot = SeasonWeeks(weeks=available, current=current if available else None)
+    with patch("g_nfl.api.main.season_weeks", lambda season: snapshot):
         r = client.get("/api/weeks", params={"season": 2026})
     assert r.status_code == 200
     return r.json()
