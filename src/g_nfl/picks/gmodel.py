@@ -35,6 +35,7 @@ import polars as pl
 from g_nfl.ml.models.spread import DEFAULT_PARAMS
 from g_nfl.ml.predict import FEATURE_SET, predict_week, refresh_season, training_seasons
 from g_nfl.ml.train import CHAMPION_PARAMS, DEFAULT_CARRYOVER_K, DEFAULT_TARGET
+from g_nfl.picks.sides import Game
 from g_nfl.picks.survivor import win_probability
 
 PICKER = "gModel"
@@ -43,10 +44,10 @@ PICKER = "gModel"
 REGULARS = 5
 
 
-def board_rows(preds: pl.DataFrame, games: list[Any]) -> list[dict]:
+def board_rows(preds: pl.DataFrame, games: list[Game]) -> list[dict]:
     """The week's board: one row per game, the model against the pool line.
 
-    `games` are `GameLine`s from the API, carrying both numbers. A game with
+    `games` carry both numbers. A game with
     neither line keeps its prediction and carries a null edge, which is how a
     Tuesday run before the lines land still stores a board.
     """
@@ -278,22 +279,6 @@ def format_board(season: int, week: int, board: list[dict], entry: list[dict]) -
             f"{pick['team_picked']} {pick['pick_type']}"
         )
 
-    rows = []
-    for row in board:
-        market, pool, model = (
-            row["market_spread"],
-            row["pool_spread"],
-            row["pred_margin"],
-        )
-        rows.append(
-            {
-                **row,
-                "vs_mkt": None if market is None else model - market,
-                "vs_pool": None if pool is None else model - pool,
-            }
-        )
-    rows.sort(key=lambda r: -abs(r["vs_mkt"] or 0))
-
     head = (
         f"{'matchup':<13}{'model':>7}{'market':>8}{'vs mkt':>8}"
         f"{'pool':>8}{'vs pool':>9}   picks"
@@ -304,14 +289,23 @@ def format_board(season: int, week: int, board: list[dict], entry: list[dict]) -
         head,
         "-" * len(head),
     ]
-    for row in rows:
+    ordered = sorted(
+        board,
+        key=lambda r: (
+            -abs(r["pred_margin"] - r["market_spread"])
+            if r["market_spread"] is not None
+            else 0.0
+        ),
+    )
+    for row in ordered:
+        model = row["pred_margin"]
         market, vs_mkt, pool, vs_pool = (
             f"{v:+.1f}" if v is not None else "--"
             for v in (
                 row["market_spread"],
-                row["vs_mkt"],
+                None if row["market_spread"] is None else model - row["market_spread"],
                 row["pool_spread"],
-                row["vs_pool"],
+                None if row["pool_spread"] is None else model - row["pool_spread"],
             )
         )
         lines.append(
@@ -376,44 +370,45 @@ def submit(
         "train_seasons": training_seasons(season),
         "git_sha": git_sha(),
     }
+    run_id = None
     if dry_run:
-        print(format_board(season, week, board, entry))
-        print(f"would store {len(board)} predictions, submit {len(entry)} picks")
-        return {"board": board, "entry": entry, "config": config}
-
-    runs = ModelRunsDatabase()
-    run_id = runs.save_run(
-        {
-            "model": PICKER,
-            "season": season,
-            "week": week,
-            "fingerprint": fingerprint(config, board),
-            "n_games": len(board),
-            **config,
+        summary = f"would store {len(board)} predictions, submit {len(entry)} picks"
+    else:
+        runs = ModelRunsDatabase()
+        run_id = runs.save_run(
+            {
+                "model": PICKER,
+                "season": season,
+                "week": week,
+                "fingerprint": fingerprint(config, board),
+                "n_games": len(board),
+                **config,
+            }
+        )
+        runs.save_predictions(run_id, board)
+        payload = {
+            (
+                f"{p['pick_type']}_{p['game_id']}"
+                if p["pick_type"] in ("survivor", "underdog", "mnf")
+                else p["game_id"]
+            ): p
+            for p in entry
         }
-    )
-    runs.save_predictions(run_id, board)
+        saved = db.save_picks(season, week, payload, PICKER)
+        runs.mark_submitted(run_id, season, week, PICKER)
+        summary = (
+            f"stored {len(board)} predictions, run {run_id}\n"
+            f"submitted {saved} picks as {PICKER}, {season} week {week}"
+        )
 
-    payload = {
-        (
-            f"{p['pick_type']}_{p['game_id']}"
-            if p["pick_type"] in ("survivor", "underdog", "mnf")
-            else p["game_id"]
-        ): p
-        for p in entry
-    }
-    saved = db.save_picks(season, week, payload, PICKER)
-    runs.mark_submitted(run_id, season, week, PICKER)
-    # last, because save_picks prints a wall of debug rows the table would
-    # otherwise scroll off the screen
+    # after the write, because save_picks prints a wall of debug rows the
+    # table would otherwise scroll off the screen
     print(format_board(season, week, board, entry))
-    print(f"stored {len(board)} predictions, run {run_id}")
-    print(f"submitted {saved} picks as {PICKER}, {season} week {week}")
+    print(summary)
     return {"board": board, "entry": entry, "config": config, "run_id": run_id}
 
 
 def main() -> None:
-    """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--season", type=int)
     parser.add_argument("--week", type=int)
