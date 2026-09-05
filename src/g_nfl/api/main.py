@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from g_nfl.picks import ledger, survivor, survivor_board
 from g_nfl.picks.analytics import graded_rows, summarize, team_appetite
-from g_nfl.picks.calendar import current_season, current_week
+from g_nfl.picks.calendar import current_season, current_week, season_weeks
 from g_nfl.picks.grading import (
     BREAK_EVEN,
     grade_pick,
@@ -144,12 +144,11 @@ def survivor_history(season: int, picker: str) -> list[dict]:
 
 @app.get("/api/weeks", response_model=WeeksResponse)
 def get_weeks(season: int):
-    db = MarketLinesDatabase()
-    weeks = db.get_available_weeks(season)
+    cal = season_weeks(season)
     return WeeksResponse(
-        weeks=weeks,
-        max_week=max(weeks) if weeks else None,
-        current_week=current_week(season) if weeks else None,
+        weeks=cal.weeks,
+        max_week=max(cal.weeks) if cal.weeks else None,
+        current_week=cal.current,
     )
 
 
