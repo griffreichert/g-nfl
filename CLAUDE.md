@@ -110,6 +110,16 @@ Disposition for a throwaway script:
 - **Claude may handle git when asked** — push, open PRs, and merge issue branches into `dev` are fine on request. Otherwise commit locally only.
 - **Merging to `main` is Griffin's alone** — Claude never merges (or PRs) into `main`, even if asked
 
+**Linear history — rebase, don't merge**:
+- An issue branch that has fallen behind gets **`git rebase origin/dev`**, never
+  `git merge dev`. Several agents work on `dev` at once, so a branch open for a
+  day is routinely 15+ commits behind; merging that back in buries four commits
+  of real work under a merge commit nobody can read
+- Rebase before opening a PR, and again before merging if `dev` moved
+- `git push --force-with-lease` after a rebase (never bare `--force`)
+- Squashing is fine when the branch's commits are noise; keep them separate when
+  each one is a real step someone would want to read or revert on its own
+
 **Commits**:
 - Follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `chore:`, `docs:`, etc.
 - Include the issue number in the commit message, e.g. `feat(api): add picks endpoint (#12)`
