@@ -13,6 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from src.g_nfl.utils.database import (
     FantasyProjectionsDatabase,
     MarketLinesDatabase,
+    ModelRunsDatabase,
     PoolSpreadsDatabase,
 )
 
@@ -58,9 +59,23 @@ def verify_tables():
         print(f"❌ fantasy_projections table issue: {e}")
         proj_ok = False
 
+    # model_runs / model_predictions (#13) — created by hand from
+    # scripts/model_predictions_schema.sql, same as fantasy_projections.
+    try:
+        runs_db = ModelRunsDatabase()
+        latest = runs_db.latest_run(2026, 1, "gModel")
+        print("✅ model_runs table exists and is accessible")
+        print(
+            f"   Latest gModel 2026 week 1 run: {latest['run_id'] if latest else 'none stored yet'}"
+        )
+        runs_ok = True
+    except Exception as e:
+        print(f"❌ model_runs table issue: {e}")
+        runs_ok = False
+
     print()
 
-    if market_ok and pool_ok and proj_ok:
+    if market_ok and pool_ok and proj_ok and runs_ok:
         print("🎉 All tables verified successfully!")
         print("\n✅ Next steps:")
         print("1. Run 'python scripts/update_market_lines.py --season 2025 --week 1'")
@@ -70,8 +85,9 @@ def verify_tables():
         print("❌ Some tables have issues. Please check your Supabase setup.")
         print("\n💡 Make sure you've run the SQL from 'scripts/database_schema.sql'")
         print(
-            "   and, for fantasy_projections, 'scripts/fantasy_projections_schema.sql'"
+            "   and, for fantasy_projections, 'scripts/fantasy_projections_schema.sql',"
         )
+        print("   and, for model_runs, 'scripts/model_predictions_schema.sql'")
         return False
 
 

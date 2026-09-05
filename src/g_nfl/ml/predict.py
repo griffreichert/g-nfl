@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from nflreadpy.utils_date import get_current_season
 
 from g_nfl.ml.data import (
     DEFAULT_CACHE_DIR,
@@ -103,6 +104,30 @@ def training_seasons(season: int) -> list[int]:
     return list(range(DEEP_SEASONS_START, season + 1))
 
 
+def played_seasons(seasons: list[int]) -> list[int]:
+    """`seasons` capped at the last one with games in it.
+
+    Play-by-play, weekly rosters and snap counts do not exist for a season
+    until it starts, and nflreadpy raises rather than returning nothing. The
+    schedule and the draft are published months earlier, which is all week 1
+    runs on: nflverse turns the season over on the Thursday after Labor Day,
+    and the pool's week-1 deadline is the Sunday after that.
+    """
+    current = get_current_season()
+    return [s for s in seasons if s <= current]
+
+
+def refresh_season(season: int, cache_dir: Path | str = DEFAULT_CACHE_DIR) -> None:
+    """Drop one season's cached parquet so the next load refetches it.
+
+    Only the season in progress changes week to week. ``refresh=True`` on the
+    loaders refetches all eleven, which is minutes of download for one new
+    week of games.
+    """
+    for path in Path(cache_dir).glob(f"*_{season}.parquet"):
+        path.unlink()
+
+
 def build_matrix(
     seasons: list[int],
     *,
@@ -117,7 +142,8 @@ def build_matrix(
     block is always attached -- `v1_team` ignores it, so the late regime
     is unaffected by its presence.
     """
-    pbp = load_pbp(seasons, cache_dir=cache_dir, refresh=refresh)
+    played = played_seasons(seasons)
+    pbp = load_pbp(played, cache_dir=cache_dir, refresh=refresh)
     schedule = load_schedule(seasons, cache_dir=cache_dir, refresh=refresh)
     return build_features(
         pbp,
@@ -128,8 +154,8 @@ def build_matrix(
         preseason=True,
         qb_ctx=True,
         draft=load_draft_picks(seasons, cache_dir=cache_dir, refresh=refresh),
-        snaps=load_snap_counts(seasons, cache_dir=cache_dir, refresh=refresh),
-        rosters=load_rosters_weekly(seasons, cache_dir=cache_dir, refresh=refresh),
+        snaps=load_snap_counts(played, cache_dir=cache_dir, refresh=refresh),
+        rosters=load_rosters_weekly(played, cache_dir=cache_dir, refresh=refresh),
         players=load_players(cache_dir=cache_dir, refresh=refresh),
         opp_adjust=True,
     )
