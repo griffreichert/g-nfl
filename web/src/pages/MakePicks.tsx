@@ -1,11 +1,35 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronRight, Clipboard, Dog, Moon, Skull, Star, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, ChevronUp, Dog, Moon, Skull, Star } from 'lucide-react'
 import { api, teamLogo } from '../api'
-import { fmtSpread, useAuth, useConfig, useGuardrails, useSeasonWeek } from '../hooks'
+import {
+  fmtSpread,
+  POOL_TEXT,
+  POOL_TONE,
+  useAuth,
+  useConfig,
+  useGuardrails,
+  useSeasonWeekRoute,
+  type PoolColor,
+} from '../hooks'
 import type { GameLine, Pick } from '../types'
+import {
+  MAX_ATS_NON_MNF,
+  MAX_REGULAR,
+  isComplete,
+  shortfall,
+  type SlotTally,
+} from '@/lib/consensus'
 import PageHeader from '@/components/PageHeader'
-import ActionBar, { Slot } from '@/components/ActionBar'
+import { Info } from '@/components/Info'
+import ActionBar, {
+  ActionBarSpacer,
+  ClearButton,
+  CopyButton,
+  EditLinesButton,
+  Slot,
+} from '@/components/ActionBar'
+import { LinesEditor } from '@/components/LinesEditor'
 import { ErrorNote, Loading } from '@/components/PageState'
 import { Button } from '@/components/ui/button'
 
@@ -14,12 +38,53 @@ interface GamePick {
   pick_type: 'regular' | 'best_bet'
 }
 
-const MAX_REGULAR_PICKS = 6
-
 // A note is keyed the way the API keys a pick: special slots are prefixed so a
 // survivor and a regular pick on the same game keep separate notes.
 const noteKey = (gameId: string, type: Pick['pick_type']) =>
   type === 'regular' || type === 'best_bet' ? gameId : `${type}_${gameId}`
+
+/**
+ * A card that collapses itself the moment its section is complete, so a
+ * finished slate isn't sixteen rows to scroll past to reach the ones still
+ * open. Starts open; a manual toggle after that sticks until the section
+ * goes incomplete and completes again.
+ */
+function Section({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: typeof Skull
+  title: string
+  subtitle: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span>
+          <h2 className="flex items-center gap-1.5 text-sm font-bold">
+            <Icon className="size-4" /> {title}
+          </h2>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
+        </span>
+        {open ? (
+          <ChevronUp className="size-4 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+        )}
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  )
+}
 
 const NOTE_INPUT_CLASS =
   'h-8 w-full rounded-md border border-input bg-transparent px-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30'
@@ -59,7 +124,11 @@ export default function MakePicks() {
   const { picker: signedIn } = useAuth()
   const picker = signedIn ?? ''
   const { config, error: configError } = useConfig(signedIn ?? undefined)
-  const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  // The week this page opens on comes from the URL — either the board's own
+  // link (/picks/:season/week/:week/submit) or the bare /picks/submit,
+  // which resolves to the current week. This page has no selector of its
+  // own to wander off it with (#126 follow-up).
+  const { season, week } = useSeasonWeekRoute(config, (s, w) => `/picks/${s}/week/${w}/submit`)
   const { flagsFor, ruleById } = useGuardrails(season, week)
 
   // Games are stamped with the week they were fetched for, so "still loading"
@@ -76,6 +145,10 @@ export default function MakePicks() {
   const [mnf, setMnf] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null)
+  const [editingLines, setEditingLines] = useState(false)
+  // When the server last took this week from us. Null means never, and also
+  // means "saved before #131 shipped", which reads as time unknown (#131).
+  const [submitted, setSubmitted] = useState<{ key: string; at: string | null } | null>(null)
   const loading = season !== null && week !== null && fetched.key !== weekKey
 
   // Load games for the selected week
@@ -124,6 +197,14 @@ export default function MakePicks() {
         notes: savedNotes,
       }
       setBaseline({ key: `${season}-${week}`, json: JSON.stringify(saved) })
+      setSubmitted(
+        existing.length
+          ? {
+              key: `${season}-${week}`,
+              at: existing.map((p) => p.submitted_at).find(Boolean) ?? null,
+            }
+          : null,
+      )
 
       const restored = readDraft(draftKeyFor(picker, season, week))
       const show = restored ?? saved
@@ -153,6 +234,27 @@ export default function MakePicks() {
 
   const effectiveSpread = (g: GameLine) => g.pool_spread ?? g.market_spread
 
+  /**
+   * Where the pool prices a game differently from the market, and which side
+   * that helps.
+   *
+   * Both lines are stored home-perspective, positive meaning the home team is
+   * favoured. A pool number above the market's has the home side laying more
+   * than the market says it should, so the away side is the one getting the
+   * better of it, and vice versa.
+   *
+   * This is the largest single leak in six seasons of our own picks: the side
+   * the pool prices worse than the market has gone 45.2% over 1098 picks
+   * (z=-3.20). It is the one thing on this row worth looking for, so it is the
+   * one thing on this row that carries colour.
+   */
+  const edge = (g: GameLine) => {
+    if (g.pool_spread === null || g.market_spread === null) return null
+    const diff = g.pool_spread - g.market_spread
+    if (diff === 0) return null
+    return { team: diff > 0 ? g.away_team : g.home_team, points: Math.abs(diff) }
+  }
+
   // Click cycle: unselected -> regular -> best_bet (only one allowed) -> unselected
   const clickTeam = useCallback(
     (game: GameLine, team: string) => {
@@ -164,7 +266,7 @@ export default function MakePicks() {
         const next = { ...cur }
         const existing = cur[game.game_id]
         if (!existing || existing.team_picked !== team) {
-          if (!existing && Object.keys(cur).length >= MAX_REGULAR_PICKS) return cur
+          if (!existing && Object.keys(cur).length >= MAX_ATS_NON_MNF) return cur
           next[game.game_id] = { team_picked: team, pick_type: 'regular' }
         } else if (existing.pick_type === 'regular') {
           // Promote, demoting whoever held the slot -- the same swap the board
@@ -243,6 +345,18 @@ export default function MakePicks() {
     return team === game.home_team ? home : -home
   }
 
+  // Local only — nothing here is written until Save Picks runs, so wiping the
+  // entry back to blank costs nothing on the server.
+  const clearPicks = () => {
+    setPicks({})
+    setNotes({})
+    setSurvivor(null)
+    setUnderdog(null)
+    setMnf(null)
+  }
+  const isEmpty =
+    Object.keys(picks).length === 0 && !survivor && !underdog && !mnf
+
   const save = async () => {
     if (!picker || season === null || week === null) return
     const payload: Pick[] = Object.entries(picks).map(([game_id, p]) => ({
@@ -275,12 +389,18 @@ export default function MakePicks() {
       return
     }
     try {
-      const res = await api.savePicks(season, week, payload)
+      const res = await api.savePicks(season, week, payload, picker)
       // Saved is the new baseline, so the page stops calling itself unsaved
       // and the draft it was holding is no longer worth keeping.
       setBaseline({ key: weekKey, json: currentJson })
       if (draftKey) localStorage.removeItem(draftKey)
-      setStatus({ kind: 'ok', msg: `Saved ${res.saved} picks` })
+      setSubmitted({ key: weekKey, at: new Date().toISOString() })
+      setStatus({
+        kind: 'ok',
+        msg: complete
+          ? `Submitted ${res.saved} picks for week ${week}`
+          : `Saved ${res.saved} picks. Still short: ${missing.join(', ')}`,
+      })
     } catch (e) {
       setStatus({ kind: 'err', msg: `Failed to save: ${e}` })
     }
@@ -296,15 +416,6 @@ export default function MakePicks() {
     } catch {
       setStatus({ kind: 'err', msg: 'Could not reach the clipboard. Select the text above.' })
     }
-  }
-
-  const clearAll = () => {
-    setPicks({})
-    setNotes({})
-    setSurvivor(null)
-    setUnderdog(null)
-    setMnf(null)
-    setStatus(null)
   }
 
   if (configError) return <ErrorNote>Failed to load config: {configError}</ErrorNote>
@@ -346,8 +457,76 @@ export default function MakePicks() {
     )
   }
 
-  const regularCount = Object.keys(picks).length
-  const maxReached = regularCount >= MAX_REGULAR_PICKS
+  const tally: SlotTally = {
+    bb: Object.values(picks).filter((p) => p.pick_type === 'best_bet').length,
+    regular: Object.values(picks).filter((p) => p.pick_type === 'regular').length,
+    mnf: mnf ? 1 : 0,
+    underdog: underdog ? 1 : 0,
+    survivor: survivor ? 1 : 0,
+  }
+  const missing = shortfall(tally)
+  const complete = isComplete(tally)
+  const maxReached = Object.keys(picks).length >= MAX_ATS_NON_MNF
+
+  /** The line from one side's point of view, for the ribbon's expanded view. */
+  const spreadFor = (g: GameLine, team: string) => {
+    const home = effectiveSpread(g)
+    if (home === null || home === undefined) return null
+    return team === g.home_team ? -home : home
+  }
+
+  const gameFor = (team: string, id?: string) =>
+    games.find((g) => (id ? g.game_id === id : g.away_team === team || g.home_team === team))
+
+  // What the dots on the ribbon only count — the ribbon's expanded view. A
+  // star marks the best bet rather than a repeated "Best Bet" label. One
+  // ribbon row on a laptop, wide enough that the line rides right next to the
+  // team instead of getting lost at the far edge; a stacked list on a phone,
+  // where a row that wide would just wrap anyway.
+  const pickItems = [
+    ...Object.entries(picks)
+      .filter(([, p]) => p.pick_type === 'best_bet')
+      .map(([id, p]) => ({ id, team: p.team_picked, Icon: Star, color: 'bb' as const })),
+    ...Object.entries(picks)
+      .filter(([, p]) => p.pick_type === 'regular')
+      .map(([id, p]) => ({ id, team: p.team_picked, Icon: null, color: 'pick' as const })),
+    ...(mnf ? [{ id: undefined, team: mnf, Icon: Moon, color: 'mnf' as const }] : []),
+    ...(underdog ? [{ id: undefined, team: underdog, Icon: Dog, color: 'underdog' as const }] : []),
+    ...(survivor ? [{ id: undefined, team: survivor, Icon: Skull, color: 'survivor' as const }] : []),
+  ]
+  const pickDetail = (
+    <div className="flex flex-col gap-1.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1 sm:gap-y-1.5">
+      {pickItems.map((p, i) => {
+        const g = gameFor(p.team, p.id)
+        const spread = g ? spreadFor(g, p.team) : null
+        return (
+          <span key={i} className="flex items-center gap-1">
+            {p.Icon ? (
+              <p.Icon
+                className={`size-3.5 shrink-0 ${POOL_TEXT[p.color]} ${p.Icon === Star ? 'fill-current' : ''}`}
+              />
+            ) : (
+              <span className="size-3.5 shrink-0" />
+            )}
+            <img src={teamLogo(p.team)} className="size-4 shrink-0" alt="" />
+            <span className="font-medium">{p.team}</span>
+            <span className="tabular text-xs text-muted-foreground">
+              {fmtSpread(spread)}
+              {i < pickItems.length - 1 && <span className="hidden sm:inline">,</span>}
+            </span>
+          </span>
+        )
+      })}
+      {pickItems.length === 0 && <p className="text-muted-foreground">No picks yet.</p>}
+    </div>
+  )
+
+  /** The line from one side's point of view, which is the side you tap. */
+  const sideSpread = (g: GameLine, team: string) => {
+    const home = effectiveSpread(g)
+    if (home === null || home === undefined) return null
+    return team === g.home_team ? -home : home
+  }
 
   const teamButton = (g: GameLine, team: string, side: 'away' | 'home') => {
     const isMnfGame = g.is_mnf
@@ -356,13 +535,15 @@ export default function MakePicks() {
     const otherSelected = isMnfGame ? mnf !== null && mnf !== team : !!pick && pick.team_picked !== team
     const disabled = !picker || otherSelected || (!isMnfGame && !selected && maxReached)
     const isBest = !isMnfGame && selected && pick?.pick_type === 'best_bet'
-    // Amber means picked, violet means best bet — the same two accents the rest
-    // of the app uses. Never green/red: those are reserved for graded results.
+    // Every pool slot gets its own colour app-wide (index.css). Never
+    // green/red: those are reserved for graded results.
     const tone = !selected
       ? ''
       : isBest
-        ? 'bg-bb text-primary-foreground hover:bg-bb/90'
-        : 'bg-pick text-primary-foreground hover:bg-pick/90'
+        ? POOL_TONE.bb
+        : isMnfGame
+          ? POOL_TONE.mnf
+          : POOL_TONE.pick
     return (
       <Button
         variant={selected ? 'default' : 'outline'}
@@ -372,14 +553,41 @@ export default function MakePicks() {
         // Capped and pushed toward the middle, so the two buttons stay the same
         // width on every row and meet the line column instead of drifting with
         // the width of the browser.
-        className={`w-full max-w-56 font-medium ${
+        // The spread sits inside the button, on the side it belongs to. It
+        // used to be one of three numbers in a slash-separated cell in the
+        // middle of the row, which meant reading `TBD / +3.5 / 44.5` and
+        // working out which of the three applied to the team you were about to
+        // tap. You pick a side, so the number rides that side.
+        className={`w-full max-w-64 justify-between gap-3 font-medium ${
           side === 'away' ? 'justify-self-end' : 'justify-self-start'
         } ${tone}`}
       >
-        {isMnfGame && selected && <Moon className="size-3.5" />}
-        {isBest && <Star className="size-3.5 fill-current" />}
-        {team}
+        <span className="flex items-center gap-1.5">
+          {isMnfGame && selected && <Moon className="size-3.5" />}
+          {isBest && <Star className="size-3.5 fill-current" />}
+          {team}
+        </span>
+        <span className={`tabular text-sm ${selected ? '' : 'text-muted-foreground'}`}>
+          {fmtSpread(sideSpread(g, team))}
+        </span>
       </Button>
+    )
+  }
+
+  /**
+   * The gap, shown on the side that gains from it. Position carries the
+   * direction, so the row needs no arrow and no second sentence.
+   */
+  const edgeChip = (g: GameLine, team: string) => {
+    const e = edge(g)
+    if (!e || e.team !== team) return null
+    return (
+      <span
+        title={`Pool ${fmtSpread(g.pool_spread)} against market ${fmtSpread(g.market_spread)}`}
+        className="tabular inline-flex h-5 shrink-0 items-center rounded bg-win/15 px-1 text-[11px] font-bold text-win"
+      >
+        +{e.points}
+      </span>
     )
   }
 
@@ -401,7 +609,8 @@ export default function MakePicks() {
     selected: string | null,
     setSelected: (t: string | null) => void,
     Icon: typeof Skull,
-    slotType: Pick['pick_type']
+    slotType: Pick['pick_type'],
+    color: PoolColor
   ) => {
     const on = selected === item.team
     return (
@@ -418,7 +627,7 @@ export default function MakePicks() {
           size="sm"
           onClick={() => setSelected(on ? null : item.team)}
           disabled={!picker}
-          className={on ? 'w-24 bg-pick text-primary-foreground hover:bg-pick/90' : 'w-24'}
+          className={on ? `w-24 ${POOL_TONE[color]}` : 'w-24'}
         >
           {on && <Icon className="size-3.5" />}
           {on ? item.team : 'Pick'}
@@ -431,27 +640,22 @@ export default function MakePicks() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Picks"
-        season={season}
-        seasons={seasons}
-        onSeason={setSeason}
-        week={week}
-        weeks={weeks}
-        onWeek={setWeek}
-      >
-        <span className="text-sm font-medium text-muted-foreground">{picker}</span>
-      </PageHeader>
-
-      {status && (
-        <p
-          className={`rounded-md px-3 py-2 text-sm ${
-            status.kind === 'ok' ? 'bg-win/15 text-win' : 'bg-loss/15 text-loss'
-          }`}
+      {/* Only way back to the Board from here — this page has no nav tab of
+          its own, only the link the board's "Make My Picks" button sent you
+          in on (#126 follow-up). */}
+      {season !== null && week !== null && (
+        <Link
+          to={`/picks/${season}/week/${week}`}
+          className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
-          {status.msg}
-        </p>
+          <ArrowLeft className="size-4" /> Team Picks
+        </Link>
       )}
+
+      {/* No season/week selector: this page opens on whatever week the link
+          from the board carried, and has no picker of its own to wander off
+          it with. */}
+      <PageHeader title={`Submit My Picks${week !== null ? ` — Week ${week}` : ''}`} />
 
       {loading ? (
         <Loading />
@@ -460,103 +664,158 @@ export default function MakePicks() {
           <ActionBar
             slots={
               <>
-                <Slot label="regular" have={regularCount} need={MAX_REGULAR_PICKS} />
-                <Slot label="survivor" have={survivor ? 1 : 0} need={1} />
-                <Slot label="underdog" have={underdog ? 1 : 0} need={1} />
-                <Slot label="MNF" have={mnf ? 1 : 0} need={1} />
+                <Slot label="Best Bet" color="bb" have={tally.bb} need={1} />
+                <Slot label="Regular" color="pick" have={tally.regular} need={MAX_REGULAR} />
+                <Slot label="MNF" color="mnf" have={tally.mnf} need={1} />
+                <Slot label="Dog" color="underdog" have={tally.underdog} need={1} />
+                <Slot label="Survivor" color="survivor" have={tally.survivor} need={1} />
               </>
             }
+            detail={pickDetail}
+            status={status}
           >
-            {dirty && <span className="text-xs text-muted-foreground">unsaved</span>}
-            <Button size="sm" onClick={save} disabled={!dirty && !!baseline}>
-              Save picks
+            {dirty && <span className="text-xs text-muted-foreground">Unsaved</span>}
+            <CopyButton onClick={copySummary} disabled={!summary} />
+            <EditLinesButton editing={editingLines} onClick={() => setEditingLines((v) => !v)} />
+            <ClearButton onClick={clearPicks} disabled={isEmpty} />
+            {/* One write path (#128, revised): "submitted" is derived from
+                completeness, not a separate flag, so there is nothing a
+                second button does differently — it always writes what's
+                selected, and the slots above say whether that's the whole
+                entry. */}
+            <Button size="sm" onClick={save} disabled={!dirty}>
+              Save Picks
             </Button>
           </ActionBar>
 
-          <div className="divide-y divide-border rounded-lg border border-border bg-card">
-            {games.map((g) => (
-              <div
-                key={g.game_id}
-                // The line column is a fixed width per breakpoint, not `auto`.
-                // Sized on its widest content ("+10.5 / 46.5"), so a long line
-                // no longer shoves the buttons sideways on that one row.
-                className="grid grid-cols-[1.5rem_1fr_3.5rem_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:grid-cols-[1.5rem_1fr_6.5rem_1fr_1.5rem_1rem] sm:gap-2 sm:px-3 md:grid-cols-[1.5rem_1fr_11rem_1fr_1.5rem_1rem]"
-              >
-                <img src={teamLogo(g.away_team)} className="size-6" alt="" />
-                {teamButton(g, g.away_team, 'away')}
-                <span className="tabular whitespace-nowrap px-1 text-center text-xs sm:text-sm">
-                  <span className="font-semibold">{fmtSpread(g.pool_spread)}</span>
-                  <span className="hidden text-muted-foreground sm:inline">
-                    {' '}
-                    / {fmtSpread(g.market_spread)}
-                  </span>
-                  <span className="hidden text-muted-foreground md:inline">
-                    {' '}
-                    / {g.market_total ?? '—'}
-                  </span>
-                </span>
-                {teamButton(g, g.home_team, 'home')}
-                <img src={teamLogo(g.home_team)} className="size-6" alt="" />
-                {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
-                <Link
-                  to={`/game/${g.game_id}`}
-                  aria-label={`Detail for ${g.away_team} at ${g.home_team}`}
-                  title="Game detail"
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <ChevronRight className="size-4" />
-                </Link>
-                {guardrailWarning(g)}
-                {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
-                  <div className="col-span-6 pt-1">
-                    {noteInput(
-                      noteKey(g.game_id, g.is_mnf ? 'mnf' : picks[g.game_id].pick_type),
-                      `${g.away_team} at ${g.home_team}`
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-lg border border-border bg-card p-3">
-            <h2 className="flex items-center gap-1.5 text-sm font-bold">
-              <Skull className="size-4" /> Survivor
-            </h2>
-            <p className="mb-2 text-xs text-muted-foreground">
-              One favourite for the week.
-              {config.survivor_used_teams.length > 0 &&
-                ` Already used: ${[...config.survivor_used_teams].sort().join(', ')}.`}
+          {submitted?.key === weekKey && missing.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Submitted{' '}
+              {submitted.at
+                ? new Date(submitted.at).toLocaleString(undefined, {
+                    weekday: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : 'at an unknown time'}
+              .
             </p>
+          )}
+
+          {/* Said once, not printed as "TBD" on sixteen rows. Until Friday the
+              pool line does not exist, so there is no gap to show and the
+              number on each side is the market's. */}
+          {games.length > 0 && games.every((g) => g.pool_spread === null) && (
+            <p className="text-sm text-muted-foreground">
+              Pool lines are not in yet. Showing the market.
+            </p>
+          )}
+
+          {editingLines && season !== null && week !== null && (
+            <LinesEditor
+              games={games}
+              season={season}
+              week={week}
+              onSaved={() => {
+                api.lines(season, week).then((rows) => setGames({ key: weekKey, rows }))
+                setEditingLines(false)
+              }}
+            />
+          )}
+
+          <Section
+            icon={Star}
+            title="Games"
+            subtitle={`1 best bet, ${MAX_REGULAR} regular, 1 Monday night.`}
+          >
+            <div className="-mx-3 divide-y divide-border">
+              {/* Same six columns as a game row, so the labels sit over what
+                  they name. */}
+              <div className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:gap-2 sm:px-3">
+                <span />
+                <span className="flex items-center justify-end gap-1">
+                  Away
+                  <Info text="The number on each side is the line that side is getting. A green number means the pool prices that side better than the market: our biggest measured edge, and the side without it has gone 45.2% over six seasons." />
+                </span>
+                <span className="w-10 text-center sm:w-12">Total</span>
+                <span>Home</span>
+                <span />
+                <span />
+              </div>
+              {games.map((g) => (
+                <div
+                  key={g.game_id}
+                  // Six columns, and the two that hold a button are the only
+                  // ones that grow. The middle used to be a slash-separated cell
+                  // three numbers wide, sized for its longest content, which is
+                  // what pushed the two buttons out to the edges and left a
+                  // third of the row empty.
+                  className="grid grid-cols-[1.5rem_1fr_auto_1fr_1.5rem_1rem] items-center gap-1.5 px-2 py-2 sm:gap-2 sm:px-3"
+                >
+                  <img src={teamLogo(g.away_team)} className="size-6" alt="" />
+                  <span className="flex min-w-0 items-center justify-end gap-1.5">
+                    {teamButton(g, g.away_team, 'away')}
+                    {edgeChip(g, g.away_team)}
+                  </span>
+                  {/* The total plays no part in pool scoring, so it is the
+                      quietest thing on the row rather than a third of its
+                      width. */}
+                  <span className="tabular w-10 text-center text-xs text-muted-foreground sm:w-12 sm:text-sm">
+                    {g.market_total ?? '—'}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {edgeChip(g, g.home_team)}
+                    {teamButton(g, g.home_team, 'home')}
+                  </span>
+                  <img src={teamLogo(g.home_team)} className="size-6" alt="" />
+                  {/* Its own control: the team buttons are the pick, so the row can't be a link. */}
+                  <Link
+                    to={`/game/${g.game_id}`}
+                    aria-label={`Detail for ${g.away_team} at ${g.home_team}`}
+                    title="Game detail"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight className="size-4" />
+                  </Link>
+                  {guardrailWarning(g)}
+                  {(g.is_mnf ? mnfPickedHere(g) : !!picks[g.game_id]) && (
+                    <div className="col-span-6 pt-1">
+                      {noteInput(
+                        noteKey(g.game_id, g.is_mnf ? 'mnf' : picks[g.game_id].pick_type),
+                        `${g.away_team} at ${g.home_team}`
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section
+            icon={Skull}
+            title="Survivor"
+            subtitle={
+              <>
+                One favourite for the week.
+                {config.survivor_used_teams.length > 0 &&
+                  ` Already used: ${[...config.survivor_used_teams].sort().join(', ')}.`}
+              </>
+            }
+          >
             {/* The whole list stays. It used to collapse to the chosen row, so
                 changing your mind meant deselecting to see what else was there. */}
-            {favorites.map((f) => poolRow(f, survivor, setSurvivor, Skull, 'survivor'))}
-          </div>
+            {favorites.map((f) => poolRow(f, survivor, setSurvivor, Skull, 'survivor', 'survivor'))}
+          </Section>
 
-          <div className="rounded-lg border border-border bg-card p-3">
-            <h2 className="flex items-center gap-1.5 text-sm font-bold">
-              <Dog className="size-4" /> Underdog
-            </h2>
-            <p className="mb-2 text-xs text-muted-foreground">One underdog for the week.</p>
-            {underdogs.map((d) => poolRow(d, underdog, setUnderdog, Dog, 'underdog'))}
-          </div>
+          <Section
+            icon={Dog}
+            title="Underdog"
+            subtitle="One underdog for the week."
+          >
+            {underdogs.map((d) => poolRow(d, underdog, setUnderdog, Dog, 'underdog', 'underdog'))}
+          </Section>
 
-          {summary && (
-            <div className="rounded-lg border border-border bg-card p-3">
-              <h2 className="mb-2 text-sm font-bold">Summary</h2>
-              <pre className="overflow-x-auto rounded-md bg-muted p-3 text-sm whitespace-pre-wrap">
-                {summary}
-              </pre>
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" variant="outline" onClick={copySummary}>
-                  <Clipboard className="size-3.5" /> Copy for the chat
-                </Button>
-                <Button size="sm" variant="outline" onClick={clearAll}>
-                  <Trash2 className="size-3.5" /> Clear
-                </Button>
-              </div>
-            </div>
-          )}
+          <ActionBarSpacer />
         </>
       )}
     </div>

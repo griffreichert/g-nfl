@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -104,6 +104,7 @@ class PicksDatabase:
         Returns:
             Number of picks saved
         """
+        submitted_at = datetime.now(UTC).isoformat()
         try:
             # Replace is insert-then-delete, never delete-then-insert: if the
             # insert fails (bad column, network) a prior delete would have
@@ -154,6 +155,7 @@ class PicksDatabase:
                     "note": (
                         pick_data.get("note") if isinstance(pick_data, dict) else None
                     ),
+                    "submitted_at": submitted_at,
                 }
                 picks_data.append(pick_record)
                 print(f"DEBUG: Prepared pick record: {pick_record}")

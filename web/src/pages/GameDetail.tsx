@@ -25,6 +25,7 @@ import {
   type EpaPoint,
 } from '@/lib/game'
 import { Loading } from '@/components/PageState'
+import { Info } from '@/components/Info'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
@@ -221,7 +222,7 @@ export default function GameDetailPage() {
 
   const back = (
     <Link
-      to="/view"
+      to="/picks"
       className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-4" /> Back
@@ -311,7 +312,10 @@ export default function GameDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Lines</CardTitle>
+          <CardTitle className="flex items-center gap-1.5 text-sm">
+            Lines
+            <Info text={`Home perspective, so a positive number means ${home} is favoured.`} />
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <dl className="grid grid-cols-3 gap-3">
@@ -320,7 +324,6 @@ export default function GameDetailPage() {
             <Fact label="Total" value={game.market_total === null ? '—' : String(game.market_total)} />
           </dl>
           <p className="text-xs text-muted-foreground">
-            Home perspective, so a positive number means {home} is favoured.{' '}
             {game.graded_line === null
               ? 'No line resolved yet, so nothing here grades.'
               : `Picks grade on ${fmtSpread(game.graded_line)} (${

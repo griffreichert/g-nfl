@@ -51,6 +51,8 @@ class PickRecord(Pick):
     picker: str
     season: int
     week: int
+    #: Null on rows written before the column existed.
+    submitted_at: str | None = None
 
 
 class SavePicksRequest(BaseModel):

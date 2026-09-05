@@ -1,17 +1,13 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Suspense, lazy } from 'react'
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import {
   ChartColumn,
   CircleQuestionMark,
   ClipboardCheck,
-  Ellipsis,
   LineChart,
   LogIn,
   LogOut,
-  Ruler,
-  Scale,
   Skull,
-  Users,
 } from 'lucide-react'
 import ThemeToggle from './components/ThemeToggle'
 import RequireAuth from './components/RequireAuth'
@@ -22,35 +18,45 @@ import { useAuth } from './hooks'
 const MakePicks = lazy(() => import('./pages/MakePicks'))
 const Field = lazy(() => import('./pages/Field'))
 const GameDetail = lazy(() => import('./pages/GameDetail'))
-const ManageSpreads = lazy(() => import('./pages/ManageSpreads'))
 const Survivor = lazy(() => import('./pages/Survivor'))
-const Standings = lazy(() => import('./pages/Standings'))
+const Performance = lazy(() => import('./pages/Performance'))
 const Analytics = lazy(() => import('./pages/Analytics'))
-const Ledger = lazy(() => import('./pages/Ledger'))
 const Help = lazy(() => import('./pages/Help'))
 const SignInPage = lazy(() => import('./pages/SignInPage'))
 
 /**
- * The week's order, and which half of it a tab belongs to (#124).
+ * Four tabs, in one order, on every width (#135).
  *
- * "build" is what you do — pick, argue, enter the pool's numbers. "read" is
- * what you look at afterwards. They used to be interleaved, with Lines (a
- * Saturday chore) stranded between Standings and Ledger.
+ * Seven tabs needed a More menu on a phone, and the two halves of the site the
+ * seven were split into — build and read — turned out to be one job each.
+ * Team, Standings and Ledger all answered "how is the room doing", so they are
+ * one Performance tab. Lines was a Saturday chore in the navigation all week
+ * and now lives behind a toggle on the board. Picks is a button on the board,
+ * because you do it once and then you are done.
+ *
+ * Make Picks is the home page and the only gated tab: it is where the week
+ * starts, and it was sitting second behind a page you visit once.
  */
-const tabs = [
-  { to: '/picks', label: 'Picks', icon: ClipboardCheck, group: 'build', bar: true },
-  { to: '/view', label: 'Team', icon: Users, group: 'build', bar: true },
-  { to: '/survivor', label: 'Survivor', icon: Skull, group: 'build', bar: true },
-  { to: '/spreads', label: 'Lines', icon: Ruler, group: 'build', bar: false },
-  { to: '/standings', label: 'Standings', icon: LineChart, group: 'read', bar: true },
-  { to: '/ledger', label: 'Ledger', icon: Scale, group: 'read', bar: false },
-  { to: '/analytics', label: 'Analytics', icon: ChartColumn, group: 'read', bar: false },
+const TAB_ICONS = [
+  { key: 'picks', label: 'Make Picks', icon: ClipboardCheck },
+  { key: 'survivor', label: 'Survivor', icon: Skull },
+  { key: 'performance', label: 'Performance', icon: LineChart },
+  { key: 'analytics', label: 'Analytics', icon: ChartColumn },
 ] as const
 
-/** Bottom bar tabs, and everything else behind More. Seven 53px targets on a
- *  375px phone was under the size a thumb can hit. */
-const barTabs = tabs.filter((t) => t.bar)
-const overflow = tabs.filter((t) => !t.bar)
+/**
+ * The season/week a URL names, read out of the path rather than component
+ * state because the nav bar sits above every route and can't call
+ * `useParams` on one. Carrying it into the next tab's link is what makes
+ * "I'm looking at 2025 on Picks" survive a click to Analytics.
+ */
+function currentSeasonWeek(pathname: string) {
+  const weekly = pathname.match(/^\/(?:picks|survivor)\/(\d+)(?:\/week\/(\d+))?/)
+  if (weekly) return { season: Number(weekly[1]), week: weekly[2] ? Number(weekly[2]) : undefined }
+  const seasonOnly = pathname.match(/^\/(?:performance|analytics)\/(\d+)/)
+  if (seasonOnly) return { season: Number(seasonOnly[1]), week: undefined }
+  return { season: undefined, week: undefined }
+}
 
 const navClass = (isActive: boolean) =>
   `flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors ${
@@ -59,65 +65,26 @@ const navClass = (isActive: boolean) =>
       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
   }`
 
-/** The overflow sheet on a phone. Closes on navigation and on outside taps. */
-function MoreMenu() {
-  const { pathname } = useLocation()
-  // Stored with the route it was opened on, so navigating closes it without an
-  // effect reaching in to set state after the fact.
-  const [openAt, setOpenAt] = useState<string | null>(null)
-  const open = openAt === pathname
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpenAt(null)
-    }
-    document.addEventListener('mousedown', away)
-    return () => document.removeEventListener('mousedown', away)
-  }, [open])
-
-  const here = overflow.some((t) => t.to === pathname) || pathname === '/help'
-
-  return (
-    <div ref={ref} className="relative flex flex-1">
-      {open && (
-        <div className="absolute bottom-full right-1 mb-1 w-44 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
-          {[...overflow, { to: '/help', label: 'How this works', icon: CircleQuestionMark }].map(
-            (t) => (
-              <NavLink
-                key={t.to}
-                to={t.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-2 px-3 py-2.5 text-sm font-medium ${
-                    isActive ? 'text-primary' : 'text-foreground'
-                  }`
-                }
-              >
-                <t.icon className="size-4" />
-                {t.label}
-              </NavLink>
-            )
-          )}
-        </div>
-      )}
-      <button
-        onClick={() => setOpenAt(open ? null : pathname)}
-        aria-expanded={open}
-        aria-label="More pages"
-        className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${
-          here || open ? 'text-primary' : 'text-muted-foreground'
-        }`}
-      >
-        <Ellipsis className="size-5" />
-        More
-      </button>
-    </div>
-  )
-}
-
 export default function App() {
   const { picker, logout } = useAuth()
+  const { season, week } = currentSeasonWeek(useLocation().pathname)
+  const tabs = [
+    {
+      to: season && week ? `/picks/${season}/week/${week}` : season ? `/picks/${season}` : '/picks',
+      ...TAB_ICONS[0],
+    },
+    {
+      to:
+        season && week
+          ? `/survivor/${season}/week/${week}`
+          : season
+            ? `/survivor/${season}`
+            : '/survivor',
+      ...TAB_ICONS[1],
+    },
+    { to: season ? `/performance/${season}` : '/performance', ...TAB_ICONS[2] },
+    { to: season ? `/analytics/${season}` : '/analytics', ...TAB_ICONS[3] },
+  ]
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -127,24 +94,18 @@ export default function App() {
             no<span className="text-primary">·</span>homers
           </span>
 
-          {/* laptop: inline tabs, build then read. mobile: the bottom bar owns
-              navigation. */}
+          {/* laptop: inline tabs. phone: the bottom bar owns navigation. */}
           <nav className="hidden items-center gap-1 sm:flex">
-            {tabs
-              .filter((t) => t.group === 'build')
-              .map((t) => (
-                <NavLink key={t.to} to={t.to} className={({ isActive }) => navClass(isActive)}>
-                  {t.label}
-                </NavLink>
-              ))}
-            <span className="mx-1.5 h-5 w-px bg-border" />
-            {tabs
-              .filter((t) => t.group === 'read')
-              .map((t) => (
-                <NavLink key={t.to} to={t.to} className={({ isActive }) => navClass(isActive)}>
-                  {t.label}
-                </NavLink>
-              ))}
+            {tabs.map((t) => (
+              <NavLink
+                key={t.to}
+                to={t.to}
+                end
+                className={({ isActive }) => navClass(isActive)}
+              >
+                {t.label}
+              </NavLink>
+            ))}
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
@@ -153,7 +114,7 @@ export default function App() {
               aria-label="How this works"
               title="How this works"
               className={({ isActive }) =>
-                `hidden size-9 items-center justify-center rounded-md transition-colors sm:flex ${
+                `flex size-9 items-center justify-center rounded-md transition-colors ${
                   isActive ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
                 }`
               }
@@ -197,10 +158,40 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-24 sm:px-5 sm:pb-8">
         <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
           <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/signin" element={<SignInPage />} />
+            {/* Home is the board. Bare, season-only, and full forms all
+                render it: useSeasonWeekRoute resolves whichever is missing
+                and settles the address bar on the explicit one (#126
+                follow-up). Gated, so a signed-out visitor lands on /signin
+                with where they were going kept in state. */}
             <Route
               path="/picks"
+              element={
+                <RequireAuth>
+                  <Field />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/picks/:season"
+              element={
+                <RequireAuth>
+                  <Field />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/picks/:season/week/:week"
+              element={
+                <RequireAuth>
+                  <Field />
+                </RequireAuth>
+              }
+            />
+            <Route path="/signin" element={<SignInPage />} />
+            {/* Off the navigation, reached from the button on the board.
+                Making your own picks is a job you do once a week (#135). */}
+            <Route
+              path="/picks/submit"
               element={
                 <RequireAuth>
                   <MakePicks />
@@ -208,39 +199,36 @@ export default function App() {
               }
             />
             <Route
-              path="/view"
+              path="/picks/:season/week/:week/submit"
               element={
                 <RequireAuth>
-                  <Field />
+                  <MakePicks />
                 </RequireAuth>
               }
             />
             {/* detail view, reached from a game row — deliberately not a tab */}
             <Route path="/game/:gameId" element={<GameDetail />} />
             <Route path="/survivor" element={<Survivor />} />
-            <Route path="/standings" element={<Standings />} />
-            <Route
-              path="/spreads"
-              element={
-                <RequireAuth>
-                  <ManageSpreads />
-                </RequireAuth>
-              }
-            />
-            <Route path="/ledger" element={<Ledger />} />
+            <Route path="/survivor/:season" element={<Survivor />} />
+            <Route path="/survivor/:season/week/:week" element={<Survivor />} />
+            <Route path="/performance" element={<Performance />} />
+            <Route path="/performance/:season" element={<Performance />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/analytics/:season" element={<Analytics />} />
             <Route path="/help" element={<Help />} />
           </Routes>
         </Suspense>
       </main>
 
-      {/* Thumb-reachable on a phone, gone on a laptop. */}
+      {/* Thumb-reachable on a phone, gone on a laptop. Four 93px targets on a
+          375px screen, where seven were 53px and needed a More menu. */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur sm:hidden">
         <div className="flex pb-[env(safe-area-inset-bottom)]">
-          {barTabs.map((t) => (
+          {tabs.map((t) => (
             <NavLink
               key={t.to}
               to={t.to}
+              end
               className={({ isActive }) =>
                 `flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] font-medium transition-colors ${
                   isActive ? 'text-primary' : 'text-muted-foreground'
@@ -251,21 +239,8 @@ export default function App() {
               {t.label}
             </NavLink>
           ))}
-          <MoreMenu />
         </div>
       </nav>
     </div>
   )
-}
-
-/**
- * Where `/` goes. It used to redirect to the Team board, which is the Sunday
- * meeting page and gated, so a signed-out visitor's first screen was a login
- * box with nothing around it. Signed in, the weekday job is your own picks;
- * signed out, Standings explains itself and needs no session (#124).
- */
-function Landing() {
-  const { picker, checking } = useAuth()
-  if (checking) return <p className="text-muted-foreground">Loading…</p>
-  return <Navigate to={picker ? '/picks' : '/standings'} replace />
 }

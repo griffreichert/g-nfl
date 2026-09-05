@@ -3,8 +3,13 @@ import assert from 'node:assert/strict'
 import {
   cycleSlot,
   buildAttachment,
+  buildCandidates,
   buildConsensus,
   byContention,
+  isComplete,
+  MAX_ATS_NON_MNF,
+  MAX_REGULAR,
+  shortfall,
   findBlocs,
   isHomer,
   partRating,
@@ -32,15 +37,20 @@ const pick = (picker: string, gid: string, team: string, type: PickType = 'regul
   spread: null,
   season: 2025,
   week: 12,
+  submitted_at: null,
 })
 
-test('spreadFor reads pool_spread as home-perspective', () => {
-  // CAR at GB with GB favoured by 13.5 is stored +13.5 (verified against
-  // nflverse spread_line, corr +0.99). Getting this backwards inverts every
-  // number on the board.
+test('spreadFor reads pool_spread as home-perspective, negated for the home side', () => {
+  // CAR at GB with GB favoured by 13.5 is stored +13.5 (nflverse spread_line
+  // convention: positive = home favoured, verified corr +0.99 — see
+  // g_nfl.picks.grading and g_nfl.picks.analytics.from_picked). A team's own
+  // number is what a sportsbook would print for that team: the favourite
+  // negative, the underdog positive. So GB's own line is -13.5, CAR's is
+  // +13.5 — the mirror of the raw stored value. Getting this backwards
+  // inverts every number on the board.
   const g = game('CAR', 'GB', 13.5)
-  assert.equal(spreadFor(g, 'GB'), 13.5)
-  assert.equal(spreadFor(g, 'CAR'), -13.5)
+  assert.equal(spreadFor(g, 'GB'), -13.5)
+  assert.equal(spreadFor(g, 'CAR'), 13.5)
   assert.equal(spreadFor(game('CAR', 'GB', null), 'GB'), null)
 })
 
@@ -296,4 +306,62 @@ test('a full entry refuses a new game but still allows swaps', () => {
   assert.deepEqual(cycleSlot(slate, 'r0', 'OTHER', false), {
     r0: { team: 'OTHER', type: 'regular' },
   })
+})
+
+test('shortfall names every slot still open, and isComplete agrees', () => {
+  // A full week: one best bet, five regulars, MNF, dog, survivor.
+  const full = { bb: 1, regular: 5, mnf: 1, underdog: 1, survivor: 1 }
+  assert.deepEqual(shortfall(full), [])
+  assert.equal(isComplete(full), true)
+
+  // Three regulars in, nothing else. The count leads the label so the action
+  // bar reads "2 regular, MNF" rather than "regular x2".
+  assert.deepEqual(shortfall({ bb: 0, regular: 3, mnf: 0, underdog: 0, survivor: 0 }), [
+    'best bet',
+    '2 regular',
+    'MNF',
+    'dog',
+    'survivor',
+  ])
+
+  // Over-full on one slot must not read as short on it.
+  assert.deepEqual(shortfall({ ...full, regular: 6 }), [])
+})
+
+test('the two pick caps are the pool rules, in the two frames', () => {
+  assert.equal(MAX_REGULAR, 5)
+  assert.equal(MAX_ATS_NON_MNF, 6)
+})
+
+test('candidates are only sides somebody took, best score first', () => {
+  const g1 = game('CAR', 'GB', 13.5)
+  const g2 = game('NYJ', 'BUF', 6.5)
+  const picks = [
+    pick('Griffin', g1.game_id, 'CAR'),
+    pick('Harry', g1.game_id, 'GB'),
+    pick('Ben', g2.game_id, 'NYJ', 'best_bet'),
+  ]
+  const rows = buildConsensus([g1, g2], picks)
+  const cands = buildCandidates(rows, new Map(), () => [], [], {})
+
+  // BUF is the one side nobody suggested, so it is not promotable.
+  assert.ok(!cands.some((c) => c.team === 'BUF'))
+  assert.equal(cands.length, 3)
+
+  // Sorted by score, best first.
+  const ratings = cands.map((c) => c.score.rating)
+  assert.deepEqual(ratings, [...ratings].sort((a, b) => b - a))
+
+  // Net is the pool points on this side minus the other. A best bet is worth
+  // two, and a 1-1 split with nobody on best bet cancels to zero.
+  assert.equal(cands.find((c) => c.team === 'NYJ')?.net, 2)
+  assert.equal(cands.find((c) => c.team === 'CAR')?.net, 0)
+})
+
+test('a side TEAM already holds stays promotable with no votes on it', () => {
+  const g1 = game('CAR', 'GB', 13.5)
+  const rows = buildConsensus([g1], [pick('Griffin', g1.game_id, 'CAR')])
+  const slate = { [g1.game_id]: { team: 'GB', type: 'regular' as const } }
+  const teams = buildCandidates(rows, new Map(), () => [], [], slate).map((c) => c.team)
+  assert.ok(teams.includes('GB'))
 })

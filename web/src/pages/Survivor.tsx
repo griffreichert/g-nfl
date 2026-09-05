@@ -3,8 +3,9 @@ import { Pin, RotateCcw, Skull } from 'lucide-react'
 import { api, teamLogo } from '../api'
 import BeliefEditor from '../components/BeliefEditor'
 import PageHeader from '../components/PageHeader'
+import { Info } from '../components/Info'
 import { EmptyState, ErrorNote, Loading } from '../components/PageState'
-import { useAuth, useConfig, useSeasonWeek } from '../hooks'
+import { useAuth, useConfig, useSeasonWeekRoute } from '../hooks'
 import {
   ALL_WEEKS,
   NEUTRAL,
@@ -138,7 +139,10 @@ const fmtSpread = (s: number | null | undefined) =>
 export default function Survivor() {
   const { picker } = useAuth()
   const { config } = useConfig(picker ?? undefined)
-  const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeek(config)
+  const { season, setSeason, week, setWeek, weeks, seasons } = useSeasonWeekRoute(
+    config,
+    (s, w) => `/survivor/${s}/week/${w}`,
+  )
   const { pins, toggle, clear } = usePins(season)
 
   // Which week the drawer ranks. Clicking a column focuses it; changing the
@@ -430,7 +434,12 @@ export default function Survivor() {
                   <th className="px-3 py-2 text-left font-medium">game</th>
                   <th className="px-3 py-2 text-right font-medium">win now</th>
                   <th className="px-3 py-2 text-right font-medium">peaks</th>
-                  <th className="px-3 py-2 text-right font-medium">costs</th>
+                  <th className="px-3 py-2 text-right font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      costs
+                      <Info text="Season survival given up by spending this team here. Free (0) means the plan had no better week for them." />
+                    </span>
+                  </th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -484,10 +493,6 @@ export default function Survivor() {
             </table>
           </div>
         )}
-        <p className="mt-2 text-xs text-muted-foreground">
-          Costs is the season survival you give up by spending that team here. Free
-          means the plan had no better week for them.
-        </p>
       </div>
     </div>
   )
