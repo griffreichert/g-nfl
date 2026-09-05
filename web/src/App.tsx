@@ -9,6 +9,7 @@ import {
   LogOut,
   Skull,
 } from 'lucide-react'
+import ErrorBoundary from './components/ErrorBoundary'
 import ThemeToggle from './components/ThemeToggle'
 import RequireAuth from './components/RequireAuth'
 import { useAuth } from './hooks'
@@ -67,7 +68,8 @@ const navClass = (isActive: boolean) =>
 
 export default function App() {
   const { picker, logout } = useAuth()
-  const { season, week } = currentSeasonWeek(useLocation().pathname)
+  const { pathname } = useLocation()
+  const { season, week } = currentSeasonWeek(pathname)
   const tabs = [
     {
       to: season && week ? `/picks/${season}/week/${week}` : season ? `/picks/${season}` : '/picks',
@@ -156,72 +158,75 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-6xl px-3 pt-4 pb-24 sm:px-5 sm:pb-8">
-        <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
-          <Routes>
-            {/* The app's front door. Without it `/` renders the header and an
-                empty main, which is what a visitor typing the bare domain
-                gets. RequireAuth on /picks takes it from there. */}
-            <Route path="/" element={<Navigate to="/picks" replace />} />
-            {/* Home is the board. Bare, season-only, and full forms all
-                render it: useSeasonWeekRoute resolves whichever is missing
-                and settles the address bar on the explicit one (#126
-                follow-up). Gated, so a signed-out visitor lands on /signin
-                with where they were going kept in state. */}
-            <Route
-              path="/picks"
-              element={
-                <RequireAuth>
-                  <Field />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/picks/:season"
-              element={
-                <RequireAuth>
-                  <Field />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/picks/:season/week/:week"
-              element={
-                <RequireAuth>
-                  <Field />
-                </RequireAuth>
-              }
-            />
-            <Route path="/signin" element={<SignInPage />} />
-            {/* Off the navigation, reached from the button on the board.
-                Making your own picks is a job you do once a week (#135). */}
-            <Route
-              path="/picks/submit"
-              element={
-                <RequireAuth>
-                  <MakePicks />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/picks/:season/week/:week/submit"
-              element={
-                <RequireAuth>
-                  <MakePicks />
-                </RequireAuth>
-              }
-            />
-            {/* detail view, reached from a game row — deliberately not a tab */}
-            <Route path="/game/:gameId" element={<GameDetail />} />
-            <Route path="/survivor" element={<Survivor />} />
-            <Route path="/survivor/:season" element={<Survivor />} />
-            <Route path="/survivor/:season/week/:week" element={<Survivor />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/performance/:season" element={<Performance />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/analytics/:season" element={<Analytics />} />
-            <Route path="/help" element={<Help />} />
-          </Routes>
-        </Suspense>
+        {/* Keyed on the path, so leaving a crashed page clears the error. */}
+        <ErrorBoundary key={pathname}>
+          <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+            <Routes>
+              {/* The app's front door. Without it `/` renders the header and an
+                  empty main, which is what a visitor typing the bare domain
+                  gets. RequireAuth on /picks takes it from there. */}
+              <Route path="/" element={<Navigate to="/picks" replace />} />
+              {/* Home is the board. Bare, season-only, and full forms all
+                  render it: useSeasonWeekRoute resolves whichever is missing
+                  and settles the address bar on the explicit one (#126
+                  follow-up). Gated, so a signed-out visitor lands on /signin
+                  with where they were going kept in state. */}
+              <Route
+                path="/picks"
+                element={
+                  <RequireAuth>
+                    <Field />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/picks/:season"
+                element={
+                  <RequireAuth>
+                    <Field />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/picks/:season/week/:week"
+                element={
+                  <RequireAuth>
+                    <Field />
+                  </RequireAuth>
+                }
+              />
+              <Route path="/signin" element={<SignInPage />} />
+              {/* Off the navigation, reached from the button on the board.
+                  Making your own picks is a job you do once a week (#135). */}
+              <Route
+                path="/picks/submit"
+                element={
+                  <RequireAuth>
+                    <MakePicks />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/picks/:season/week/:week/submit"
+                element={
+                  <RequireAuth>
+                    <MakePicks />
+                  </RequireAuth>
+                }
+              />
+              {/* detail view, reached from a game row — deliberately not a tab */}
+              <Route path="/game/:gameId" element={<GameDetail />} />
+              <Route path="/survivor" element={<Survivor />} />
+              <Route path="/survivor/:season" element={<Survivor />} />
+              <Route path="/survivor/:season/week/:week" element={<Survivor />} />
+              <Route path="/performance" element={<Performance />} />
+              <Route path="/performance/:season" element={<Performance />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/analytics/:season" element={<Analytics />} />
+              <Route path="/help" element={<Help />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       {/* Thumb-reachable on a phone, gone on a laptop. Four 93px targets on a
