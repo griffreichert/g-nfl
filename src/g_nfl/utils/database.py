@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -816,3 +817,90 @@ class SurvivorBeliefsDatabase:
             rows, on_conflict="season,picker,team"
         ).execute()
         return len(rows)
+
+
+class ModelRunsDatabase:
+    """gModel's weekly board and the run that produced it (#13).
+
+    A run is identified by a uuid and deduplicated by ``fingerprint``, a hash
+    over the feature values that fed the fit and the lines read at run time.
+    Re-running against unchanged inputs returns the existing run_id and
+    upserts the same numbers over themselves; a run after new injury data or
+    a corrected line gets its own row, and both stay readable.
+
+    Schema in ``scripts/model_predictions_schema.sql``.
+    """
+
+    def __init__(self):
+        self.client: Client = get_supabase()
+
+    def find_run(
+        self, season: int, week: int, model: str, fingerprint: str
+    ) -> str | None:
+        """The run_id already holding these inputs, if there is one."""
+        rows = (
+            self.client.table("model_runs")
+            .select("run_id")
+            .eq("season", season)
+            .eq("week", week)
+            .eq("model", model)
+            .eq("fingerprint", fingerprint)
+            .execute()
+        ).data
+        return rows[0]["run_id"] if rows else None
+
+    def save_run(self, run: dict) -> str:
+        """Upsert a run, returning its run_id.
+
+        `run` carries season, week, model, fingerprint and the config needed
+        to rebuild the prediction. An existing fingerprint keeps its uuid.
+        """
+        existing = self.find_run(
+            run["season"], run["week"], run["model"], run["fingerprint"]
+        )
+        row = {**run, "run_id": existing or str(uuid.uuid4())}
+        self.client.table("model_runs").upsert(
+            row, on_conflict="season,week,model,fingerprint"
+        ).execute()
+        return row["run_id"]
+
+    def save_predictions(self, run_id: str, rows: list[dict]) -> int:
+        """Upsert the board for a run, keyed (run_id, game_id)."""
+        if not rows:
+            return 0
+        payload = [{**r, "run_id": run_id} for r in rows]
+        self.client.table("model_predictions").upsert(
+            payload, on_conflict="run_id,game_id"
+        ).execute()
+        return len(payload)
+
+    def mark_submitted(self, run_id: str) -> None:
+        """Record that this run is the one that wrote the picks table."""
+        self.client.table("model_runs").update({"submitted": True}).eq(
+            "run_id", run_id
+        ).execute()
+
+    def latest_run(self, season: int, week: int, model: str) -> dict | None:
+        """The most recent run for a week, config and all."""
+        rows = (
+            self.client.table("model_runs")
+            .select("*")
+            .eq("season", season)
+            .eq("week", week)
+            .eq("model", model)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        ).data
+        return rows[0] if rows else None
+
+    def get_predictions(self, run_id: str) -> list[dict]:
+        """Every game on a run's board."""
+        return fetch_all(
+            lambda: (
+                self.client.table("model_predictions")
+                .select("*")
+                .eq("run_id", run_id)
+                .order("id")
+            )
+        )

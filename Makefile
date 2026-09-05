@@ -1,4 +1,4 @@
-.PHONY: survivor-board case no-homers predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: survivor-board case no-homers gmodel predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -32,6 +32,7 @@ help:
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
 	@echo "  predict       Model line, market line and edge for one week (ARGS=\"--week 1\")"
 	@echo "  backtest-guardrails Replay the entry with the No Homers guardrails"
+	@echo "  gmodel        Store gModel's board and submit its entry (ARGS=\"--dry-run\")"
 	@echo "  no-homers     Submit the mechanical entry (ARGS=--dry-run)"
 	@echo "  case          Build the case for the room (ARGS=\"--output case.md\")"
 	@echo "  market-ratings Market-derived power ratings (ARGS=\"--tune\" or \"--seasons 2023 2024\")"
@@ -148,6 +149,10 @@ predict:
 no-homers:
 	@echo "🤖 Submitting the mechanical entry..."
 	uv run python -m g_nfl.picks.nohomers $(ARGS)
+
+gmodel:
+	@echo "🧮 Submitting gModel's entry..."
+	uv run python -m g_nfl.picks.gmodel $(ARGS)
 
 backtest-guardrails:
 	@echo "🚧 Replaying the entry with the No Homers guardrails..."

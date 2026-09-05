@@ -33,6 +33,10 @@ on:
         description: "Also refresh game results"
         type: boolean
         default: true
+      predict:
+        description: "Also run gModel's entry"
+        type: boolean
+        default: false
 
 jobs:
   update:
@@ -62,11 +66,13 @@ jobs:
             "0 14 * * 5") echo "snapshot=friday"   >> "$GITHUB_OUTPUT"
                           echo "results=false"     >> "$GITHUB_OUTPUT" ;;
             "0 16 * * 0") echo "snapshot=deadline" >> "$GITHUB_OUTPUT"
-                          echo "results=false"     >> "$GITHUB_OUTPUT" ;;
+                          echo "results=false"     >> "$GITHUB_OUTPUT"
+                          echo "predict=true"      >> "$GITHUB_OUTPUT" ;;
             "0 14 * * 2") echo "snapshot=close"    >> "$GITHUB_OUTPUT"
                           echo "results=true"      >> "$GITHUB_OUTPUT" ;;
             *) echo "snapshot=${{ inputs.snapshot }}" >> "$GITHUB_OUTPUT"
-               echo "results=${{ inputs.results }}"   >> "$GITHUB_OUTPUT" ;;
+               echo "results=${{ inputs.results }}"   >> "$GITHUB_OUTPUT"
+               echo "predict=${{ inputs.predict }}"   >> "$GITHUB_OUTPUT" ;;
           esac
 
       # Season defaults to the latest one we hold lines for. Snapshots of the
@@ -79,3 +85,22 @@ jobs:
       - name: Update game results
         if: steps.which.outputs.results == 'true'
         run: uv run python scripts/update_results.py
+
+      # Eleven seasons of play-by-play, and only the current one moves. The
+      # key rolls weekly so the season in progress is refetched; the restore
+      # key keeps the finished seasons across that roll.
+      - name: Cache nflverse pulls
+        if: steps.which.outputs.predict == 'true'
+        uses: actions/cache@v4
+        with:
+          path: data/ml_cache
+          key: ml-cache-${{ github.run_id }}
+          restore-keys: ml-cache-
+
+      # After the deadline snapshot, so the pool lines and the pick-time
+      # market number are both in before the entry is built. gModel is a
+      # benchmark on the ledger, not a recommendation
+      # (notes/pool-plan-2026.md).
+      - name: Submit gModel's entry
+        if: steps.which.outputs.predict == 'true'
+        run: uv run python -m g_nfl.picks.gmodel
