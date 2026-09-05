@@ -352,7 +352,7 @@ def submit(
         for p in entry
     }
     saved = db.save_picks(season, week, payload, PICKER)
-    runs.mark_submitted(run_id)
+    runs.mark_submitted(run_id, season, week, PICKER)
     print(f"submitted {saved} picks as {PICKER}, {season} week {week}")
     return {"board": board, "entry": entry, "config": config, "run_id": run_id}
 

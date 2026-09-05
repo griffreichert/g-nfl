@@ -901,8 +901,17 @@ class ModelRunsDatabase:
         ).execute()
         return len(payload)
 
-    def mark_submitted(self, run_id: str) -> None:
-        """Record that this run is the one that wrote the picks table."""
+    def mark_submitted(self, run_id: str, season: int, week: int, model: str) -> None:
+        """Record that this run is the one that wrote the picks table.
+
+        The week's other runs are cleared first. `picks` holds one entry per
+        picker per week and carries no run_id, so this flag is the only link
+        from a submitted entry back to the numbers behind it, and two runs
+        claiming it makes that link ambiguous.
+        """
+        self.client.table("model_runs").update({"submitted": False}).eq(
+            "season", season
+        ).eq("week", week).eq("model", model).execute()
         self.client.table("model_runs").update({"submitted": True}).eq(
             "run_id", run_id
         ).execute()
