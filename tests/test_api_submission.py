@@ -1,9 +1,7 @@
-"""Who submitted a week, and when (#131), and who may be signed in as (#129).
+"""When a week was submitted (#131), and who may be signed in as (#129).
 
-`submitted_at` and `submitted_by` are stamped server-side from the token. The
-client never sends either, so a late entry cannot be backdated by editing a
-request, and a TEAM slate records the person who typed it rather than the word
-TEAM.
+`submitted_at` is stamped server-side, so a late entry cannot be backdated by
+editing a request.
 """
 
 from datetime import datetime
@@ -21,15 +19,9 @@ class _Picks:
 
     saves: list[dict] = []
 
-    def save_picks(self, season, week, picks, picker, submitted_by=None):
+    def save_picks(self, season, week, picks, picker):
         _Picks.saves.append(
-            {
-                "season": season,
-                "week": week,
-                "picker": picker,
-                "submitted_by": submitted_by,
-                "picks": picks,
-            }
+            {"season": season, "week": week, "picker": picker, "picks": picks}
         )
         return len(picks)
 
@@ -72,29 +64,6 @@ def _post(client, signed_in, picker, week=1):
     return r.json()
 
 
-def test_a_personal_slate_stamps_the_signed_in_picker(client):
-    _post(client, "Griffin", "Griffin")
-    save = _Picks.saves[-1]
-    assert save["picker"] == "Griffin"
-    assert save["submitted_by"] == "Griffin"
-
-
-def test_team_records_the_person_who_submitted_it(client):
-    """The row belongs to TEAM; the stamp says who was at the keyboard."""
-    _post(client, "Harry", "TEAM")
-    save = _Picks.saves[-1]
-    assert save["picker"] == "TEAM"
-    assert save["submitted_by"] == "Harry"
-
-
-def test_the_body_cannot_claim_a_different_submitter(client):
-    """Signed in as Griffin, submitting a body that names Harry."""
-    _post(client, "Griffin", "Harry")
-    save = _Picks.saves[-1]
-    assert save["picker"] == "Griffin"
-    assert save["submitted_by"] == "Griffin"
-
-
 def test_resubmitting_moves_the_timestamp_forward():
     """`submitted_at` is stamped inside save_picks, once per call."""
     from g_nfl.utils import database
@@ -123,8 +92,8 @@ def test_resubmitting_moves_the_timestamp_forward():
     db.client = _Client()
 
     row = {"team_picked": "KC", "pick_type": "regular", "spread": -3.0, "note": None}
-    db.save_picks(2026, 1, {"2026_01_KC_BUF": row}, "Griffin", submitted_by="Harry")
-    db.save_picks(2026, 1, {"2026_01_KC_BUF": row}, "Griffin", submitted_by="Harry")
+    db.save_picks(2026, 1, {"2026_01_KC_BUF": row}, "Griffin")
+    db.save_picks(2026, 1, {"2026_01_KC_BUF": row}, "Griffin")
 
     assert len(stamps) == 2
     first, second = (datetime.fromisoformat(s) for s in stamps)

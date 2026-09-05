@@ -38,7 +38,6 @@ const pick = (picker: string, gid: string, team: string, type: PickType = 'regul
   season: 2025,
   week: 12,
   submitted_at: null,
-  submitted_by: null,
 })
 
 test('spreadFor reads pool_spread as home-perspective, negated for the home side', () => {

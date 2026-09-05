@@ -1193,13 +1193,10 @@ export default function Field() {
   const mineShortfall = shortfall(mineTally)
   const mineComplete = mine.length > 0 && isComplete(mineTally)
 
-  const teamEntry = useMemo(() => {
+  const teamSubmittedAt = useMemo(() => {
     const rows = picks.filter((p) => p.picker === TEAM_PICKER)
-    if (!rows.length) return null
-    return {
-      by: rows.map((p) => p.submitted_by).find(Boolean) ?? null,
-      at: rows.map((p) => p.submitted_at).find(Boolean) ?? null,
-    }
+    if (!rows.length) return undefined
+    return rows.map((p) => p.submitted_at).find(Boolean) ?? null
   }, [picks])
 
   const flaggedSides = useMemo(() => {
@@ -1317,10 +1314,10 @@ export default function Field() {
             {gateOpen && (
               <div className="rounded-lg border border-bb bg-bb-soft/40 p-3">
                 <h2 className="text-sm font-bold">Submit as TEAM</h2>
-                {teamEntry && (
+                {teamSubmittedAt !== undefined && (
                   <p className="mt-1 text-sm text-loss">
-                    {teamEntry.by
-                      ? `TEAM was submitted by ${teamEntry.by} at ${fmtWhen(teamEntry.at)}.`
+                    {teamSubmittedAt
+                      ? `TEAM was submitted at ${fmtWhen(teamSubmittedAt)}.`
                       : `TEAM is already submitted for week ${week}.`}{' '}
                     Submitting again replaces it.
                   </p>
@@ -1376,10 +1373,10 @@ export default function Field() {
 
             {saved?.key === weekKey && <p className="text-sm text-win">{saved.msg}</p>}
 
-            {teamEntry && !gateOpen && (
+            {teamSubmittedAt !== undefined && !gateOpen && (
               <p className="text-xs text-muted-foreground">
-                {teamEntry.by
-                  ? `TEAM submitted by ${teamEntry.by} at ${fmtWhen(teamEntry.at)}.`
+                {teamSubmittedAt
+                  ? `TEAM submitted at ${fmtWhen(teamSubmittedAt)}.`
                   : `TEAM submitted for week ${week}.`}
               </p>
             )}

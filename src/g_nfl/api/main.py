@@ -282,10 +282,7 @@ def get_picks(season: int, week: int | None = None, picker: str | None = None):
             picker=p["picker"],
             season=p["season"],
             week=p["week"],
-            # null on every row written before #131 shipped, and the client
-            # says "time unknown" rather than inventing one
             submitted_at=p.get("submitted_at"),
-            submitted_by=p.get("submitted_by"),
         )
         for p in picks
     ]
@@ -316,18 +313,9 @@ def whoami(picker: str = _PICKER):
 def save_picks(req: SavePicksRequest, picker: str = _PICKER):
     """Save a picker's week.
 
-    `picker` comes from the signed token and the one in the body is ignored.
-    Until #60 this endpoint trusted the body, so anyone could submit as anyone,
-    which made the ledger worthless as a record of who said what.
-
-    TEAM is the one exception. It is the entry the room submits together off
-    the board, so any signed-in picker may write it, and nobody may write it
-    while signed out.
+    `picker` comes from the signed token; the body's is ignored. TEAM is the
+    exception: any signed-in picker may write it.
     """
-    # Who is at the keyboard, before the TEAM override rewrites `picker`. This
-    # is what gets stamped on the row, so a TEAM entry records the person who
-    # submitted it (#131). The client never sends either stamp.
-    submitted_by = picker
     if req.picker == TEAM_PICKER:
         picker = TEAM_PICKER
 
@@ -364,9 +352,7 @@ def save_picks(req: SavePicksRequest, picker: str = _PICKER):
 
     db = PicksDatabase()
     try:
-        saved = db.save_picks(
-            req.season, req.week, picks_dict, picker, submitted_by=submitted_by
-        )
+        saved = db.save_picks(req.season, req.week, picks_dict, picker)
     except Exception as e:
         raise HTTPException(500, f"Failed to save picks: {e}") from e
     return SavePicksResponse(saved=saved)

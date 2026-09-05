@@ -51,12 +51,8 @@ class PickRecord(Pick):
     picker: str
     season: int
     week: int
-    #: When the row was written, and by whom (#131). Both null for rows saved
-    #: before the columns existed; the client renders those as "time unknown"
-    #: rather than as the epoch. `submitted_by` equals `picker` for a personal
-    #: slate and carries information only on TEAM rows.
+    #: Null on rows written before the column existed.
     submitted_at: str | None = None
-    submitted_by: str | None = None
 
 
 class SavePicksRequest(BaseModel):

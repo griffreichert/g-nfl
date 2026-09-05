@@ -41,8 +41,6 @@ export interface PickRecord extends Pick {
   week: number
   /** When the row was written, ISO 8601. Null on anything saved before #131. */
   submitted_at: string | null
-  /** Who was signed in when it was written. Only interesting on TEAM rows. */
-  submitted_by: string | null
 }
 
 export interface RecordStats {

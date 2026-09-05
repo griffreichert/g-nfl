@@ -69,9 +69,8 @@ def test_the_body_cannot_name_a_different_picker(client):
     token = auth.authenticate("Griffin", PASSPHRASE)
     saved = {}
 
-    def _save(season, week, picks, picker, submitted_by=None):
+    def _save(season, week, picks, picker):
         saved["picker"] = picker
-        saved["submitted_by"] = submitted_by
         return 0
 
     with patch("g_nfl.api.main.PicksDatabase") as db:
@@ -91,9 +90,8 @@ def test_team_may_be_written_by_any_signed_in_picker(client):
     token = auth.authenticate("Griffin", PASSPHRASE)
     saved = {}
 
-    def _save(season, week, picks, picker, submitted_by=None):
+    def _save(season, week, picks, picker):
         saved["picker"] = picker
-        saved["submitted_by"] = submitted_by
         return 0
 
     with patch("g_nfl.api.main.PicksDatabase") as db:
@@ -106,8 +104,6 @@ def test_team_may_be_written_by_any_signed_in_picker(client):
 
     assert r.status_code == 200
     assert saved["picker"] == "TEAM"
-    # The row belongs to TEAM; the stamp says who was at the keyboard (#131).
-    assert saved["submitted_by"] == "Griffin"
 
 
 def test_team_still_needs_a_session(client):

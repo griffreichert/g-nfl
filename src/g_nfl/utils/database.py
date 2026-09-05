@@ -91,7 +91,6 @@ class PicksDatabase:
         picks: dict[str, dict[str, any]],
         picker: str,
         replace: bool = True,
-        submitted_by: str | None = None,
     ) -> int:
         """Save picks to Supabase
 
@@ -101,12 +100,6 @@ class PicksDatabase:
             picks: Dictionary mapping game_id to pick data {'team_picked': str, 'spread': float, 'pick_type': str}
             picker: Name of the person making picks
             replace: If True, replace existing picks for this picker/season/week
-            submitted_by: The signed-in picker who wrote these rows (#131).
-                Equal to `picker` for a personal slate, so it carries
-                information only on TEAM rows and on a slate one of us typed in
-                for somebody who sent theirs to the group chat. `submitted_at`
-                is stamped here rather than passed in: the client never gets to
-                say when a pick was made.
 
         Returns:
             Number of picks saved
@@ -163,7 +156,6 @@ class PicksDatabase:
                         pick_data.get("note") if isinstance(pick_data, dict) else None
                     ),
                     "submitted_at": submitted_at,
-                    "submitted_by": submitted_by or picker,
                 }
                 picks_data.append(pick_record)
                 print(f"DEBUG: Prepared pick record: {pick_record}")
