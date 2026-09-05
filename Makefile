@@ -1,4 +1,4 @@
-.PHONY: survivor-board case no-homers gmodel predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
+.PHONY: survivor-board case no-homers gmodel gmodel-room predict backtest-guardrails help install dev bootstrap push-data pull-data run api web deploy-prep clean lint format test jupyter streamlit train backtest market-ratings mlflow-ui update-context ingest-fantasy
 
 # Default target
 help:
@@ -32,6 +32,7 @@ help:
 	@echo "  backtest      Walk-forward backtest with betting metrics (ARGS=\"--output report.md\")"
 	@echo "  predict       Model line, market line and edge for one week (ARGS=\"--week 1\")"
 	@echo "  backtest-guardrails Replay the entry with the No Homers guardrails"
+	@echo "  gmodel-room   Score gModel against the room (ARGS=\"--preds x.parquet\")"
 	@echo "  gmodel        Store gModel's board and submit its entry (ARGS=\"--dry-run\")"
 	@echo "  no-homers     Submit the mechanical entry (ARGS=--dry-run)"
 	@echo "  case          Build the case for the room (ARGS=\"--output case.md\")"
@@ -157,6 +158,10 @@ gmodel:
 backtest-guardrails:
 	@echo "🚧 Replaying the entry with the No Homers guardrails..."
 	uv run python -m g_nfl.picks.backtest $(ARGS)
+
+gmodel-room:
+	@echo "🤝 Scoring gModel against the room..."
+	uv run python -m g_nfl.picks.model_room $(ARGS)
 
 market-ratings:
 	@echo "📊 Running market-derived power ratings..."
