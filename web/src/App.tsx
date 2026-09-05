@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   ChartColumn,
   CircleQuestionMark,
@@ -10,6 +10,7 @@ import {
   Skull,
 } from 'lucide-react'
 import ErrorBoundary from './components/ErrorBoundary'
+import { EmptyState } from './components/PageState'
 import ThemeToggle from './components/ThemeToggle'
 import RequireAuth from './components/RequireAuth'
 import { useAuth } from './hooks'
@@ -57,6 +58,21 @@ function currentSeasonWeek(pathname: string) {
   const seasonOnly = pathname.match(/^\/(?:performance|analytics)\/(\d+)/)
   if (seasonOnly) return { season: Number(seasonOnly[1]), week: undefined }
   return { season: undefined, week: undefined }
+}
+
+function NotFound() {
+  const { pathname } = useLocation()
+  return (
+    <EmptyState
+      title="No page at this address"
+      detail={<code>{pathname}</code>}
+      note={
+        <Link to="/picks" className="text-primary underline-offset-4 hover:underline">
+          Go to Make Picks
+        </Link>
+      }
+    />
+  )
 }
 
 const navClass = (isActive: boolean) =>
@@ -224,6 +240,9 @@ export default function App() {
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/analytics/:season" element={<Analytics />} />
               <Route path="/help" element={<Help />} />
+              {/* Anything else — a typo, a stale link — says so and offers
+                  the way back, rather than rendering an empty main. */}
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>
