@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from g_nfl.api.auth import authenticate
 from g_nfl.api.main import app
+from g_nfl.api.schemas import WeeksResponse
 
 
 class _Picks:
@@ -104,7 +105,17 @@ def test_resubmitting_moves_the_timestamp_forward():
 
 def test_the_signin_list_drops_team_and_test(client):
     """TEAM is an output and TEST is a scratch profile (#129)."""
-    with patch("g_nfl.api.main.PicksDatabase", _Picks):
+    # The season, week and week list come from Supabase, which CI has no
+    # credentials for. Only the picker list is under test here.
+    with (
+        patch("g_nfl.api.main.PicksDatabase", _Picks),
+        patch("g_nfl.api.main.current_season", return_value=2026),
+        patch("g_nfl.api.main.current_week", return_value=1),
+        patch(
+            "g_nfl.api.main.get_weeks",
+            return_value=WeeksResponse(weeks=[1], max_week=1, current_week=1),
+        ),
+    ):
         r = client.get("/api/config")
     assert r.status_code == 200, r.text
     pickers = r.json()["pickers"]
