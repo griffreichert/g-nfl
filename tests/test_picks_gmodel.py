@@ -216,3 +216,37 @@ def test_an_entry_on_a_fixed_slate_is_deterministic(board):
     first = gmodel.build_entry(board, mnf_ids={"2026_01_OOO_PPP"}, spent=set())
     second = gmodel.build_entry(board, mnf_ids={"2026_01_OOO_PPP"}, spent=set())
     assert first == second
+
+
+def test_the_table_sorts_by_the_market_not_the_pool():
+    """The pool line is what grades, the market is what tells you anything."""
+    games = slate({"AAA@BBB": 0.0, "CCC@DDD": 0.0})
+    games[0].pool_spread, games[0].market_spread = 9.0, 1.0  # small market gap
+    games[1].pool_spread, games[1].market_spread = 1.0, 9.0  # big market gap
+    board = gmodel.board_rows(
+        predictions(games, {"AAA@BBB": 2.0, "CCC@DDD": 2.0}), games
+    )
+    table = gmodel.format_board(2026, 1, board, entry=[])
+    rows = [ln for ln in table.splitlines() if "@" in ln and "matchup" not in ln]
+    assert rows[0].startswith("CCC @ DDD")
+
+
+def test_every_slot_on_a_game_is_listed(board):
+    """The best bet and the underdog are often the same side."""
+    entry = gmodel.build_entry(board, mnf_ids={"2026_01_OOO_PPP"}, spent=set())
+    table = gmodel.format_board(2026, 1, board, entry)
+    line = next(ln for ln in table.splitlines() if ln.startswith("AAA @ BBB"))
+    assert "BBB best_bet" in line
+
+
+def test_a_game_with_no_line_still_prints():
+    games = slate({"AAA@BBB": 0.0})
+    games[0].pool_spread = None
+    games[0].market_spread = None
+    board = gmodel.board_rows(predictions(games, {"AAA@BBB": 3.0}), games)
+    line = next(
+        ln
+        for ln in gmodel.format_board(2026, 1, board, []).splitlines()
+        if ln.startswith("AAA @ BBB")
+    )
+    assert "--" in line

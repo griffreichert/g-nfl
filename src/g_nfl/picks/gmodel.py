@@ -260,6 +260,68 @@ def fingerprint(config: dict[str, Any], board: list[dict]) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def format_board(season: int, week: int, board: list[dict], entry: list[dict]) -> str:
+    """The week's board as a table, biggest disagreement with the market first.
+
+    Sorted on the market, because the close is the sharper of the two numbers
+    and the honest read on whether the model saw something. The pool column is
+    what the picks are graded against, so both are shown; they only differ
+    once the Friday number is entered.
+
+    Every number is a home spread: negative is the home team laying points.
+    """
+    # one game can carry several slots: the best bet and the underdog are
+    # often the same side, and the survivor is a team rather than a side
+    taken: dict[str, list[str]] = {}
+    for pick in entry:
+        taken.setdefault(pick["game_id"], []).append(
+            f"{pick['team_picked']} {pick['pick_type']}"
+        )
+
+    rows = []
+    for row in board:
+        market, pool, model = (
+            row["market_spread"],
+            row["pool_spread"],
+            row["pred_margin"],
+        )
+        rows.append(
+            {
+                **row,
+                "vs_mkt": None if market is None else model - market,
+                "vs_pool": None if pool is None else model - pool,
+            }
+        )
+    rows.sort(key=lambda r: -abs(r["vs_mkt"] or 0))
+
+    head = (
+        f"{'matchup':<13}{'model':>7}{'market':>8}{'vs mkt':>8}"
+        f"{'pool':>8}{'vs pool':>9}   picks"
+    )
+    lines = [
+        f"\n{PICKER} {season} week {week} — {len(board)} games, "
+        "sorted by disagreement with the market\n",
+        head,
+        "-" * len(head),
+    ]
+    for row in rows:
+        market, vs_mkt, pool, vs_pool = (
+            f"{v:+.1f}" if v is not None else "--"
+            for v in (
+                row["market_spread"],
+                row["vs_mkt"],
+                row["pool_spread"],
+                row["vs_pool"],
+            )
+        )
+        lines.append(
+            f"{row['away_team'] + ' @ ' + row['home_team']:<13}"
+            f"{row['pred_margin']:>+7.1f}{market:>8}{vs_mkt:>8}{pool:>8}{vs_pool:>9}"
+            f"   {', '.join(taken.get(row['game_id'], []))}"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def git_sha() -> str | None:
     """The commit this ran from, so a run can be rebuilt at its own code."""
     if sha := os.environ.get("GITHUB_SHA"):
@@ -314,19 +376,9 @@ def submit(
         "train_seasons": training_seasons(season),
         "git_sha": git_sha(),
     }
-    for row in sorted(board, key=lambda r: -abs(r["edge"] or 0)):
-        print(
-            f"  {row['away_team']:>3} @ {row['home_team']:<3} "
-            f"model {row['pred_margin']:+6.1f}  edge "
-            f"{'  --  ' if row['edge'] is None else format(row['edge'], '+6.1f')}"
-            f"  ({row['line_source'] or 'no line'})"
-        )
-    print()
-    for pick in entry:
-        print(f"  {pick['pick_type']:<9} {pick['team_picked']:<4} {pick['note']}")
-
     if dry_run:
-        print(f"\nwould store {len(board)} predictions, submit {len(entry)} picks")
+        print(format_board(season, week, board, entry))
+        print(f"would store {len(board)} predictions, submit {len(entry)} picks")
         return {"board": board, "entry": entry, "config": config}
 
     runs = ModelRunsDatabase()
@@ -341,7 +393,6 @@ def submit(
         }
     )
     runs.save_predictions(run_id, board)
-    print(f"\nstored {len(board)} predictions, run {run_id}")
 
     payload = {
         (
@@ -353,6 +404,10 @@ def submit(
     }
     saved = db.save_picks(season, week, payload, PICKER)
     runs.mark_submitted(run_id, season, week, PICKER)
+    # last, because save_picks prints a wall of debug rows the table would
+    # otherwise scroll off the screen
+    print(format_board(season, week, board, entry))
+    print(f"stored {len(board)} predictions, run {run_id}")
     print(f"submitted {saved} picks as {PICKER}, {season} week {week}")
     return {"board": board, "entry": entry, "config": config, "run_id": run_id}
 
