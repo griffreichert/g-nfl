@@ -13,3 +13,10 @@ DIR = Path(__file__).parent
 
 def board_path(season: int) -> Path:
     return DIR / f"survivor_board_{season}.json"
+
+
+def built_seasons() -> list[int]:
+    """Seasons with a committed artifact, ascending."""
+    return sorted(
+        int(p.stem.rsplit("_", 1)[1]) for p in DIR.glob("survivor_board_*.json")
+    )

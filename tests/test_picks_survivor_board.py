@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from g_nfl.picks.calendar import current_season
+from g_nfl.picks.boards import built_seasons
 from g_nfl.picks.survivor_board import (
     CONFIDENCE_FLAT,
     CONFIDENCE_SLOPE,
@@ -24,7 +24,9 @@ from g_nfl.picks.survivor_board import (
 )
 from g_nfl.utils.config import SPREAD_STDEV
 
-SEASON = current_season()
+# Read from the committed artifact. `current_season()` would reach Supabase,
+# and CI has no credentials, so calling it here kills collection.
+SEASON = max(built_seasons())
 
 
 def test_artifact_covers_every_team_and_every_week():
