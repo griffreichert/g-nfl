@@ -137,3 +137,26 @@ def test_advisory_rules_are_kept_out_of_the_replay():
     rules = build_rules(CONFIG)
     advisory = [r.id for r in rules if r.advisory]
     assert advisory == ["pool_worse_than_market"]
+
+
+def test_a_rule_the_bar_turned_down_can_still_be_replayed():
+    """A candidate rule is measured before it has earned the board (item 5)."""
+    fits = fit(_sample(bad_seasons=2), CONFIG)
+    (road,) = [f for f in fits if f.rule.id == "road_7_plus"]
+    assert not road.qualifies
+    entry = [
+        _row(
+            2025,
+            1,
+            "Reichert",
+            "2025_01_AAA_B99",
+            9.0,
+            False,
+            won=False,
+            slot="best_bet",
+        )
+    ]
+    assert replay_season(entry, fits, "flip", {"Reichert"}).vetoed == 0
+    forced = replay_season(entry, fits, "flip", {"Reichert"}, require_qualified=False)
+    assert forced.vetoed == 1
+    assert forced.adjusted == 2.0

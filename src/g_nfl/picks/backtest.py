@@ -26,7 +26,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from g_nfl.picks.guardrails import RuleFit, build_rules, fit, load_config
+from g_nfl.picks.guardrails import Rule, RuleFit, build_rules, fit, load_config
 
 #: Pool points per slot.
 SLOT_POINTS = {"best_bet": 2.0, "regular": 1.0, "mnf": 1.0}
@@ -72,9 +72,18 @@ def replay_season(
     fits: list[RuleFit],
     policy: str,
     entry_pickers: set[str],
+    require_qualified: bool = True,
 ) -> Replay:
-    """Score one season's submitted entries, actual against guarded."""
-    active = [f for f in fits if f.qualifies and not f.rule.advisory]
+    """Score one season's submitted entries, actual against guarded.
+
+    `require_qualified` off replays a rule the display bar turned down, which
+    is how a candidate rule is measured before it has earned the board.
+    """
+    active = [
+        f
+        for f in fits
+        if (f.qualifies or not require_qualified) and not f.rule.advisory
+    ]
     consensus = _consensus(rows)
 
     entries: dict[tuple[Any, ...], list[dict]] = defaultdict(list)
@@ -158,14 +167,18 @@ def run(
     scheme: str = "loso",
     policy: str = "flip",
     config: dict[str, Any] | None = None,
+    rules: list[Rule] | None = None,
+    require_qualified: bool = True,
 ) -> list[Replay]:
     """Fit and score every season under one scheme and one policy.
 
     `rows` must include the entry pickers. Rules are fitted on everyone else,
-    so the entry is never part of its own training data.
+    so the entry is never part of its own training data. `rules` replaces the
+    configured set, which is how a candidate rule is scored before it is added
+    to the yaml.
     """
     config = config or load_config()
-    rules = build_rules(config)
+    rules = build_rules(config) if rules is None else rules
     seasons = sorted({r["season"] for r in rows})
     members = [r for r in rows if r["picker"] not in entry_pickers]
 
@@ -179,7 +192,7 @@ def run(
             continue
         fits = fit(train, config, rules)
         scored = [r for r in rows if r["season"] == season]
-        replay = replay_season(scored, fits, policy, entry_pickers)
+        replay = replay_season(scored, fits, policy, entry_pickers, require_qualified)
         replay.season = season
         out.append(replay)
     return out
